@@ -256,36 +256,6 @@ const LEAGUE = {
   // Division / conference / non-conference is worked out from the teams automatically.
   // Format: { series: 1, week: 1, games: [{ id: "W1-1", teams: ["Novasota Wolf Pack", "San Jose Scarecrows"] }, ...] }
   schedule: [],
-  // Sample playoff bracket (random teams, made-up Wild Card scores) for testing the Playoff and Predictions pages.
-  // Shown only until an admin saves a real bracket from Admin -> Playoffs. Left half of each round = Grand Central,
-  // right half = The Ridge; the last round sits in the middle. fromA/fromB = which earlier game's winner fills that spot.
-  playoffs: {
-    title: "Season 7 Playoffs",
-    logo: "logos/bowls/ufb-7.png",
-    rounds: [
-      { name: "Wild Card", games: [
-        { a: "Baltimore Bluejays", seedA: "4", b: "Sarnia City Broncos", seedB: "5", sa: "28", sb: "21", adv: "", fromA: null, fromB: null },
-        { a: "Kansas City Jazz", seedA: "2", b: "Pittsburg Sentinels", seedB: "7", sa: "35", sb: "14", adv: "", fromA: null, fromB: null },
-        { a: "Seattle Skyclaws", seedA: "3", b: "Havana Toroccoros", seedB: "6", sa: "17", sb: "24", adv: "", fromA: null, fromB: null },
-        { a: "Novasota Wolf Pack", seedA: "4", b: "Columbus Colts", seedB: "5", sa: "20", sb: "27", adv: "", fromA: null, fromB: null },
-        { a: "Rose City Reapers", seedA: "2", b: "Olympia Owls", seedB: "7", sa: "31", sb: "10", adv: "", fromA: null, fromB: null },
-        { a: "Plymouth Huskies", seedA: "3", b: "Shiroishi Samurai", seedB: "6", sa: "21", sb: "14", adv: "", fromA: null, fromB: null }
-      ] },
-      { name: "Divisional", games: [
-        { a: "New Orleans Raiders", seedA: "1", b: "Baltimore Bluejays", seedB: "4", sa: "", sb: "", adv: "", fromA: null, fromB: 0 },
-        { a: "Kansas City Jazz", seedA: "2", b: "Havana Toroccoros", seedB: "6", sa: "", sb: "", adv: "", fromA: 1, fromB: 2 },
-        { a: "Costa Rica Pumas", seedA: "1", b: "Columbus Colts", seedB: "5", sa: "", sb: "", adv: "", fromA: null, fromB: 3 },
-        { a: "Rose City Reapers", seedA: "2", b: "Plymouth Huskies", seedB: "3", sa: "", sb: "", adv: "", fromA: 4, fromB: 5 }
-      ] },
-      { name: "Conference Finals", games: [
-        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null },
-        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null }
-      ] },
-      { name: "United Flag Bowl VII", games: [
-        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null }
-      ] }
-    ]
-  },
   // Records page. Each record: label, holders (one or more names), value, and season if single-season.
   // Single-season: `stat` = box score stat this season's games are checked against; beating the record replaces it.
   // Career: `career` = All-Time stat tabs + stat to add up; holders and value are worked out from the All-Time stats.

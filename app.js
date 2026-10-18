@@ -1744,7 +1744,7 @@
     return out;
   }
 
-  // The saved bracket, or the sample one in data.js until an admin saves a real one
+  // The bracket saved on the Admin page (data.js can also hold one under `playoffs`)
   const bracket = () => {
     const po = SAVED.playoffs || LEAGUE.playoffs;
     return po && po.rounds && po.rounds.length ? po : null;
@@ -1965,7 +1965,8 @@
 
   let poDraft = null;
   const newGame = () => ({ a: "", b: "", sa: "", sb: "", seedA: "", seedB: "", adv: "", fromA: null, fromB: null });
-  const draftPlayoffs = () => (poDraft = poDraft || (bracket() ? clone(bracket()) : { title: `Season ${LEAGUE.season} Playoffs`, logo: "", rounds: [] }));
+  const emptyBracket = () => ({ title: `Season ${LEAGUE.season} Playoffs`, logo: (LEAGUE.bowlLogos || {})[LEAGUE.season] || "", rounds: [] });
+  const draftPlayoffs = () => (poDraft = poDraft || (bracket() ? clone(bracket()) : emptyBracket()));
 
   function playoffEditor() {
     const d = draftPlayoffs();
@@ -2011,6 +2012,7 @@
       <div class="admin-actions">
         <button type="button" class="btn btn-ghost" data-po-act="addRound">+ Add round</button>
         <button type="button" class="btn btn-primary" data-po-act="save">Save playoffs</button>
+        ${d.rounds.length ? `<button type="button" class="btn btn-ghost" data-po-act="clear">Clear bracket</button>` : ""}
       </div>`;
   }
 
@@ -2285,6 +2287,13 @@
       if (act === "delRound" && confirm(`Delete ${d.rounds[r].name} and its games?`)) d.rounds.splice(r, 1);
       if (act === "send") sendWinners(r);
       if (act === "removeLogo") d.logo = "";
+      if (act === "clear") {
+        if (!confirm("Clear the whole bracket? The Playoff page goes back to \"Coming soon\" once you save.")) return;
+        poDraft = emptyBracket();
+        adminError = "";
+        adminFlash = "Bracket cleared. Press Save playoffs to take it off the site.";
+        return render();
+      }
       if (act === "save") {
         return adminSave(t, { action: "savePlayoffs", playoffs: d }, (res) => {
           SAVED.playoffs = res.playoffs;
