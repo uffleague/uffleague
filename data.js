@@ -177,6 +177,7 @@ const LEAGUE = {
     // Award winners listed under a shorter or misspelled name
     "biglester": "BIGGIECHEESE", "kevski": "Kevskiiiiiii", "VampViolence": "vampviolences", "yavient": "Yavientt",
     "affused": "lord 9", "2687affused982673260": "lord 9", "touchdenim": "denim", "shazamzq": "shazam", "xv89r12azk74m3a4": "stunaaaaaaaaaaaaa", "nskx": "curfaw", "GalanBlox2": "Galan101dragon20",
+    "ripburied": "rip", "ripb_ried": "rip", "iluvphenom": "mr_devy1122", ".coaserh": "coaserh",
     // Head coaches' usernames (from the Season 7 coaches list) -> the name they go by
     "Aloneinnewyorkcity": "2 trey", "marmersie": "msuede", "loverloverlover": "248", "jumpbaI": "splndd"
   },
@@ -273,7 +274,11 @@ const LEAGUE = {
     { date: "2026-10-17", time: "15:23", type: "promotion", player: "SUPERKITOBOY9999", team: "Pittsburg Sentinels", role: "Assistant Head Coach", by: "2 trey" },
     { date: "2026-10-17", time: "21:36", type: "promotion", player: "denim", team: "Baltimore Bluejays", role: "Assistant Coach" },
     { date: "2026-10-18", time: "00:44", type: "sign", player: "n4w", team: "Baltimore Bluejays" },
-    { date: "2026-10-18", time: "15:27", type: "promotion", player: "n4w", team: "Columbus Colts", role: "Owner", note: "Left the Baltimore Bluejays" }
+    { date: "2026-10-18", time: "15:27", type: "promotion", player: "n4w", team: "Columbus Colts", role: "Owner", note: "Left the Baltimore Bluejays" },
+    { date: "2026-10-18", time: "15:38", type: "sign", player: "coaserh", team: "Columbus Colts" },
+    { date: "2026-10-18", time: "15:38", type: "sign", player: "denim", team: "Columbus Colts" },
+    { date: "2026-10-18", time: "15:38", type: "sign", player: "mr_devy1122", team: "Columbus Colts" },
+    { date: "2026-10-18", time: "15:38", type: "sign", player: "rip", team: "Columbus Colts" }
   ],
   // Schedule. Each game lists its two teams (names must match the teams below).
   // Optional: time: "Sat 8 PM EST" once it's set, score: [21, 14] once it's final (same order as teams).

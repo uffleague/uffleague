@@ -707,7 +707,11 @@
     const staffBy = new Map();
     UPDATES.filter((u) => u.type === "promotion" && u.t && u.t.slug === t.slug && u.role)
       .forEach((u) => staffBy.set(aliasName(u.player).toLowerCase(), u));
-    const staff = [...staffBy.values()];
+    // Someone whose latest move is to another team (or off this one) isn't on this staff anymore
+    const lastMove = new Map(UPDATES.filter((u) => u.t).map((u) => [aliasName(u.player).toLowerCase(), u]));
+    const staff = [...staffBy.entries()]
+      .filter(([key]) => { const m = lastMove.get(key); return m && m.t.slug === t.slug && m.type !== "demand" && m.type !== "release"; })
+      .map(([, u]) => u);
 
     const games = teamSchedule(t);
     const short =`${t.conference.replace(/ Conference$/, "")} ${t.division.replace(/ Division$/, "")}`;
