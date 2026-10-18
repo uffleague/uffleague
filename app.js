@@ -1928,7 +1928,10 @@
             <div class="bowl-head"><span class="bowl-name">United Flag Bowl ${roman(b.s)}</span><span class="pill">Season ${b.s}</span></div>
             <div class="bowl-body">
               <div class="bowl-side bowl-side--win"><span class="eyebrow">Champion</span>${teamChip(b.champion, "lg")}</div>
-              <div class="bowl-score">${b.scoreA || b.scoreB ? `${esc(b.scoreA)}<span class="muted">&ndash;</span>${esc(b.scoreB)}` : `<span class="muted">def.</span>`}</div>
+              <div class="bowl-mid">
+                ${(LEAGUE.bowlLogos || {})[b.s] ? `<img class="bowl-logo" src="${LEAGUE.bowlLogos[b.s]}?v=${LEAGUE.logoVersion || ""}" alt="United Flag Bowl ${roman(b.s)} logo" loading="lazy">` : ""}
+                <div class="bowl-score">${b.scoreA || b.scoreB ? `${esc(b.scoreA)}<span class="muted">&ndash;</span>${esc(b.scoreB)}` : `<span class="muted">def.</span>`}</div>
+              </div>
               <div class="bowl-side"><span class="eyebrow">Runner-up</span>${teamChip(b.runnerUp, "lg")}</div>
             </div>
           </div>`).join("")}</div>`

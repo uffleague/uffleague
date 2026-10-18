@@ -10,6 +10,11 @@ const LEAGUE = {
   // Team logos: add logo: "logos/<file>.png" to a team. Teams without one use logo.png.
   // Change logoVersion whenever a logo file is replaced, so browsers load the new picture.
   logoVersion: "2026-10-17c",
+  // United Flag Bowl logos by season (shown on Past Bowls above the score)
+  bowlLogos: {
+    2: "logos/bowls/ufb-2.png", 3: "logos/bowls/ufb-3.png", 4: "logos/bowls/ufb-4.png",
+    5: "logos/bowls/ufb-5.png", 6: "logos/bowls/ufb-6.png", 7: "logos/bowls/ufb-7.png"
+  },
   // Logos for teams from past seasons that aren't in the league now (Past Bowls, Team of the Year, brackets)
   pastTeams: {
     "Virginia Venom": "logos/past/virginia-venom.png",
@@ -256,7 +261,7 @@ const LEAGUE = {
   // right half = The Ridge; the last round sits in the middle. fromA/fromB = which earlier game's winner fills that spot.
   playoffs: {
     title: "Season 7 Playoffs",
-    logo: "ufb-7.png",
+    logo: "logos/bowls/ufb-7.png",
     rounds: [
       { name: "Wild Card", games: [
         { a: "Baltimore Bluejays", seedA: "4", b: "Sarnia City Broncos", seedB: "5", sa: "28", sb: "21", adv: "", fromA: null, fromB: null },

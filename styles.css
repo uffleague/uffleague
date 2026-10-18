@@ -289,7 +289,9 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .bowl-side { display: flex; flex-direction: column; gap: 6px; font-weight: 600; color: var(--navy); }
 .bowl-side:last-child { align-items: flex-end; text-align: right; }
 .bowl-side--win .team-cell span { font-weight: 700; }
-.bowl-score { font-family: var(--head); font-weight: 700; font-size: 30px; color: var(--navy); display: flex; gap: 8px; }
+.bowl-score { font-family: var(--head); font-weight: 700; font-size: 30px; color: var(--navy); display: flex; gap: 8px; justify-content: center; }
+.bowl-mid { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.bowl-logo { display: block; height: 130px; width: auto; max-width: 100%; object-fit: contain; }
 @media (max-width: 640px) {
   .bowl-body { grid-template-columns: 1fr; }
   .bowl-side:last-child { align-items: flex-start; text-align: left; }
