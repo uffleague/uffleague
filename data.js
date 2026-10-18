@@ -177,7 +177,7 @@ const LEAGUE = {
     // Award winners listed under a shorter or misspelled name
     "biglester": "BIGGIECHEESE", "kevski": "Kevskiiiiiii", "VampViolence": "vampviolences", "yavient": "Yavientt",
     "affused": "lord 9", "2687affused982673260": "lord 9", "touchdenim": "denim", "shazamzq": "shazam", "xv89r12azk74m3a4": "stunaaaaaaaaaaaaa", "nskx": "curfaw", "GalanBlox2": "Galan101dragon20",
-    "ripburied": "rip", "ripb_ried": "rip", "iluvphenom": "mr_devy1122", ".coaserh": "coaserh",
+    "rip": "ripburied", "ripb_ried": "ripburied", "iluvphenom": "mr_devy1122", ".coaserh": "coaserh",
     // Head coaches' usernames (from the Season 7 coaches list) -> the name they go by
     "Aloneinnewyorkcity": "2 trey", "marmersie": "msuede", "loverloverlover": "248", "jumpbaI": "splndd"
   },
@@ -278,7 +278,7 @@ const LEAGUE = {
     { date: "2026-10-18", time: "15:38", type: "sign", player: "coaserh", team: "Columbus Colts" },
     { date: "2026-10-18", time: "15:38", type: "sign", player: "denim", team: "Columbus Colts" },
     { date: "2026-10-18", time: "15:38", type: "sign", player: "mr_devy1122", team: "Columbus Colts" },
-    { date: "2026-10-18", time: "15:38", type: "sign", player: "rip", team: "Columbus Colts" }
+    { date: "2026-10-18", time: "15:38", type: "sign", player: "ripburied", team: "Columbus Colts" }
   ],
   // Schedule. Each game lists its two teams (names must match the teams below).
   // Optional: time: "Sat 8 PM EST" once it's set, score: [21, 14] once it's final (same order as teams).
@@ -466,7 +466,7 @@ const LEAGUE = {
       { name: "ggglory", honors: { SECOND_TEAM: 2 } },
       { name: "Made Her Suffer.", honors: { FIRST_TEAM: 1 } },
       { name: "gabe08130", honors: { SECOND_TEAM: 1 } },
-      { name: "rip", honors: { SECOND_TEAM: 1 } },
+      { name: "ripburied", honors: { SECOND_TEAM: 1 } },
       { name: "goatnotgood", honors: { SECOND_TEAM: 1 } },
       { name: "vampviolences", honors: { ROTY: 1 } },
       { name: "AncientDark", honors: { SOTY: 1 } },
