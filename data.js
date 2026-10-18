@@ -49,6 +49,8 @@ const LEAGUE = {
     // VOD links to keep off the home page Featured Media (they stay on the VODs page)
     hideMedia: ["twitch.tv/videos/2900293561"]
   },
+  // Team codes used in All-Flag posts (":SIN:") -> team name, for the logo. Current teams' codes work automatically.
+  allFlagTeamCodes: { SIN: "Sinaloa Red Devils", SAV: "Savannah Raiders", SAL: "Salem Snowhawks", SHI: "Shiroishi Samurai" },
   // Awards shown on the Awards page. featured: true = big card in the top row.
   awards: [
     { code: "MVP", name: "Most Valuable Player", featured: true },
@@ -389,8 +391,11 @@ const LEAGUE = {
     // Short names shown on each player's honor chips
     labels: {
       UFB_CHAMP: "UFB Champ", UFB_MVP: "UFB MVP", FLAG_TITLE: "Flag Title", CROWN: "Crown", COTY: "City of the Year",
-      FIRST_TEAM: "1st Team All-Flag", SECOND_TEAM: "2nd Team All-Flag"
+      FIRST_TEAM: "1st Team All-Flag", SECOND_TEAM: "2nd Team All-Flag", THIRD_TEAM: "3rd Team All-Flag"
     },
+    // All-Flag teams entered on Admin -> All-Flag add to the 1st / 2nd / 3rd Team counts below starting with this
+    // season (the counts below already include the seasons before it).
+    allFlagCountsFrom: 7,
     // From the Discord roles (nicknames). Number = how many times they have it.
     // bonus = extra points on top of their roles (for totals set by the league).
     players: [

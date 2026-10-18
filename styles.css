@@ -713,6 +713,34 @@ button.box-toggle.open::after { content: " ▴"; }
 .roster-card { overflow: hidden; }
 .roster-list { padding: 16px 18px; margin: 0; }
 
+/* ---------- All-Flag teams ---------- */
+.af-tier { margin-top: 32px; }
+.af-tier--1 .conf-title { background: linear-gradient(90deg, #9c7420 0%, var(--cream-2) 100%); }
+.af-tier--2 .conf-title { background: linear-gradient(90deg, #6b7488 0%, var(--cream-2) 100%); }
+.af-tier--3 .conf-title { background: linear-gradient(90deg, #8a4f28 0%, var(--cream-2) 100%); }
+.af-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; align-items: start; }
+.af-card { overflow: hidden; }
+.af-row { display: flex; align-items: center; gap: 12px; padding: 10px 18px; }
+.af-row + .af-row { border-top: 1px solid var(--line); }
+.af-pos {
+  width: 38px; flex-shrink: 0; text-align: center; padding: 3px 0; border-radius: 6px;
+  background: var(--accent); color: var(--cream); font-family: var(--head); font-weight: 700; font-size: 13px; letter-spacing: .04em;
+}
+.af-tier--1 .af-pos { background: #f0c45a; color: var(--navy); }
+.af-name { flex: 1; min-width: 0; font-weight: 600; color: var(--heading); overflow-wrap: anywhere; }
+.af-team { flex-shrink: 0; font-size: 12px; color: var(--muted); text-align: right; }
+@media (max-width: 760px) { .af-sides { grid-template-columns: 1fr; } .af-team { display: none; } }
+/* Admin: All-Flag preview */
+.af-season-input { width: 110px; }
+.af-edit-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 8px; }
+.af-edit-row.warn { background: rgba(240, 196, 90, .1); box-shadow: inset 3px 0 0 #f0c45a; }
+.af-edit-team { width: 44px; flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.af-edit-name {
+  flex: 0 1 240px; min-width: 0; font: inherit; font-size: 14px; color: var(--ink);
+  background: var(--surface); border: 1.5px solid var(--edge); border-radius: 8px; padding: 6px 10px;
+}
+.af-edit-row.warn .af-edit-name { border-color: #f0c45a; }
+
 /* ---------- Records ---------- */
 .record-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .record-card { padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; }

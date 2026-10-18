@@ -5,7 +5,7 @@
 //   POST / { action, token, ... }              -> the saved data ("activity" returns the log)
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
-const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], activity: [] };
+const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, activity: [] };
 const STAT_FIELDS = {
   passing: ["comp", "att", "yds", "td", "int", "lng", "sacked"],
   rushing: ["att", "yds", "td", "fum", "lng", "pre"],
@@ -254,6 +254,23 @@ export default {
       } else {
         log = `Removed live stream "${gone ? gone.title : "?"}"`;
       }
+    } else if (body.action === "saveAllFlag") {
+      // One season's All-Flag teams: [{ tier: 1-3, side: "offense"|"defense", pos, team, player }]
+      const season = Math.round(Number(body.season));
+      if (!(season >= 1 && season <= 99)) return json({ error: "Pick the season." }, 400);
+      const picks = [].concat(body.picks || []).slice(0, 150).map((p) => ({
+        tier: [1, 2, 3].includes(Number(p.tier)) ? Number(p.tier) : 0,
+        side: p.side === "defense" ? "defense" : "offense",
+        pos: str(p.pos, 4).toUpperCase(), team: str(p.team, 12).toUpperCase(), player: str(p.player, 60)
+      })).filter((p) => p.tier && p.pos && p.player);
+      if (!picks.length) return json({ error: "No All-Flag picks to save." }, 400);
+      data.allFlag = { ...data.allFlag, [season]: picks };
+      log = `Saved the Season ${season} All-Flag teams (${picks.length} picks)`;
+    } else if (body.action === "deleteAllFlag") {
+      const season = String(Math.round(Number(body.season)));
+      const { [season]: gone, ...rest } = data.allFlag;
+      data.allFlag = rest;
+      log = `Removed the Season ${season} All-Flag teams`;
     } else if (body.action === "savePlayoffs") {
       data.playoffs = cleanPlayoffs(body.playoffs);
       log = `Saved the playoff bracket "${data.playoffs.title}"`;

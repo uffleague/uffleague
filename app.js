@@ -20,6 +20,7 @@
     bowl: '<path d="M4 9h16l-1.5 7.5a2 2 0 0 1-2 1.5h-9a2 2 0 0 1-2-1.5L4 9Z"/><path d="M8 9V6.5a4 4 0 0 1 8 0V9"/><path d="M9 21h6"/>',
     play: '<circle cx="12" cy="12" r="8.5"/><path d="m10 8.5 5.5 3.5-5.5 3.5Z"/>',
     dice: '<rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="9" cy="9" r="1.2"/><circle cx="15" cy="9" r="1.2"/><circle cx="9" cy="15" r="1.2"/><circle cx="15" cy="15" r="1.2"/>',
+    star: '<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z"/>',
     live: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>'
   };
   const icon = (name, cls = "") =>
@@ -36,6 +37,7 @@
     { path: "updates", label: "Updates", icon: "updates" },
     { path: "compare", label: "Compare", icon: "compare" },
     { path: "awards", label: "Awards", icon: "awards" },
+    { path: "allflag", label: "All-Flag", icon: "star" },
     { path: "playoff", label: "Playoff", icon: "playoff", top: true },
     { path: "predictions", label: "Predictions", icon: "predict" },
     { path: "bowls", label: "Past Bowls", icon: "bowl" },
@@ -77,7 +79,7 @@
   // (worker/src/index.js, a Cloudflare Worker) and are mixed into data.js when the page loads.
   const API = "https://uff-admin.uffleague.workers.dev";
   const updateKey = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
-  let SAVED = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [] };
+  let SAVED = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {} };
   try {
     const res = await fetch(API, { cache: "no-store" });
     if (res.ok) SAVED = { ...SAVED, ...(await res.json()) };
@@ -800,7 +802,7 @@
 
   // Legacy-list honors and Awards-page wins together; when both count an award, the higher count is used
   function playerHonors(name, leg) {
-    const wins = awardWins(name);
+    const wins = { ...awardWins(name), ...allFlagSeasons(name) };
     const byCode = new Map((leg ? leg.honors.filter((h) => h.scored) : []).map((h) => [h.code, { code: h.code, n: h.n }]));
     Object.entries(wins).forEach(([code, seasons]) => {
       const cur = byCode.get(code) || { code, n: 0 };
@@ -1364,13 +1366,105 @@
   /* ---------- Legacy ---------- */
 
   // Score each player from their honor counts (legacy.players in data.js).
+  /* ---------- All-Flag teams (saved on Admin -> All-Flag) ---------- */
+
+  const AF_CODE = { 1: "FIRST_TEAM", 2: "SECOND_TEAM", 3: "THIRD_TEAM" };
+  const AF_TIER = { 1: "1st", 2: "2nd", 3: "3rd" };
+  let afByPlayer = null;
+  // Every pick by player: Map(site name lowercased -> { name, picks: [{ season, tier, side, pos, team }] })
+  function allFlagByPlayer() {
+    if (afByPlayer) return afByPlayer;
+    afByPlayer = new Map();
+    Object.entries(SAVED.allFlag || {}).forEach(([season, picks]) => picks.forEach((p) => {
+      const name = aliasName(p.player);
+      const key = name.toLowerCase();
+      if (!afByPlayer.has(key)) afByPlayer.set(key, { name, picks: [] });
+      afByPlayer.get(key).picks.push({ ...p, season: Number(season) });
+    }));
+    return afByPlayer;
+  }
+  // { FIRST_TEAM: [6, 7], THIRD_TEAM: [6, 6] } (one entry per pick)
+  function allFlagSeasons(name) {
+    const out = {};
+    const hit = allFlagByPlayer().get(aliasName(name).toLowerCase());
+    (hit ? hit.picks : []).forEach((p) => (out[AF_CODE[p.tier]] = out[AF_CODE[p.tier]] || []).push(p.season));
+    return out;
+  }
+  // Legacy honor counts with All-Flag picks added. Only seasons from `allFlagCountsFrom` on add points:
+  // the counts in data.js already include the seasons before it (those still show on the All-Flag and player pages).
+  function withAllFlag(name, honors) {
+    const from = LEAGUE.legacy.allFlagCountsFrom || 1;
+    const out = { ...honors };
+    Object.entries(allFlagSeasons(name)).forEach(([code, seasons]) => {
+      const counted = seasons.filter((s) => s >= from).length;
+      if (counted) out[code] = (honors[code] || 0) + counted;
+    });
+    return out;
+  }
+  // Team code from the post (":SIN:") -> logo + name when the site knows the team
+  function allFlagTeam(code) {
+    const t = TEAMS.find((x) => x.code && x.code.toUpperCase() === code);
+    const name = t ? t.name : (LEAGUE.allFlagTeamCodes || {})[code];
+    return { logo: anyTeamLogo(name || ""), name: name || code };
+  }
+
+  let allFlagSeason = null;
+  function allFlagPage() {
+    const seasons = Object.keys(SAVED.allFlag || {}).map(Number).sort((a, b) => b - a);
+    const head = (sub, extra = "") => `
+      <div class="page-head page-head--row">
+        <div><h1 class="title-icon">${icon("star")}All-Flag Teams</h1><p class="muted">${sub}</p></div>${extra}
+      </div>`;
+    if (!seasons.length) return `<div class="wrap">${head("The best player at every spot, every season.")}${empty("No All-Flag teams yet", "They'll show up here once they're posted.")}</div>`;
+    const s = seasons.includes(allFlagSeason) ? allFlagSeason : seasons[0];
+    const picks = SAVED.allFlag[s];
+    return `
+      <div class="wrap">
+        ${head(`The best player at every spot in Season ${s}.`, `
+          <select id="allFlagSeason" class="select" aria-label="Season">
+            ${seasons.map((x) => `<option value="${x}" ${x === s ? "selected" : ""}>Season ${x}</option>`).join("")}
+          </select>`)}
+        ${[1, 2, 3].filter((t) => picks.some((p) => p.tier === t)).map((t) => `
+          <section class="af-tier af-tier--${t}">
+            <h2 class="conf-title">${AF_TIER[t]} Team All-Flag</h2>
+            <div class="af-sides">
+              ${["offense", "defense"].map((side) => {
+                const list = picks.filter((p) => p.tier === t && p.side === side);
+                return list.length ? `
+                  <div class="card af-card">
+                    <div class="table-title">${side === "offense" ? "Offense" : "Defense"}</div>
+                    ${list.map((p) => {
+                      const team = allFlagTeam(p.team);
+                      return `
+                        <div class="af-row">
+                          <span class="af-pos">${esc(p.pos)}</span>
+                          ${team.logo}
+                          <span class="af-name">${playerLink(aliasName(p.player))}</span>
+                          <span class="af-team">${esc(team.name)}</span>
+                        </div>`;
+                    }).join("")}
+                  </div>` : "";
+              }).join("")}
+            </div>
+          </section>`).join("")}
+      </div>`;
+  }
+
   function computeLegacy() {
     const value = {};
     LEAGUE.legacy.points.forEach((g) => g.codes.forEach((c) => (value[c] = g.value)));
     const order = LEAGUE.legacy.points.flatMap((g) => g.codes);
     const rankOf = (c) => (order.includes(c) ? order.indexOf(c) : order.length);
 
-    const list = LEAGUE.legacy.players.map((p) => {
+    // All-Flag picks (Admin -> All-Flag) on top of the counts in data.js; players who only have All-Flag picks join too
+    const players = LEAGUE.legacy.players.map((p) => ({ ...p, honors: withAllFlag(p.name, p.honors) }));
+    allFlagByPlayer().forEach(({ name }, key) => {
+      if (players.some((p) => aliasName(p.name).toLowerCase() === key)) return;
+      const honors = withAllFlag(name, {});
+      if (Object.keys(honors).some((c) => value[c])) players.push({ name, honors });
+    });
+
+    const list = players.map((p) => {
       const honors = Object.entries(p.honors).sort((a, b) => rankOf(a[0]) - rankOf(b[0]));
       const score = honors.reduce((sum, [code, n]) => sum + (value[code] || 0) * n, p.bonus || 0);
       return {
@@ -2056,6 +2150,129 @@
       </div>`;
   }
 
+  // ---- All-Flag teams: read a pasted "Season 6- All Flags Teams" post ----
+
+  // A name from the post -> the site's name for that player (nicknames, then full names, then a unique partial match)
+  // Everyone the site has a name for: Legacy, rosters, coaches, stat sheets, box scores and award winners
+  function allPlayerNames() {
+    const award = Object.values(LEAGUE.awardWinners || {}).flatMap((list) => Object.values(list))
+      .flatMap((v) => (Array.isArray(v) ? v : typeof v === "string" ? [v] : v && v.player ? [v.player] : []))
+      .filter((n) => n !== "N/A").map(aliasName);
+    return [...new Set([...preferredSpellings().values(), ...knownPlayers(), ...award])];
+  }
+
+  // How many single-letter edits (or swapped neighbors) turn a into b
+  function editDistance(a, b) {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+    return d[a.length][b.length];
+  }
+
+  function matchAllFlagName(raw) {
+    const aliased = rawAlias(raw);
+    if (aliased !== raw) return { player: aliasName(aliased), sure: true };
+    const names = allPlayerNames();
+    const exact = names.find((n) => n.toLowerCase() === raw.toLowerCase());
+    if (exact) return { player: exact, sure: true };
+    const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+    const n = norm(raw);
+    if (n.length >= 3) {
+      const starts = names.filter((x) => norm(x).startsWith(n));
+      if (starts.length === 1) return { player: starts[0], sure: true };
+      const has = names.filter((x) => norm(x).includes(n));
+      if (has.length === 1) return { player: has[0], sure: true };
+      if (starts[0] || has[0]) return { player: starts[0] || has[0], sure: false };
+    }
+    // A typo ("Coldveiw" -> "coldview"): the one close spelling, as a guess to check
+    if (n.length >= 5) {
+      const close = names.filter((x) => Math.abs(norm(x).length - n.length) <= 2 && editDistance(norm(x), n) <= 2);
+      if (close.length === 1) return { player: close[0], sure: false };
+    }
+    return { player: raw, sure: false };
+  }
+
+  function parseAllFlag(text) {
+    const out = { season: null, picks: [] };
+    let tier = 0, side = "offense";
+    text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).forEach((line) => {
+      let m;
+      if (!out.season && (m = line.match(/season\s*(\d+)/i))) out.season = Number(m[1]);
+      // "1st Team All-Flag Offense"
+      if ((m = line.match(/\b(1st|2nd|3rd|first|second|third)\b.*\bteam\b/i))) {
+        tier = { "1st": 1, first: 1, "2nd": 2, second: 2, "3rd": 3, third: 3 }[m[1].toLowerCase()];
+        side = /defen[cs]e/i.test(line) ? "defense" : "offense";
+        return;
+      }
+      // "QB- :SIN: Firmy"
+      if (tier && (m = line.match(/^([A-Za-z]{2,3})\s*[-–—]\s*(.+)$/))) {
+        const code = ((m[2].match(/:([^:\s]+):/) || [])[1] || "").replace(/~\d+$/, "").replace(/\d+$/, "").toUpperCase();
+        const typed = m[2].replace(/:[^:\s]+:/g, "").trim();
+        if (typed) out.picks.push({ tier, side, pos: m[1].toUpperCase(), team: code, typed, ...matchAllFlagName(typed) });
+      }
+    });
+    return out;
+  }
+
+  let afDraft = null; // { text, parsed }
+
+  function allFlagPreview() {
+    if (!afDraft) return "";
+    const { season, picks } = afDraft.parsed;
+    const unsure = picks.filter((p) => !p.sure).length;
+    const notes = [];
+    if (!picks.length) notes.push(`Couldn't find any picks. Lines should look like "QB- :SIN: Firmy" under a "1st Team All-Flag Offense" heading.`);
+    if (!season) notes.push("Couldn't find the season in the post. Type it in the box.");
+    if (unsure) notes.push(`<strong>${unsure} name${unsure === 1 ? "" : "s"} to check</strong> (highlighted). Change the name in the box if it's the wrong player.`);
+    if (season && (SAVED.allFlag || {})[season]) notes.push(`Saving replaces the Season ${season} All-Flag teams that are already saved.`);
+    const groups = [1, 2, 3].flatMap((t) => ["offense", "defense"].map((side) => ({ t, side, rows: picks.map((p, i) => ({ p, i })).filter(({ p }) => p.tier === t && p.side === side) })))
+      .filter((g) => g.rows.length);
+    return `
+      <div class="admin-fields admin-game-pick">
+        <label class="field"><span>Season</span><input id="afSeason" class="select af-season-input" inputmode="numeric" value="${season || ""}"></label>
+      </div>
+      ${notes.length ? `<ul class="admin-notes">${notes.map((n) => `<li>${n}</li>`).join("")}</ul>` : ""}
+      ${groups.map((g) => `
+        <div class="admin-subhead admin-subhead--small">${AF_TIER[g.t]} Team &middot; ${g.side === "offense" ? "Offense" : "Defense"}</div>
+        ${g.rows.map(({ p, i }) => `
+          <div class="af-edit-row ${p.sure ? "" : "warn"}">
+            <span class="af-pos">${esc(p.pos)}</span>
+            <span class="af-edit-team">${esc(p.team || "&ndash;")}</span>
+            <input class="af-edit-name" data-af-i="${i}" value="${esc(p.player)}" list="playerNames" aria-label="Player">
+            <span class="muted small">${p.typed.toLowerCase() !== p.player.toLowerCase() ? `typed &ldquo;${esc(p.typed)}&rdquo;` : ""}</span>
+          </div>`).join("")}`).join("")}
+      <datalist id="playerNames">${allPlayerNames().map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
+      <div class="admin-actions">
+        <button class="btn btn-primary" id="afSave" ${picks.length ? "" : "disabled"}>Save ${picks.length || ""} All-Flag pick${picks.length === 1 ? "" : "s"}</button>
+        <button class="btn btn-ghost" id="afClear">Clear</button>
+      </div>`;
+  }
+
+  function allFlagAdminSection() {
+    const seasons = Object.keys(SAVED.allFlag || {}).map(Number).sort((a, b) => b - a);
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>All-Flag Adder</h2></div>
+        <div class="card admin-card">
+          <p class="muted small admin-note">Paste the whole All-Flag post from Discord (1st, 2nd and 3rd Team, offense and defense). Check the names in the preview, then save. The teams go on the All-Flag page and on each player's page, and from Season ${LEAGUE.legacy.allFlagCountsFrom || 1} on they add to Legacy (1st Team ${LEAGUE.legacy.points.find((g) => g.codes.includes("FIRST_TEAM")).value} pts, 2nd Team ${LEAGUE.legacy.points.find((g) => g.codes.includes("SECOND_TEAM")).value} pts).</p>
+          <textarea id="afPaste" class="admin-textarea" rows="8" placeholder=":UFF: Season 6- All Flags Teams&#10;1st Team All-Flag Offense&#10;QB- :SIN: Firmy&#10;...">${afDraft ? esc(afDraft.text) : ""}</textarea>
+          <div id="afPreview">${allFlagPreview()}</div>
+        </div>
+        ${seasons.length ? `
+          <div class="card admin-card admin-list">
+            <div class="admin-subhead admin-subhead--small">Saved All-Flag teams</div>
+            ${seasons.map((s) => `
+              <div class="list-row">
+                <span><a class="plink" href="#/allflag/${s}">Season ${s}</a> <span class="muted small">&middot; ${SAVED.allFlag[s].length} picks</span></span>
+                <button type="button" class="btn btn-ghost btn-sm" data-af-del="${s}">Delete</button>
+              </div>`).join("")}
+          </div>` : ""}
+      </section>`;
+  }
+
   function transactionsSection() {
     const saved = [...SAVED.updates].sort((a, b) => `${b.date} ${b.time || ""}`.localeCompare(`${a.date} ${a.time || ""}`));
     return `
@@ -2104,6 +2321,7 @@
     ["vods", "VODs", "play", () => vodsAdminSection()],
     ["playoffs", "Playoffs", "playoff", () => playoffsAdminSection()],
     ["bowls", "Bowl History", "bowl", () => bowlsAdminSection()],
+    ["allflag", "All-Flag", "star", () => allFlagAdminSection()],
     ["positions", "Positions", "compare", () => positionsSection()]
   ];
   let adminTab = "overview";
@@ -3136,6 +3354,7 @@
     stats,
     compare: placeholder("Compare", "Head-to-head comparisons are on the way."),
     awards,
+    allflag: allFlagPage,
     playoff: playoffPage,
     predictions: predictionsPage,
     vods: vodsPage,
@@ -3169,6 +3388,7 @@
     const parts = location.hash.replace(/^#\/?/, "").split("/");
     const [section, sub] = parts;
     if (section === "schedule" && sub) scheduleWeek = Number(sub);
+    if (section === "allflag") allFlagSeason = Number(sub) || null;
     if (section === "updates") updatesFilter = UPDATE_TYPES[sub] ? sub : "all";
     if (section === "stats") {
       statsScope = sub === "alltime" ? "alltime" : "season";
@@ -3465,6 +3685,31 @@
 
     if (t.id === "resClear") { resDraft = null; render(); return; }
     if (t.id === "txClear") { txDraft = null; render(); return; }
+    // All-Flag adder
+    if (t.id === "afClear") { afDraft = null; return renderKeepScroll(); }
+    if (t.id === "afSave" || t.dataset.afDel) {
+      const del = t.dataset.afDel;
+      if (del && !confirm(`Delete the Season ${del} All-Flag teams?`)) return;
+      if (!del && !afDraft.parsed.season) { adminError = "Type the season first."; return renderKeepScroll(); }
+      if (!del && afDraft.parsed.picks.some((p) => !p.player)) { adminError = "Every pick needs a player name."; return renderKeepScroll(); }
+      t.disabled = true;
+      try {
+        if (del) {
+          await adminCall({ action: "deleteAllFlag", season: del });
+          reloadWithFlash(`Deleted the Season ${del} All-Flag teams.`);
+        } else {
+          const { season, picks } = afDraft.parsed;
+          await adminCall({ action: "saveAllFlag", season, picks: picks.map(({ tier, side, pos, team, player }) => ({ tier, side, pos, team, player })) });
+          afDraft = null;
+          reloadWithFlash(`Saved the Season ${season} All-Flag teams (${picks.length} picks). Everyone sees them now.`);
+        }
+      } catch (err) {
+        adminError = err.message;
+        renderKeepScroll();
+      }
+      return;
+    }
+
     if (t.id === "txSave" || t.dataset.delUpdate) {
       const del = t.dataset.delUpdate;
       if (del && !confirm("Delete this transaction? It comes off the Updates page and the roster.")) return;
@@ -3535,6 +3780,13 @@
       showResultPreview();
       return;
     }
+    if (e.target.id === "afPaste") {
+      afDraft = e.target.value.trim() ? { text: e.target.value, parsed: parseAllFlag(e.target.value) } : null;
+      document.getElementById("afPreview").innerHTML = allFlagPreview();
+      return;
+    }
+    if (afDraft && e.target.id === "afSeason") { afDraft.parsed.season = Number(e.target.value) || null; return; }
+    if (afDraft && e.target.dataset.afI) { afDraft.parsed.picks[Number(e.target.dataset.afI)].player = e.target.value.trim(); return; }
     if (e.target.id === "txPaste") {
       updateTxDraft(e.target.value);
       document.getElementById("txPreview").innerHTML = txPreview();
@@ -3611,6 +3863,7 @@
     }
     if (e.target.id === "awardSeason") location.hash = `#/awards/${e.target.value}`;
     if (e.target.id === "scheduleWeek") location.hash = `#/schedule/${e.target.value}`;
+    if (e.target.id === "allFlagSeason") location.hash = `#/allflag/${e.target.value}`;
   });
 
   window.addEventListener("hashchange", render);
