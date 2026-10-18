@@ -247,7 +247,13 @@ export default {
     } else if (body.action === "removeStream") {
       const gone = data.streams.find((s) => s.id === body.id);
       data.streams = data.streams.filter((s) => s.id !== body.id);
-      log = `Removed live stream "${gone ? gone.title : "?"}"`;
+      // keep: the stream was tied to a game, so it stays on that game card as its replay (VOD)
+      if (gone && gone.gameId && body.keep) {
+        data.vods = [{ id: crypto.randomUUID(), title: gone.title, url: gone.url, gameId: gone.gameId, note: "", at: Date.now() }, ...data.vods];
+        log = `Ended live stream "${gone.title}" and kept it on ${gone.gameId} as a replay`;
+      } else {
+        log = `Removed live stream "${gone ? gone.title : "?"}"`;
+      }
     } else if (body.action === "savePlayoffs") {
       data.playoffs = cleanPlayoffs(body.playoffs);
       log = `Saved the playoff bracket "${data.playoffs.title}"`;

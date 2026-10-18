@@ -2495,7 +2495,7 @@
       <section>
         <div class="section-head section-head--left"><h2>Live Streams</h2></div>
         <form class="card admin-card" id="streamForm" autocomplete="off">
-          <p class="muted small admin-note">Add a YouTube or Twitch link and it plays at the top of the home page. Twitch channel (twitch.tv/name), YouTube video or stream (watch?v=... or youtu.be/...), or a YouTube /channel/UC... link. Pick the game to also put a <strong>Watch live</strong> button next to its box score that plays the stream right in the game card. Remove it when the broadcast ends.</p>
+          <p class="muted small admin-note">Add a YouTube or Twitch link and it plays at the top of the home page. Twitch channel (twitch.tv/name), YouTube video or stream (watch?v=... or youtu.be/...), or a YouTube /channel/UC... link. Pick the game to also put a <strong>Watch live</strong> button next to its box score that plays the stream right in the game card. When the broadcast ends, <strong>End &mdash; keep on game</strong> takes it off the home page but leaves it on the game card as the replay (best with a past-broadcast link like twitch.tv/videos/...; a channel link only shows the channel). <strong>Remove</strong> deletes it.</p>
           <div class="admin-fields">
             <label class="field admin-grow"><span>Title</span><input name="title" maxlength="80" placeholder="Week 3 · Jazz vs Samurai" required></label>
             <label class="field admin-grow"><span>YouTube or Twitch link</span><input name="url" placeholder="https://www.twitch.tv/..." required></label>
@@ -2508,7 +2508,10 @@
           ${list.length ? list.map((s) => `
             <div class="list-row">
               <div><strong>${esc(s.title)}</strong><div class="muted small">${[s.gameId && gameLabel(s.gameId), esc(s.url)].filter(Boolean).join(" &middot; ")}</div></div>
-              <button type="button" class="btn btn-ghost btn-sm" data-del-stream="${esc(s.id)}">Remove</button>
+              <span class="stream-actions">
+                ${s.gameId ? `<button type="button" class="btn btn-primary btn-sm" data-del-stream="${esc(s.id)}" data-keep title="Off the home page; stays on the game card as its replay">End &mdash; keep on game</button>` : ""}
+                <button type="button" class="btn btn-ghost btn-sm" data-del-stream="${esc(s.id)}">Remove</button>
+              </span>
             </div>`).join("") : `<p class="muted small">No live streams added.</p>`}
         </form>
       </section>`;
@@ -3417,9 +3420,13 @@
       });
     }
     if (t.dataset.delStream) {
-      return adminSave(t, { action: "removeStream", id: t.dataset.delStream }, (res) => {
+      const keep = "keep" in t.dataset;
+      return adminSave(t, { action: "removeStream", id: t.dataset.delStream, keep }, (res) => {
         SAVED.streams = res.streams;
-        adminFlash = "Removed the live stream from the home page.";
+        SAVED.vods = res.vods;
+        adminFlash = keep
+          ? "Took the stream off the home page. It stays on its game card as the replay (it's also on the VODs page)."
+          : "Removed the live stream from the home page.";
       });
     }
 
