@@ -19,6 +19,7 @@
     predict: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
     bowl: '<path d="M4 9h16l-1.5 7.5a2 2 0 0 1-2 1.5h-9a2 2 0 0 1-2-1.5L4 9Z"/><path d="M8 9V6.5a4 4 0 0 1 8 0V9"/><path d="M9 21h6"/>',
     play: '<circle cx="12" cy="12" r="8.5"/><path d="m10 8.5 5.5 3.5-5.5 3.5Z"/>',
+    dice: '<rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="9" cy="9" r="1.2"/><circle cx="15" cy="9" r="1.2"/><circle cx="9" cy="15" r="1.2"/><circle cx="15" cy="15" r="1.2"/>',
     live: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>'
   };
   const icon = (name, cls = "") =>
@@ -38,6 +39,7 @@
     { path: "playoff", label: "Playoff", icon: "playoff" },
     { path: "predictions", label: "Predictions", icon: "predict" },
     { path: "bowls", label: "Past Bowls", icon: "bowl" },
+    { path: "build", label: "Build a Team", icon: "dice" },
     { path: "legacy", label: "Legacy", icon: "legacy" },
     { path: "records", label: "Records", icon: "records" }
   ];
@@ -2364,6 +2366,239 @@
     });
   }
 
+  /* ---------- Build a Team: spin a season, draft legends into a 7v7 lineup, play an 11-game season ---------- */
+
+  const BT_SLOTS = [
+    { id: "QB", label: "QB", side: "off", group: "QB", weight: 2 },
+    { id: "WR1", label: "WR", side: "off", group: "WR" }, { id: "WR2", label: "WR", side: "off", group: "WR" },
+    { id: "WR3", label: "WR", side: "off", group: "WR" }, { id: "WR4", label: "WR", side: "off", group: "WR" },
+    { id: "WR5", label: "WR", side: "off", group: "WR" },
+    { id: "TE", label: "TE", side: "off", group: "TE" },
+    { id: "SH1", label: "Short", side: "def", group: "DB" }, { id: "SH2", label: "Short", side: "def", group: "DB" },
+    { id: "DP1", label: "Deep", side: "def", group: "DB" }, { id: "DP2", label: "Deep", side: "def", group: "DB" },
+    { id: "FS", label: "FS", side: "def", group: "DB" },
+    { id: "MLB", label: "MLB", side: "def", group: "LB" },
+    { id: "DE", label: "DE", side: "def", group: "DE" }
+  ];
+  const BT_GROUPS = {
+    QB: { cats: ["QB"], award: "QBOTY", side: "off" },
+    WR: { cats: ["WR"], award: "WROTY", side: "off" },
+    TE: { cats: ["TE"], award: "TEOTY", side: "off" },
+    DB: { cats: ["DB"], award: "DBOTY", side: "def" },
+    LB: { cats: ["LB", "Tackles"], award: "LBOTY", side: "def" },
+    DE: { cats: ["DE"], award: "DEOTY", side: "def" }
+  };
+  const BT_GAMES = 11;
+  const BT_RESPINS = 3;
+  const BT_BEST_KEY = "uffBuildBest";
+
+  // Every Legacy player's 60-99 rating at each position group, worked out once
+  let btLegends = null;
+  function legendRatings() {
+    if (btLegends) return btLegends;
+    const legacy = computeLegacy();
+    const maxScore = Math.max(1, ...legacy.map((p) => p.score));
+    // Where each player ranks (0 = lowest, 1 = best) in each All-Time stat tab, by FPTS
+    const pct = {};
+    Object.values(BT_GROUPS).flatMap((g) => g.cats).forEach((cat) => {
+      const rows = statRowsFor(allTimeCat(cat), "alltime").filter((r) => (r.fpts || 0) > 0).sort((a, b) => a.fpts - b.fpts);
+      pct[cat] = new Map(rows.map((r, i) => [r.player.toLowerCase(), rows.length > 1 ? i / (rows.length - 1) : 1]));
+    });
+    btLegends = new Map();
+    legacy.forEach((p) => {
+      const key = aliasName(p.name).toLowerCase();
+      const honors = Object.fromEntries(playerHonors(p.name, p).map((h) => [h.code, h.n]));
+      const legacyPart = 10 * Math.sqrt(p.score / maxScore);
+      const ratings = {};
+      Object.entries(BT_GROUPS).forEach(([g, def]) => {
+        const statPart = 20 * Math.max(0, ...def.cats.map((c, i) => (pct[c].get(key) || 0) * (i ? 0.8 : 1)));
+        const awardPart = 6 * Math.min(2, honors[def.award] || 0);
+        const sidePart = Math.min(3, 1.5 * ((honors.MVP || 0) + (def.side === "off" ? honors.OPOTY || 0 : honors.DPOTY || 0)));
+        ratings[g] = Math.min(99, Math.round(60 + statPart + awardPart + legacyPart + sidePart));
+      });
+      btLegends.set(key, { name: p.name, hof: p.hof, tier: p.tier, ratings });
+    });
+    return btLegends;
+  }
+
+  // Legends who won something in a season (that season's spin)
+  let btPools = null;
+  function seasonPools() {
+    if (btPools) return btPools;
+    const legends = legendRatings();
+    btPools = {};
+    Object.entries(LEAGUE.awardWinners || {}).forEach(([season, list]) => {
+      const names = new Set();
+      Object.values(list).forEach((v) => {
+        [].concat(typeof v === "string" ? [v] : Array.isArray(v) ? v : v && v.player ? [v.player] : []).forEach((n) => {
+          const k = aliasName(n).toLowerCase();
+          if (n !== "N/A" && legends.has(k)) names.add(k);
+        });
+      });
+      if (names.size) btPools[season] = [...names];
+    });
+    return btPools;
+  }
+
+  let bt = null; // the run in progress
+  const btNew = () => ({ slots: {}, spin: null, choosing: null, respins: BT_RESPINS, result: null });
+  const btOpen = (run) => BT_SLOTS.filter((s) => !run.slots[s.id]);
+  const btUsedOn = (run, side) => new Set(BT_SLOTS.filter((s) => s.side === side && run.slots[s.id]).map((s) => run.slots[s.id]));
+  // Open spots a legend can still take (once on offense, once on defense)
+  const btSpotsFor = (run, key) => btOpen(run).filter((s) => !btUsedOn(run, s.side).has(key));
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+  function btSpin(run) {
+    const pools = seasonPools();
+    const seasons = shuffle(Object.keys(pools)).filter((s) => pools[s].some((k) => btSpotsFor(run, k).length));
+    if (!seasons.length) return null;
+    const season = seasons[0];
+    run.spin = { season, options: shuffle(pools[season].filter((k) => btSpotsFor(run, k).length)).slice(0, 5) };
+    run.choosing = null;
+    return run.spin;
+  }
+
+  const btUnitOvr = (run, side) => {
+    const slots = BT_SLOTS.filter((s) => s.side === side && run.slots[s.id]);
+    const w = slots.reduce((n, s) => n + (s.weight || 1), 0);
+    return w ? slots.reduce((n, s) => n + legendRatings().get(run.slots[s.id]).ratings[s.group] * (s.weight || 1), 0) / w : 0;
+  };
+
+  // 11 games against random UFF teams; better lineups win more often
+  function btPlaySeason(run) {
+    const off = btUnitOvr(run, "off"), def = btUnitOvr(run, "def");
+    const ovr = (off + def) / 2;
+    const opponents = shuffle(TEAMS.slice()).slice(0, BT_GAMES);
+    const games = opponents.map((t) => {
+      // Tuned so a near-perfect draft (OVR ~93) goes 11-0 about 1 time in 5 and an average one wins ~5
+      const opp = 76 + Math.random() * 8;
+      const win = Math.random() < 1 / (1 + Math.exp(-(ovr - opp) / 7));
+      const hi = 21 + 7 * Math.floor(Math.random() * 5), lo = Math.max(0, hi - 7 * (1 + Math.floor(Math.random() * 3)) + (Math.random() < 0.3 ? 1 : 0));
+      return { team: t.name, win, us: win ? hi : lo, them: win ? lo : hi };
+    });
+    const wins = games.filter((g) => g.win).length;
+    run.result = { off: Math.round(off), def: Math.round(def), ovr: Math.round(ovr), wins, losses: BT_GAMES - wins, games };
+    try {
+      const best = JSON.parse(localStorage.getItem(BT_BEST_KEY));
+      if (!best || wins > best.wins || (wins === best.wins && ovr > best.ovr)) localStorage.setItem(BT_BEST_KEY, JSON.stringify({ wins, ovr: Math.round(ovr) }));
+    } catch (e) {}
+  }
+
+  // Only used by offline tests (window.UFF_TEST is never set on the real site)
+  if (window.UFF_TEST) Object.assign(window.UFF_TEST, { legendRatings, seasonPools, btNew, btSpin, btSpotsFor, btOpen, btPlaySeason, BT_SLOTS });
+
+  const btGrade = (w) => (w === BT_GAMES ? "Perfect season. Undefeated." : w >= 9 ? "Title contender." : w >= 6 ? "Playoff bubble." : "Rebuild year.");
+  const btRatingClass = (r) => (r >= 90 ? "elite" : r >= 80 ? "good" : r >= 70 ? "ok" : "low");
+
+  function btResultText(run) {
+    const r = run.result;
+    const line = (s) => `${s.label} ${legendRatings().get(run.slots[s.id]).name} (${legendRatings().get(run.slots[s.id]).ratings[s.group]})`;
+    return [`UFF Build a Team: ${r.wins}-${r.losses} | OVR ${r.ovr} (OFF ${r.off} / DEF ${r.def})`,
+      `Offense: ${BT_SLOTS.filter((s) => s.side === "off").map(line).join(", ")}`,
+      `Defense: ${BT_SLOTS.filter((s) => s.side === "def").map(line).join(", ")}`,
+      "uffleague.github.io/#/build"].join("\n");
+  }
+
+  function buildPage() {
+    bt = bt || btNew();
+    const legends = legendRatings();
+    const filled = BT_SLOTS.length - btOpen(bt).length;
+    let best = null;
+    try { best = JSON.parse(localStorage.getItem(BT_BEST_KEY)); } catch (e) {}
+    const badge = (l) => (l.hof ? `<span class="tier tier--hof">HOF</span>` : l.tier ? tierBadge(l.tier) : "");
+    const slotRow = (s) => {
+      const k = bt.slots[s.id];
+      const l = k && legends.get(k);
+      return `
+        <div class="bt-slot ${l ? "filled" : ""}">
+          <span class="bt-pos">${s.label}</span>
+          ${l ? `<span class="bt-name">${esc(l.name)}</span><span class="bt-rating bt-rating--${btRatingClass(l.ratings[s.group])}">${l.ratings[s.group]}</span>` : `<span class="muted">Open</span>`}
+        </div>`;
+    };
+    const unit = (side, title) => `
+      <div class="bt-unit">
+        <div class="admin-subhead admin-subhead--small">${title}${btUnitOvr(bt, side) ? `<span class="muted small">OVR ${Math.round(btUnitOvr(bt, side))}</span>` : ""}</div>
+        ${BT_SLOTS.filter((s) => s.side === side).map(slotRow).join("")}
+      </div>`;
+
+    let panel;
+    if (bt.result) {
+      const r = bt.result;
+      panel = `
+        <div class="card admin-card bt-result">
+          <span class="eyebrow">Your season</span>
+          <div class="bt-record">${r.wins}-${r.losses}</div>
+          <div class="bt-grade">${btGrade(r.wins)}</div>
+          <div class="muted">Team OVR <strong>${r.ovr}</strong> &middot; Offense ${r.off} &middot; Defense ${r.def}</div>
+          <div class="bt-games">${r.games.map((g) => `
+            <div class="bt-game ${g.win ? "win" : "loss"}"><span class="bt-wl">${g.win ? "W" : "L"}</span>${anyTeamLogo(g.team)}<span class="bt-opp">${esc(teamShort(g.team))}</span><span class="bt-score">${g.us}-${g.them}</span></div>`).join("")}</div>
+          <div class="admin-actions">
+            <button class="btn btn-primary" id="btAgain">Play again</button>
+            <button class="btn btn-ghost" id="btCopy">Copy result</button>
+          </div>
+        </div>`;
+    } else if (!bt.spin) {
+      panel = `
+        <div class="card admin-card bt-spin-panel">
+          <div class="bt-round">Pick ${filled + 1} of ${BT_SLOTS.length}</div>
+          <p class="muted">Spin to land on a season, then draft one of its legends.</p>
+          <button class="btn btn-primary bt-spin-btn" id="btSpin">Spin a season</button>
+        </div>`;
+    } else {
+      const choosing = bt.choosing && legends.get(bt.choosing);
+      panel = `
+        <div class="card admin-card bt-spin-panel">
+          <div class="bt-round">Pick ${filled + 1} of ${BT_SLOTS.length} &middot; <span class="bt-season">Season ${bt.spin.season}</span></div>
+          <div class="bt-options">
+            ${bt.spin.options.map((k) => {
+              const l = legends.get(k);
+              const spots = btSpotsFor(bt, k);
+              const top = [...new Map(spots.map((s) => [s.group, s])).values()]
+                .map((s) => [s.label === "Short" || s.label === "Deep" || s.label === "FS" ? "DB" : s.label, l.ratings[s.group]])
+                .sort((a, b) => b[1] - a[1]).slice(0, 3);
+              return `
+                <button type="button" class="bt-option ${bt.choosing === k ? "active" : ""}" data-bt-pick="${esc(k)}">
+                  <span class="bt-option-name">${esc(l.name)} ${badge(l)}</span>
+                  <span class="bt-option-ratings">${top.map(([p, r]) => `<span>${p} <b class="bt-rating--${btRatingClass(r)}">${r}</b></span>`).join("")}</span>
+                </button>`;
+            }).join("")}
+          </div>
+          ${choosing ? `
+            <div class="bt-place">
+              <div class="muted small">Put <strong>${esc(choosing.name)}</strong> at:</div>
+              <div class="bt-place-spots">
+                ${btSpotsFor(bt, bt.choosing)
+                  .filter((s, i, all) => all.findIndex((x) => x.side === s.side && x.label === s.label) === i) // one button per kind of spot
+                  .sort((a, b) => choosing.ratings[b.group] - choosing.ratings[a.group]).map((s) => `
+                  <button type="button" class="btn btn-ghost btn-sm" data-bt-slot="${s.id}">${s.side === "off" ? "OFF" : "DEF"} ${s.label} &middot; <b>${choosing.ratings[s.group]}</b></button>`).join("")}
+              </div>
+            </div>` : `<p class="muted small">Pick a legend, then choose their spot.</p>`}
+          <div class="admin-actions">
+            <button class="btn btn-ghost btn-sm" id="btRespin" ${bt.respins ? "" : "disabled"}>Re-spin (${bt.respins} left)</button>
+          </div>
+        </div>`;
+    }
+
+    return `
+      <div class="wrap">
+        <div class="page-head page-head--row">
+          <div>
+            <h1>Build a Team</h1>
+            <p class="muted">Spin a season, draft its legends into your 7v7 lineup, and see if they can go ${BT_GAMES}-0. Legends can play both ways: once on offense and once on defense.</p>
+          </div>
+          ${best ? `<span class="pill">Your best: ${best.wins}-${BT_GAMES - best.wins} &middot; OVR ${best.ovr}</span>` : ""}
+        </div>
+        <div class="bt-layout">
+          <div>${panel}</div>
+          <div class="card admin-card bt-roster">
+            ${unit("off", "Offense")}
+            ${unit("def", "Defense")}
+            ${filled && !bt.result ? `<button class="btn btn-ghost btn-sm" id="btReset">Start over</button>` : ""}
+          </div>
+        </div>
+      </div>`;
+  }
+
   const placeholder = (title, sub) => () => `
     <div class="wrap">
       ${pageHead(title)}
@@ -2386,6 +2621,7 @@
     playoff: playoffPage,
     predictions: predictionsPage,
     vods: vodsPage,
+    build: buildPage,
     bowls: bowlsPage,
     legacy,
     records,
@@ -2540,6 +2776,32 @@
       box.hidden = !open;
       t.classList.toggle("open", open);
       t.setAttribute("aria-expanded", String(open));
+      return;
+    }
+
+    // Build a Team
+    if (t.id === "btSpin" || t.id === "btRespin") {
+      if (t.id === "btRespin") bt.respins--;
+      btSpin(bt);
+      return renderKeepScroll();
+    }
+    if (t.dataset.btPick) { bt.choosing = bt.choosing === t.dataset.btPick ? null : t.dataset.btPick; return renderKeepScroll(); }
+    if (t.dataset.btSlot) {
+      bt.slots[t.dataset.btSlot] = bt.choosing;
+      bt.spin = null;
+      bt.choosing = null;
+      if (!btOpen(bt).length) btPlaySeason(bt);
+      return renderKeepScroll();
+    }
+    if (t.id === "btReset" || t.id === "btAgain") {
+      if (t.id === "btReset" && !confirm("Start over with an empty lineup?")) return;
+      bt = btNew();
+      return renderKeepScroll();
+    }
+    if (t.id === "btCopy") {
+      const done = () => { t.textContent = "Copied!"; };
+      if (navigator.clipboard) navigator.clipboard.writeText(btResultText(bt)).then(done, () => prompt("Copy your result:", btResultText(bt)));
+      else prompt("Copy your result:", btResultText(bt));
       return;
     }
 

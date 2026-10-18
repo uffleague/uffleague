@@ -241,6 +241,52 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .stat-edit-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; margin-bottom: 6px; }
 .stat-edit-group .field input { padding: 8px 10px; min-width: 0; width: 100%; }
 
+/* ---------- Build a Team ---------- */
+.bt-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; align-items: start; margin-top: 8px; }
+.bt-round { font-family: var(--head); font-weight: 700; text-transform: uppercase; font-size: 20px; color: var(--navy); margin-bottom: 6px; }
+.bt-season { background: var(--navy); color: var(--cream); padding: 2px 10px; border-radius: 8px; }
+.bt-spin-panel { text-align: left; }
+.bt-spin-btn { font-size: 17px; padding: 14px 28px; }
+.bt-options { display: grid; gap: 10px; margin: 12px 0; }
+.bt-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; width: 100%;
+  padding: 12px 14px; text-align: left; font: inherit; color: var(--navy); cursor: pointer;
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px;
+}
+.bt-option:hover { border-color: var(--navy); }
+.bt-option.active { border-color: var(--navy); box-shadow: 0 0 0 2px var(--navy) inset; }
+.bt-option-name { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; }
+.bt-option-name .tier { font-size: 10px; padding: 1px 7px; }
+.bt-option-ratings { display: flex; gap: 12px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.bt-option-ratings b { font-family: var(--head); font-size: 17px; }
+.bt-place { border-top: 1px solid var(--line); padding-top: 12px; }
+.bt-place-spots { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.bt-roster { position: sticky; top: 16px; }
+.bt-unit + .bt-unit { margin-top: 10px; }
+.bt-slot { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #f2ecda; font-size: 14px; }
+.bt-pos { width: 46px; flex-shrink: 0; font-family: var(--head); font-weight: 600; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+.bt-name { flex: 1; min-width: 0; font-weight: 600; color: var(--navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt-rating { font-family: var(--head); font-weight: 700; min-width: 34px; text-align: center; padding: 1px 6px; border-radius: 6px; }
+.bt-rating--elite { color: #1d7a4a; } .bt-rating.bt-rating--elite { background: #e3f4ea; }
+.bt-rating--good { color: var(--navy); } .bt-rating.bt-rating--good { background: var(--cream-2); }
+.bt-rating--ok { color: #8a6d1d; } .bt-rating.bt-rating--ok { background: #fbf3dc; }
+.bt-rating--low { color: #b4123a; } .bt-rating.bt-rating--low { background: #fbe7ec; }
+.bt-roster .btn { margin-top: 12px; }
+.bt-result { text-align: center; }
+.bt-record { font-family: var(--head); font-weight: 700; font-size: 72px; line-height: 1; color: var(--navy); margin: 6px 0; }
+.bt-grade { font-weight: 700; color: var(--navy); font-size: 18px; margin-bottom: 4px; }
+.bt-games { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 16px 0 4px; text-align: left; }
+.bt-game { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line); font-size: 14px; }
+.bt-game.win { background: #e9f6ee; }
+.bt-game.loss { background: #fbecef; }
+.bt-wl { font-family: var(--head); font-weight: 700; width: 14px; }
+.bt-game.win .bt-wl { color: #1d7a4a; } .bt-game.loss .bt-wl { color: #b4123a; }
+.bt-opp { font-family: var(--head); font-weight: 600; color: var(--navy); }
+.bt-score { margin-left: auto; font-family: var(--head); font-weight: 600; color: var(--navy); }
+.bt-result .admin-actions { justify-content: center; }
+@media (max-width: 900px) { .bt-layout { grid-template-columns: minmax(0, 1fr); } .bt-roster { position: static; } }
+.bt-layout > * { min-width: 0; }
+
 /* ---------- VODs ---------- */
 .vod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
 .vod-card { overflow: hidden; transition: border-color .15s, box-shadow .15s; }
