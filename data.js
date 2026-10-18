@@ -46,8 +46,8 @@ const LEAGUE = {
       COTY: ["n4w", "discoversoul", "jvkethings", "xjupp"]
     },
     2: {
-      MVP: "t8l", OPOTY: "affused", DPOTY: "breakxu", UFB_MVP: "glockyinmywaist",
-      QBOTY: "t8l", TEOTY: "shazamzq", WROTY: "glockyinmywaist", DBOTY: "depthacfler",
+      MVP: "dictator 10", OPOTY: "lord 9", DPOTY: "breakxu", UFB_MVP: "glockyinmywaist",
+      QBOTY: "dictator 10", TEOTY: "shazamzq", WROTY: "glockyinmywaist", DBOTY: "depthacfler",
       LBOTY: "N/A", DEOTY: "shazamzq", RBOTY: "fooge",
       ROTY: "1021Juice", HCOTY: "firmy", EOTY: "MarDimes", TOTY: { team: "Deltabay Dolphins", record: "7-0" },
       COTY: ["130kami", "zach"]
@@ -55,13 +55,13 @@ const LEAGUE = {
     3: {
       MVP: "breakxu", OPOTY: "biglester", DPOTY: "n4w", UFB_MVP: "130kami",
       QBOTY: "hellraiser000", TEOTY: "day", WROTY: "splndd", DBOTY: "mr_devy1122",
-      LBOTY: "ast1", DEOTY: "affused", RBOTY: "breakxu",
+      LBOTY: "ast1", DEOTY: "lord 9", RBOTY: "breakxu",
       ROTY: "spacemakin", HCOTY: "biglester", EOTY: "Davivibez", TOTY: { team: "Shiroishi Samurai", record: "7-1" },
       COTY: ["fraeology", "mr_devy1122", "rcbkailer"]
     },
     4: {
-      MVP: "affused", OPOTY: "wery", DPOTY: "knqq", UFB_MVP: "N/A",
-      QBOTY: "JvkeThingz", TEOTY: "day", WROTY: "SolaceInPerishing", DBOTY: "affused",
+      MVP: "lord 9", OPOTY: "wery", DPOTY: "knqq", UFB_MVP: "N/A",
+      QBOTY: "JvkeThingz", TEOTY: "day", WROTY: "SolaceInPerishing", DBOTY: "lord 9",
       LBOTY: "Galan101dragon20", DEOTY: "knqq", RBOTY: "N/A",
       ROTY: "Conaments", HCOTY: "JvkeThingz", EOTY: "Ccore", TOTY: { team: "Seminola Spartians", record: "6-0" },
       COTY: ["n4w", "xjupp", "rcbkailer"]
@@ -74,11 +74,11 @@ const LEAGUE = {
       COTY: ["coaserh", "discoversoul", "jvkethings", "Kevskiiiiiii", "knql", "Nxstalgjc", "xjupp"]
     },
     6: {
-      MVP: "t8l", OPOTY: "Kamil08", DPOTY: "mr_devy1122", UFB_MVP: "Kamil08",
+      MVP: "dictator 10", OPOTY: "Kamil08", DPOTY: "mr_devy1122", UFB_MVP: "Kamil08",
       QBOTY: "biglester", TEOTY: "elim", WROTY: "yavient", DBOTY: "kevski",
       LBOTY: "knql", DEOTY: "day", RBOTY: "biglester",
       ROTY: "cooks", HCOTY: "coldview", EOTY: "day", TOTY: { team: "Sinaloa Red Devils", record: "11-0" },
-      CROWN: ["t8l", "Kamil08", "elim", "day"],
+      CROWN: ["dictator 10", "Kamil08", "elim", "day"],
       FLAG_TITLE: ["mr_devy1122", "1021juice", "zach", "andre", "zach", "zach", "knql"],
       COTY: ["n4w", "coaserh", "Descended", "elim", "ewikoro", "fraeology", "hurdle", "lord 9", "kuaz",
         "lynnvxd", "Omar", "xjupp", "romance", "sinsession", "splndd", "ty balla", "uufaailen"]
