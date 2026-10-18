@@ -418,7 +418,7 @@ const LEAGUE = {
       { name: "ewikoro", honors: { COTY: 1, UFB_CHAMP: 2 } },
       { name: "romance", honors: { COTY: 1, UFB_CHAMP: 1, LBOTY: 1, FIRST_TEAM: 1 } },
       { name: "fooge", honors: { UFB_CHAMP: 1, RBOTY: 1, FLAG_TITLE: 1 } },
-      { name: "knqq", honors: { DPOTY: 2, DEOTY: 2 }, bonus: 144 },
+      { name: "knqq", honors: { DPOTY: 2, DEOTY: 2, CROWN: 2, FIRST_TEAM: 2 }, bonus: 144 },
       { name: "knql", honors: { COTY: 1, LBOTY: 1, FLAG_TITLE: 2, FIRST_TEAM: 1, SECOND_TEAM: 1 } },
       { name: "soto", honors: { QBOTY: 1, FLAG_TITLE: 2, FIRST_TEAM: 1 } },
       { name: "pravings", honors: { UFB_CHAMP: 1, FIRST_TEAM: 1, SECOND_TEAM: 1 } },
