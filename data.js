@@ -150,7 +150,7 @@ const LEAGUE = {
     "t1memanagement": "tlmemanagement", "maIikvrt": "maiikvrt", "nichelarpers": "day", "cooks423": "cooks", "t8l": "dictator 10",
     // Award winners listed under a shorter or misspelled name
     "biglester": "BIGGIECHEESE", "kevski": "Kevskiiiiiii", "VampViolence": "vampviolences", "yavient": "Yavientt",
-    "affused": "lord 9", "2687affused982673260": "lord 9", "touchdenim": "denim", "shazamzq": "shazam", "xv89r12azk74m3a4": "stunaaaaaaaaaaaaa", "nskx": "curfaw",
+    "affused": "lord 9", "2687affused982673260": "lord 9", "touchdenim": "denim", "shazamzq": "shazam", "xv89r12azk74m3a4": "stunaaaaaaaaaaaaa", "nskx": "curfaw", "GalanBlox2": "Galan101dragon20",
     // Head coaches' usernames (from the Season 7 coaches list) -> the name they go by
     "Aloneinnewyorkcity": "2 trey", "marmersie": "msuede", "loverloverlover": "248", "jumpbaI": "splndd"
   },
