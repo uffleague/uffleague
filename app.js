@@ -1928,14 +1928,6 @@
 
   // ---- Predictions: each visitor's own picks, saved only in their browser ----
 
-  const picksKey = (po) => `uffPicks:${po.title}`;
-  function loadPicks(po) {
-    try { return JSON.parse(localStorage.getItem(picksKey(po))) || { picks: {}, locked: false }; } catch (e) { return { picks: {}, locked: false }; }
-  }
-  function savePicks(po, state) {
-    try { localStorage.setItem(picksKey(po), JSON.stringify(state)); } catch (e) {}
-  }
-
   // The bracket with this visitor's picks carried forward round by round
   function predictedRounds(po, picks) {
     const rounds = [];
@@ -1956,19 +1948,90 @@
     return rounds;
   }
 
+  // Each visitor picks their own playoff field: 7 seeds per conference, then winners. Saved only on this device.
+  const PRED_KEY = `uffPredictions:S${LEAGUE.season}`;
+  const PRED_SEEDS = 7;
+  function loadPred() {
+    try { const s = JSON.parse(localStorage.getItem(PRED_KEY)); if (s) return { seeds: {}, picks: {}, locked: false, ...s }; } catch (e) {}
+    return { seeds: {}, picks: {}, locked: false };
+  }
+  function savePred(state) {
+    try { localStorage.setItem(PRED_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  const predSeedsDone = (state) => LEAGUE.conferences.every((c) => (state.seeds[c.name] || []).filter(Boolean).length === PRED_SEEDS);
+
+  // The 7-team-per-conference bracket: #1 gets a bye; Wild Card 4v5, 2v7, 3v6; Divisional #1 vs the 4/5 winner,
+  // 2/7 winner vs 3/6 winner; then Conference Finals and the Bowl. First conference on the left, second on the right.
+  function predictionBracket(seeds) {
+    const game = (a, sa, b, sb) => ({ a: a || "", seedA: a ? String(sa) : "", b: b || "", seedB: b ? String(sb) : "", sa: "", sb: "", adv: "", fromA: null, fromB: null });
+    const tbd = () => game("", 0, "", 0);
+    const sides = LEAGUE.conferences.slice(0, 2).map((c) => seeds[c.name] || []);
+    return {
+      title: `Season ${LEAGUE.season} Playoff Predictions`,
+      logo: (LEAGUE.bowlLogos || {})[LEAGUE.season] || "",
+      rounds: [
+        { name: "Wild Card", games: sides.flatMap((S) => [game(S[3], 4, S[4], 5), game(S[1], 2, S[6], 7), game(S[2], 3, S[5], 6)]) },
+        { name: "Divisional", games: sides.flatMap((S) => [game(S[0], 1, "", 0), tbd()]) },
+        { name: "Conference Finals", games: [tbd(), tbd()] },
+        { name: `United Flag Bowl ${roman(LEAGUE.season)}`, games: [tbd()] }
+      ]
+    };
+  }
+
+  // Teams in a conference ordered like the standings (most wins, then point differential)
+  const standingsOrder = (conf) => TEAMS.filter((t) => t.conference === conf)
+    .sort((a, b) => b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa) || a.name.localeCompare(b.name));
+
   function predictionsPage() {
-    const po = bracket();
-    if (!po) return `<div class="wrap">${pageHead("Predictions")}${empty("Predictions open soon", "Once the playoff bracket is posted you can fill out your own picks here.")}</div>`;
-    const state = loadPicks(po);
+    const state = loadPred();
+    const done = predSeedsDone(state);
+    const seedPicker = `
+      <div class="card admin-card pred-seeds">
+        <div class="admin-subhead">1. Pick your playoff teams<span class="muted small">${PRED_SEEDS} per conference</span></div>
+        <div class="pred-seed-cols">
+          ${LEAGUE.conferences.map((c) => {
+            const chosen = state.seeds[c.name] || [];
+            return `
+              <div>
+                <div class="admin-subhead admin-subhead--small">${esc(c.name)}</div>
+                ${Array.from({ length: PRED_SEEDS }, (_, i) => `
+                  <label class="pred-seed">
+                    <span class="pred-seed-num">#${i + 1}</span>
+                    <select class="select" data-seed-conf="${esc(c.name)}" data-seed-i="${i}" ${state.locked ? "disabled" : ""}>
+                      <option value="">Pick a team</option>
+                      ${TEAMS.filter((t) => t.conference === c.name && (t.name === chosen[i] || !chosen.includes(t.name))).map((t) =>
+                        `<option value="${esc(t.name)}" ${t.name === chosen[i] ? "selected" : ""}>${esc(t.name)}</option>`).join("")}
+                    </select>
+                  </label>`).join("")}
+              </div>`;
+          }).join("")}
+        </div>
+        ${state.locked ? "" : `<div class="admin-actions"><button class="btn btn-ghost btn-sm" id="predStandings">Fill from current standings</button></div>`}
+      </div>`;
+    const head = `
+      <div class="page-head">
+        <h1>Predictions</h1>
+        <p class="muted">Pick your ${PRED_SEEDS * LEAGUE.conferences.length} playoff teams, then who wins every game. Only you can see your picks; they're saved on this device.</p>
+      </div>`;
+    if (!done) return `<div class="wrap">${head}${seedPicker}</div>`;
+
+    const po = predictionBracket(state.seeds);
     const rounds = predictedRounds(po, state.picks);
     const last = rounds[rounds.length - 1];
     const champ = last && last.games.length === 1 ? last.games[0].pick : "";
     const made = rounds.reduce((n, r) => n + r.games.filter((g) => g.pick).length, 0);
     const total = rounds.reduce((n, r) => n + r.games.length, 0);
+    // Once the real bracket is posted: who actually won / lost in each round
+    const real = bracket();
+    const realWon = real ? real.rounds.map((r) => new Set(r.games.map(gameWinner).filter(Boolean))) : [];
+    const realLost = real ? real.rounds.map((r) => new Set(r.games.filter((g) => gameWinner(g)).map((g) => (gameWinner(g) === g.a ? g.b : g.a)))) : [];
     const team = (g, s, r, gi) => {
       const name = g[s];
-      const mark = name && g.pick === name && g.real ? (g.real === name ? `<span class="pick-mark ok">&#10003;</span>` : `<span class="pick-mark bad">&#10007;</span>`) : "";
-      return `<button type="button" class="match-team pick ${g.pick && g.pick === name ? "picked" : ""}" data-pick="${r}-${gi}" data-team="${esc(name)}" ${!name || state.locked ? "disabled" : ""}>${bracketTeam(name, seedOf(g, s))}${mark}</button>`;
+      const picked = name && g.pick === name;
+      const mark = !picked ? "" : realWon[r] && realWon[r].has(name) ? `<span class="pick-mark ok">&#10003;</span>`
+        : realLost[r] && realLost[r].has(name) ? `<span class="pick-mark bad">&#10007;</span>` : "";
+      // A game can be picked once both of its teams are known
+      return `<button type="button" class="match-team pick ${picked ? "picked" : ""}" data-pick="${r}-${gi}" data-team="${esc(name)}" ${!g.a || !g.b || state.locked ? "disabled" : ""}>${bracketTeam(name, seedOf(g, s))}${mark}</button>`;
     };
     const match = (g, r, gi) => `<div class="card match">${team(g, "a", r, gi)}${team(g, "b", r, gi)}</div>`;
     const champBox = `
@@ -1978,7 +2041,9 @@
       </div>`;
     return `
       <div class="wrap">
-        ${bracketHead(po, "Pick who wins each game. Only you can see your picks; they're saved on this device.")}
+        ${head}
+        ${seedPicker}
+        <div class="admin-subhead pred-step">2. Pick your winners</div>
         <div class="pred-bar">
           <span class="pill">${made} / ${total} picks</span>
           ${state.locked ? `<span class="pill pill-navy">Final picks &middot; locked</span>` : ""}
@@ -2836,13 +2901,19 @@
     }
 
     // Predictions (saved in this browser only)
-    if (t.dataset.pick || t.id === "predLock" || t.id === "predReset") {
-      const po = bracket();
-      const state = loadPicks(po);
+    if (t.dataset.pick || t.id === "predLock" || t.id === "predReset" || t.id === "predStandings") {
+      const state = loadPred();
       if (t.dataset.pick) state.picks[t.dataset.pick] = t.dataset.team;
       if (t.id === "predLock") state.locked = !state.locked;
-      if (t.id === "predReset" && confirm("Clear all your picks?")) state.picks = {};
-      savePicks(po, state);
+      if (t.id === "predReset") {
+        if (!confirm("Clear your playoff teams and all your picks?")) return;
+        state.seeds = {};
+        state.picks = {};
+      }
+      if (t.id === "predStandings") {
+        LEAGUE.conferences.forEach((c) => { state.seeds[c.name] = standingsOrder(c.name).slice(0, PRED_SEEDS).map((x) => x.name); });
+      }
+      savePred(state);
       const y = window.scrollY;
       render();
       window.scrollTo(0, y);
@@ -2991,6 +3062,13 @@
 
   app.addEventListener("change", async (e) => {
     const el = e.target;
+    if (el.dataset.seedConf) {
+      const state = loadPred();
+      const list = (state.seeds[el.dataset.seedConf] = (state.seeds[el.dataset.seedConf] || []).slice());
+      list[Number(el.dataset.seedI)] = el.value;
+      savePred(state);
+      return renderKeepScroll();
+    }
     if (el.tagName === "SELECT" && el.dataset.poF) {
       const game = draftPlayoffs().rounds[Number(el.dataset.r)].games[Number(el.dataset.g)];
       const f = el.dataset.poF;

@@ -354,6 +354,12 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .bracket--split .match-team { padding: 8px 10px; font-size: 15px; font-family: var(--head); letter-spacing: .03em; }
 .bracket--split .match-team .team-cell { gap: 6px; }
 .bracket--split .match-team .team-logo { width: 28px; height: 28px; }
+.pred-seeds { margin-bottom: 20px; }
+.pred-seed-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 28px; }
+.pred-seed { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.pred-seed-num { width: 26px; flex-shrink: 0; font-family: var(--head); font-weight: 700; color: var(--navy); }
+.pred-seed .select { flex: 1; min-width: 0; }
+.pred-step { margin-top: 8px; }
 .pred-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 12px; }
 .pred-actions { margin-left: auto; display: flex; gap: 8px; }
 .pill-navy { background: var(--navy); color: var(--cream); border-color: var(--navy); }
