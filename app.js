@@ -26,17 +26,17 @@
     `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 
   const NAV = [
-    { path: "", label: "Home", icon: "home" },
-    { path: "teams", label: "Teams", icon: "teams" },
-    { path: "schedule", label: "Schedule", icon: "schedule" },
-    { path: "standings", label: "Standings", icon: "standings" },
-    { path: "scores", label: "Scores", icon: "scores" },
+    { path: "", label: "Home", icon: "home", top: true },
+    { path: "teams", label: "Teams", icon: "teams", top: true },
+    { path: "schedule", label: "Schedule", icon: "schedule", top: true },
+    { path: "standings", label: "Standings", icon: "standings", top: true },
+    { path: "scores", label: "Scores", icon: "scores", top: true },
     { path: "vods", label: "VODs", icon: "play" },
-    { path: "stats", label: "Stats", icon: "stats" },
+    { path: "stats", label: "Stats", icon: "stats", top: true },
     { path: "updates", label: "Updates", icon: "updates" },
     { path: "compare", label: "Compare", icon: "compare" },
     { path: "awards", label: "Awards", icon: "awards" },
-    { path: "playoff", label: "Playoff", icon: "playoff" },
+    { path: "playoff", label: "Playoff", icon: "playoff", top: true },
     { path: "predictions", label: "Predictions", icon: "predict" },
     { path: "bowls", label: "Past Bowls", icon: "bowl" },
     { path: "build", label: "Build a Team", icon: "dice" },
@@ -400,8 +400,9 @@
     { label: "Defense", group: "defense", f: "tak", unit: "TAK", cats: ["Tackles"] }
   ];
   let leadTab = 0;
+  let leadScope = "alltime"; // All-Time first; the switch in the panel shows this season
   function leadersPanel() {
-    const season = HOME_LEADERS.some((l) => Object.values(BOX_TOTALS[l.group]).some((r) => r[l.f] > 0));
+    const season = leadScope === "season";
     const tabs = HOME_LEADERS.map((l) => {
       let rows;
       if (season) rows = Object.values(BOX_TOTALS[l.group]);
@@ -419,7 +420,11 @@
     });
     return `
       <div class="hx-panel">
-        ${panelHead("Stat Leaders", `#/stats/${season ? "season" : "alltime"}`, "View All", `<span class="hx-note">${season ? `Season ${LEAGUE.season}` : "All-Time"}</span>`)}
+        ${panelHead("Stat Leaders", `#/stats/${leadScope}`, "View All")}
+        <div class="hx-scope" role="group" aria-label="Stat leaders season">
+          ${[["alltime", "All-Time"], ["season", `Season ${LEAGUE.season}`]].map(([k, label]) =>
+            `<button type="button" class="${k === leadScope ? "on" : ""}" data-lead-scope="${k}" aria-pressed="${k === leadScope}">${label}</button>`).join("")}
+        </div>
         <div class="hx-tabs" role="tablist">
           ${HOME_LEADERS.map((l, i) => `<button type="button" class="hx-tab ${i === leadTab ? "on" : ""}" data-lead-tab="${i}" role="tab">${l.label}</button>`).join("")}
         </div>
@@ -434,7 +439,7 @@
                   <span class="hx-lead-who">${playerLink(r.player, "hx-lead-name")}<span class="hx-lead-team">${t ? t.name : "Free agent"}</span></span>
                   <span class="hx-lead-val">${Math.round(r[HOME_LEADERS[i].f]).toLocaleString()}<small>${HOME_LEADERS[i].unit}</small></span>
                 </div>`;
-            }).join("") : `<p class="hx-empty">No ${HOME_LEADERS[i].label.toLowerCase()} stats yet.</p>`}
+            }).join("") : `<p class="hx-empty">No ${season ? `Season ${LEAGUE.season} ` : ""}${HOME_LEADERS[i].label.toLowerCase()} stats yet.</p>`}
           </div>`).join("")}
       </div>`;
   }
@@ -532,8 +537,8 @@
     const cands = awardCandidates().some((c) => c.top.length);
     return `
       <div class="home">
-        ${liveSection()}
         ${heroSection()}
+        ${liveSection()}
         <div class="wrap">
           ${scoreTicker()}
           <div class="hx-grid hx-grid--top">
@@ -3077,13 +3082,16 @@
 
   const app = document.getElementById("app");
   const nav = document.getElementById("nav");
-  const sidebar = document.getElementById("sidebar");
-  const scrim = document.getElementById("scrim");
+  const topnav = document.getElementById("topnav");
+  const menuBtn = document.getElementById("menuBtn");
+  const menuPanel = document.getElementById("menuPanel");
 
   document.getElementById("seasonNum").textContent = `Season ${LEAGUE.season}`;
   document.getElementById("seasonYear").textContent = LEAGUE.year;
   document.querySelectorAll(".brand img").forEach((img) => (img.src = LEAGUE.brandLogo));
 
+  // The main pages sit in the top bar; the menu lists every page
+  topnav.innerHTML = NAV.filter((n) => n.top).map((n) => `<a href="#/${n.path}" data-path="${n.path}">${n.label}</a>`).join("");
   nav.innerHTML = NAV.map(
     (n) => `<a href="#/${n.path}" data-path="${n.path}">${icon(n.icon)}<span>${n.label}</span></a>`
   ).join("");
@@ -3113,10 +3121,12 @@
       : ROUTES[section] || notFound;
     app.innerHTML = page();
     document.body.classList.toggle("is-home", page === home);
-    nav.querySelectorAll("a").forEach((a) =>
+    [nav, topnav].forEach((list) => list.querySelectorAll("a").forEach((a) =>
       a.classList.toggle("active", a.dataset.path === (section || ""))
-    );
-    document.getElementById("adminLink").classList.toggle("active", section === "admin");
+    ));
+    const adminLink = document.getElementById("adminLink");
+    adminLink.classList.toggle("active", section === "admin");
+    adminLink.textContent = getAdmin() ? "Admin" : "Log In";
     if (section !== "admin") adminError = adminFlash = "";
     const label = NAV.find((n) => n.path === (section || ""));
     document.title = label && label.path ? `${label.label} | UFF` : "UFF | United Flag Football";
@@ -3126,14 +3136,17 @@
   }
 
   function closeMenu() {
-    sidebar.classList.remove("open");
-    scrim.classList.remove("show");
+    menuPanel.hidden = true;
+    menuBtn.setAttribute("aria-expanded", "false");
   }
-  document.getElementById("menuBtn").addEventListener("click", () => {
-    sidebar.classList.add("open");
-    scrim.classList.add("show");
+  menuBtn.addEventListener("click", () => {
+    const open = menuPanel.hidden;
+    menuPanel.hidden = !open;
+    menuBtn.setAttribute("aria-expanded", String(open));
   });
-  scrim.addEventListener("click", closeMenu);
+  // Clicking outside the menu or pressing Escape closes it
+  document.addEventListener("click", (e) => { if (!menuPanel.hidden && !e.target.closest("#menuPanel, #menuBtn")) closeMenu(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
 
   app.addEventListener("submit", async (e) => {
     const id = e.target.id;
@@ -3219,6 +3232,11 @@
     if (t.dataset && t.dataset.hero) {
       const h = t.dataset.hero;
       return heroGo(h === "next" ? heroAt + 1 : h === "prev" ? heroAt - 1 : Number(h));
+    }
+    if (t.dataset && t.dataset.leadScope) {
+      leadScope = t.dataset.leadScope;
+      document.querySelector(".hx-area-lead").innerHTML = leadersPanel();
+      return;
     }
     if (t.dataset && t.dataset.leadTab) {
       leadTab = Number(t.dataset.leadTab);

@@ -8,45 +8,42 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=202610181130">
+  <link rel="stylesheet" href="styles.css?v=202610181245">
 </head>
 <body>
-  <header class="topbar">
-    <button class="menu-btn" id="menuBtn" aria-label="Open menu">
-      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-    </button>
-    <a href="#/" class="brand brand--top">
-      <img src="logo-main.png" alt="">
-      <span class="brand-name">UFF</span>
-    </a>
-  </header>
-
-  <aside class="sidebar" id="sidebar">
-    <a href="#/" class="brand">
-      <img src="logo-main.png" alt="United Flag Football logo">
-      <span>
-        <span class="brand-name">UFF</span>
-        <span class="brand-sub">United Flag Football</span>
-      </span>
-    </a>
-    <nav class="nav" id="nav"></nav>
-    <div class="sidebar-foot">
-      <span class="pill" id="seasonNum">Season</span>
-      <span class="muted" id="seasonYear"></span>
-      <a href="#/admin" class="admin-link" id="adminLink">
-        <svg class="icon sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>
-        Admin
+  <header class="site-head" id="siteHead">
+    <div class="site-head-in">
+      <a href="#/" class="brand">
+        <img src="logo-main.png" alt="United Flag Football logo">
+        <span>
+          <span class="brand-name">UFF</span>
+          <span class="brand-sub">United Flag Football</span>
+        </span>
       </a>
+      <nav class="topnav" id="topnav" aria-label="Main"></nav>
+      <div class="head-actions">
+        <button type="button" class="menu-btn" id="menuBtn" aria-expanded="false" aria-controls="menuPanel">
+          <span>Menu</span>
+          <span class="menu-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8.5h11M6.5 12h7.5M6.5 15.5h4"/></svg></span>
+        </button>
+        <a href="#/admin" class="head-login" id="adminLink">Log In</a>
+      </div>
     </div>
-  </aside>
-  <div class="scrim" id="scrim"></div>
+    <div class="menu-panel" id="menuPanel" hidden>
+      <nav class="menu-grid" id="nav" aria-label="All pages"></nav>
+      <div class="menu-foot">
+        <span class="pill" id="seasonNum">Season</span>
+        <span id="seasonYear"></span>
+      </div>
+    </div>
+  </header>
 
   <main class="main" id="app"></main>
 
-  <script src="data.js?v=202610181130"></script>
-  <script src="stats-alltime.js?v=202610181130"></script>
-  <script src="stats-alltime-base.js?v=202610181130"></script>
-  <script src="stats-alltime-s6.js?v=202610181130"></script>
-  <script src="app.js?v=202610181130"></script>
+  <script src="data.js?v=202610181245"></script>
+  <script src="stats-alltime.js?v=202610181245"></script>
+  <script src="stats-alltime-base.js?v=202610181245"></script>
+  <script src="stats-alltime-s6.js?v=202610181245"></script>
+  <script src="app.js?v=202610181245"></script>
 </body>
 </html>
