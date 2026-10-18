@@ -219,6 +219,38 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .activity-text { font-weight: 600; color: var(--navy); }
 .activity-time { flex-shrink: 0; white-space: nowrap; }
 
+/* Admin: teams */
+.team-admin { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
+.team-admin-list { display: flex; flex-direction: column; gap: 4px; max-height: 720px; overflow-y: auto; }
+.team-new { justify-content: center; margin-bottom: 4px; }
+.team-pick {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; text-align: left;
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--navy); background: var(--surface);
+  border: 1.5px solid var(--line); border-radius: 10px; cursor: pointer;
+}
+.team-pick:hover { border-color: var(--navy); }
+.team-pick.active { background: var(--navy); color: var(--cream); border-color: var(--navy); }
+.team-pick .pill { margin-left: auto; font-size: 11px; padding: 1px 8px; }
+.team-logo-edit { display: flex; align-items: center; gap: 12px; margin: 6px 0 14px; }
+.team-logo-edit img, .team-logo-edit .po-logo-empty { width: 72px; height: 72px; object-fit: contain; border-radius: 10px; border: 1px solid var(--line); background: var(--cream-2); }
+.team-logo-edit label.btn { cursor: pointer; }
+#teamForm .admin-fields { margin-bottom: 8px; }
+@media (max-width: 860px) { .team-admin { grid-template-columns: 1fr; } .team-admin-list { max-height: 320px; } }
+
+/* Admin: hand-edited stats */
+.stat-edit-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; margin-bottom: 6px; }
+.stat-edit-group .field input { padding: 8px 10px; min-width: 0; width: 100%; }
+
+/* ---------- VODs ---------- */
+.vod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.vod-card { overflow: hidden; transition: border-color .15s, box-shadow .15s; }
+.vod-card:hover { border-color: #d6c793; box-shadow: 0 4px 16px rgba(31, 37, 71, .08); }
+.vod-thumb { position: relative; aspect-ratio: 16 / 9; background: var(--navy); display: grid; place-items: center; }
+.vod-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.vod-play { position: relative; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: rgba(31, 37, 71, .85); color: var(--cream); font-size: 18px; padding-left: 3px; }
+.vod-body { padding: 12px 16px; }
+.vod-title { font-weight: 600; color: var(--navy); }
+
 /* ---------- Live streams ---------- */
 .live-wrap { padding-top: 8px; }
 .live-wrap .section-head { margin-top: 24px; }
@@ -523,14 +555,16 @@ a.game-team[href]:hover .game-team-name { text-decoration: underline; }
 
 .game-foot { flex-wrap: wrap; }
 .potg { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--navy); }
-.box summary {
-  cursor: pointer; font-size: 13px; font-weight: 600; color: var(--navy);
-  padding: 6px 12px; border: 1.5px solid var(--navy); border-radius: 8px; width: fit-content; list-style: none;
+.game-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.box-toggle {
+  cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; color: var(--navy); background: var(--surface);
+  padding: 6px 12px; border: 1.5px solid var(--navy); border-radius: 8px; width: fit-content;
 }
-.box summary::-webkit-details-marker { display: none; }
-.box summary::after { content: " ▾"; }
-.box[open] summary { background: var(--navy); color: var(--cream); }
-.box[open] summary::after { content: " ▴"; }
+button.box-toggle::after { content: " ▾"; }
+.box-toggle.open { background: var(--navy); color: var(--cream); }
+button.box-toggle.open::after { content: " ▴"; }
+.vod-btn:hover { background: var(--navy); color: var(--cream); }
+.box[hidden] { display: none; }
 .box-team { margin-top: 14px; }
 .box-team-head { display: flex; align-items: center; gap: 8px; font-family: var(--head); font-weight: 600; text-transform: uppercase; color: var(--navy); margin-bottom: 6px; }
 .box-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; margin-bottom: 8px; }

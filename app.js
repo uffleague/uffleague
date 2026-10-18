@@ -18,6 +18,7 @@
     trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
     predict: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
     bowl: '<path d="M4 9h16l-1.5 7.5a2 2 0 0 1-2 1.5h-9a2 2 0 0 1-2-1.5L4 9Z"/><path d="M8 9V6.5a4 4 0 0 1 8 0V9"/><path d="M9 21h6"/>',
+    play: '<circle cx="12" cy="12" r="8.5"/><path d="m10 8.5 5.5 3.5-5.5 3.5Z"/>',
     live: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>'
   };
   const icon = (name, cls = "") =>
@@ -29,6 +30,7 @@
     { path: "schedule", label: "Schedule", icon: "schedule" },
     { path: "standings", label: "Standings", icon: "standings" },
     { path: "scores", label: "Scores", icon: "scores" },
+    { path: "vods", label: "VODs", icon: "play" },
     { path: "stats", label: "Stats", icon: "stats" },
     { path: "updates", label: "Updates", icon: "updates" },
     { path: "compare", label: "Compare", icon: "compare" },
@@ -73,7 +75,7 @@
   // (worker/src/index.js, a Cloudflare Worker) and are mixed into data.js when the page loads.
   const API = "https://uff-admin.uffleague.workers.dev";
   const updateKey = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
-  let SAVED = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {} };
+  let SAVED = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [] };
   try {
     const res = await fetch(API, { cache: "no-store" });
     if (res.ok) SAVED = { ...SAVED, ...(await res.json()) };
@@ -96,6 +98,31 @@
     SAVED.updates.forEach((u) => {
       if (!have.has(updateKey(u))) { LEAGUE.updates.push(u); have.add(updateKey(u)); }
     });
+
+    // Team edits from Admin -> Teams. Each team remembers its original name as `key` (that's what edits are saved under).
+    const allDivs = () => LEAGUE.conferences.flatMap((c) => c.divisions.map((d) => ({ c, d })));
+    allDivs().forEach(({ d }) => d.teams.forEach((t) => { t.key = t.name; }));
+    const renames = {};
+    Object.entries(SAVED.teams || {}).forEach(([key, e]) => {
+      let spot = allDivs().find(({ d }) => d.teams.some((t) => t.key === key));
+      let t = spot && spot.d.teams.find((x) => x.key === key);
+      if (!t) {
+        if (!key.startsWith("+")) return; // edit for a team that's no longer in data.js
+        t = { key, w: 0, l: 0, pf: 0, pa: 0, streak: "-" };
+      } else if (e.name && e.name !== t.name) renames[t.name] = e.name;
+      ["name", "code", "coach", "logo"].forEach((f) => { if (e[f]) t[f] = e[f]; });
+      // Move it if its conference or division changed (or place a new team)
+      const target = allDivs().find(({ c, d }) => c.name === e.conference && d.name === e.division);
+      if (target && (!spot || target.d !== spot.d)) {
+        if (spot) spot.d.teams.splice(spot.d.teams.indexOf(t), 1);
+        target.d.teams.push(t);
+      }
+    });
+    // A renamed team keeps its transactions, games and playoff spots
+    const rn = (n) => renames[n] || n;
+    LEAGUE.updates.forEach((u) => { u.team = rn(u.team); });
+    LEAGUE.schedule.forEach((wk) => wk.games.forEach((g) => { g.teams = g.teams.map(rn); }));
+    [SAVED.playoffs, LEAGUE.playoffs].forEach((po) => po && po.rounds && po.rounds.forEach((r) => r.games.forEach((g) => { g.a = rn(g.a); g.b = rn(g.b); })));
   })();
 
   // Add final scores from the schedule onto each team's record (on top of the numbers in data.js)
@@ -451,6 +478,12 @@
     const totals = {};
     games.forEach(({ lines }) => Object.entries(lines).forEach(([k, l]) => addLine((totals[k] = totals[k] || {}), l)));
     totals.passing = { ...(totals.passing || {}), gp: games.length };
+    // Hand-edited stats (Admin -> Player Stats) win over the box scores
+    const edit = statEditFor(name);
+    if (edit) {
+      Object.keys(BOX).forEach((k) => { if (edit[k]) totals[k] = { ...edit[k] }; });
+      totals.passing = { ...(totals.passing || {}), gp: edit.gp != null ? edit.gp : games.length };
+    }
 
     const honors = playerHonors(name, leg);
     const honorCount = honors.reduce((n, h) => n + h.n, 0) + (leg && leg.hof ? 1 : 0);
@@ -556,6 +589,26 @@
       );
     })
   );
+
+  // Stats edited by hand (Admin -> Player Stats) replace that player's box score totals
+  const statEditFor = (name) => {
+    const edits = SAVED.statEdits || {};
+    const k = Object.keys(edits).find((n) => n.toLowerCase() === String(name).toLowerCase());
+    return k ? edits[k] : null;
+  };
+  Object.entries(SAVED.statEdits || {}).forEach(([name, edit]) => {
+    const key = name.toLowerCase();
+    Object.keys(BOX_TOTALS).forEach((g) => {
+      const vals = edit[g];
+      if (!vals) return;
+      const row = BOX_TOTALS[g][key];
+      const hasAny = Object.values(vals).some((v) => v);
+      if (!row && !hasAny) return;
+      const out = { player: (row && row.player) || name, team: row && row.team, ...vals, gp: edit.gp != null ? edit.gp : (row && row.gp) || 0 };
+      if (!hasAny && row) delete BOX_TOTALS[g][key];
+      else BOX_TOTALS[g][key] = out;
+    });
+  });
 
   function positionOf(player, from) {
     const map = LEAGUE.stats.positions || {};
@@ -988,10 +1041,9 @@
     defense: { label: "Defense", cols: [["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["SWAT", "swat"], ["INT", "int"], ["PBU", "pbu"], ["PRE", "pre"], ["TD", "td"]] }
   };
 
-  function boxScore(g, teams) {
+  function boxScore(g, teams, open) {
     return `
-      <details class="box">
-        <summary>Box score</summary>
+      <div class="box" ${open ? "" : "hidden"}>
         ${g.box.map((side, i) => {
           const groups = Object.keys(BOX).filter((k) => side && side[k] && side[k].length);
           return `
@@ -1009,10 +1061,14 @@
                 </div>`).join("")}
             </div>`;
         }).join("")}
-      </details>`;
+      </div>`;
   }
 
-  function gameCard(g) {
+  // The newest VOD posted for a game (Admin -> VODs)
+  const gameVod = (id) => (SAVED.vods || []).find((v) => v.gameId === id);
+
+  function gameCard(g, open) {
+    const openBox = open === true; // only the admin preview opens it (pages call .map(gameCard), which passes an index)
     const [a, b] = g.teams.map((n) => TEAMS.find((t) => t.name === n) || { name: n });
     const type = matchupType(a.slug && a, b.slug && b);
     const final = Array.isArray(g.score);
@@ -1043,7 +1099,17 @@
           ${final ? `Final${g.date ? ` &middot; ${fmtDate(g.date)}` : ""}` : g.time || "No game time set yet"}
           ${g.potg ? `<span class="potg">${icon("scores", "sm")}Player of the Game: <strong>${playerLink(g.potg)}</strong></span>` : ""}
         </div>
-        ${final && g.box ? boxScore(g, [a, b]) : ""}
+        ${(() => {
+          const hasBox = final && g.box;
+          const vod = gameVod(g.id);
+          if (!hasBox && !vod) return "";
+          return `
+            <div class="game-actions">
+              ${hasBox ? `<button type="button" class="box-toggle ${openBox ? "open" : ""}" data-box-toggle aria-expanded="${openBox}">Box score</button>` : ""}
+              ${vod ? `<a class="box-toggle vod-btn" href="${esc(vod.url)}" target="_blank" rel="noopener" title="${esc(vod.title)}">&#9654; VOD</a>` : ""}
+            </div>
+            ${hasBox ? boxScore(g, [a, b], openBox) : ""}`;
+        })()}
       </div>`;
   }
 
@@ -1377,7 +1443,7 @@
     recap.renamed.forEach(([a, b]) => notes.push(`${a} will be saved as ${b}.`));
     recap.problems.forEach((p) => notes.push(p));
     const preview = g && recap.score
-      ? gameCard({ ...g, ...recapResult(recap, g) }).replace('<details class="box">', '<details class="box" open>')
+      ? gameCard({ ...g, ...recapResult(recap, g) }, true)
       : "";
     return `
       <div class="admin-fields admin-game-pick">
@@ -1606,11 +1672,14 @@
   const ADMIN_TABS = [
     ["overview", "Overview", "stats", () => adminOverview()],
     ["stats", "Stat Adder", "scores", () => resultsSection()],
+    ["playerstats", "Player Stats", "trend", () => playerStatsAdminSection()],
     ["transactions", "Transactions", "updates", () => transactionsSection()],
+    ["teams", "Teams", "teams", () => teamsAdminSection()],
     ["streams", "Live Streams", "live", () => streamsAdminSection()],
+    ["vods", "VODs", "play", () => vodsAdminSection()],
     ["playoffs", "Playoffs", "playoff", () => playoffsAdminSection()],
     ["bowls", "Bowl History", "bowl", () => bowlsAdminSection()],
-    ["positions", "Positions", "teams", () => positionsSection()]
+    ["positions", "Positions", "compare", () => positionsSection()]
   ];
   let adminTab = "overview";
 
@@ -1963,6 +2032,175 @@
       </section>`;
   }
 
+  // ---- Admin: teams ----
+
+  let teamEditKey = null; // the team being edited (its original name), or "+new"
+  let teamLogoDraft = null;
+  const teamPlaces = () => LEAGUE.conferences.flatMap((c) => c.divisions.map((d) => [c.name, d.name]));
+
+  function teamsAdminSection() {
+    const edits = SAVED.teams || {};
+    const isNew = teamEditKey === "+new";
+    const t = isNew ? null : TEAMS.find((x) => x.key === teamEditKey);
+    const logo = teamLogoDraft != null ? teamLogoDraft : t ? t.logo || "" : "";
+    const place = t ? `${t.conference}||${t.division}` : "";
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Teams</h2></div>
+        <div class="team-admin">
+          <div class="card admin-card team-admin-list">
+            <button type="button" class="btn btn-primary team-new" id="teamNew">+ New team</button>
+            ${LEAGUE.conferences.map((c) => `
+              <div class="admin-subhead admin-subhead--small">${esc(c.name)}</div>
+              ${TEAMS.filter((x) => x.conference === c.name).map((x) => `
+                <button type="button" class="team-pick ${x.key === teamEditKey ? "active" : ""}" data-team-pick="${esc(x.key)}">
+                  ${teamLogo(x)}<span>${esc(x.name)}</span>${x.key in edits ? `<span class="pill">Edited</span>` : ""}
+                </button>`).join("")}`).join("")}
+          </div>
+          <div class="card admin-card">
+            ${t || isNew ? `
+              <form id="teamForm" autocomplete="off">
+                <div class="admin-subhead">${isNew ? "New team" : esc(t.name)}</div>
+                ${t ? `<p class="muted small admin-note">Record ${t.w}-${t.l} &middot; PF ${t.pf} &middot; PA ${t.pa}. Records come from game results automatically.</p>` : ""}
+                <div class="team-logo-edit">
+                  ${logo ? `<img src="${esc(logo)}" alt="">` : `<span class="po-logo-empty">?</span>`}
+                  <label class="btn btn-ghost btn-sm">Upload logo<input type="file" id="teamLogoFile" accept="image/*" hidden></label>
+                </div>
+                <div class="admin-fields">
+                  <label class="field admin-grow"><span>Team name</span><input name="name" value="${esc(t ? t.name : "")}" maxlength="60" required></label>
+                  <label class="field"><span>Short code</span><input name="code" value="${esc(t ? t.code || "" : "")}" maxlength="5" placeholder="KCJ"></label>
+                  <label class="field admin-grow"><span>Head coach</span><input name="coach" value="${esc(t ? t.coach || "" : "")}" maxlength="40" list="playerNames"></label>
+                  <label class="field admin-grow"><span>Conference &middot; Division</span>
+                    <select name="place" class="select" required>
+                      ${teamPlaces().map(([c, d]) => `<option value="${esc(`${c}||${d}`)}" ${`${c}||${d}` === place ? "selected" : ""}>${esc(c)} &middot; ${esc(d)}</option>`).join("")}
+                    </select>
+                  </label>
+                </div>
+                <datalist id="playerNames">${knownPlayers().map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
+                <div class="admin-actions">
+                  <button class="btn btn-primary" type="submit">Save team</button>
+                  ${t && t.key in edits ? `<button type="button" class="btn btn-ghost" id="teamReset">${t.key.startsWith("+") ? "Remove team" : "Undo my changes"}</button>` : ""}
+                </div>
+                <p class="muted small">Renaming a team keeps its transactions, games and playoff spots.</p>
+              </form>` : `<p class="muted">Pick a team on the left to edit it, or add a new one.</p>`}
+          </div>
+        </div>
+      </section>`;
+  }
+
+  // ---- Admin: hand-edited player stats ----
+
+  const STAT_EDIT = {
+    passing: [["comp", "CMP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["int", "INT"], ["lng", "LNG"], ["sacked", "SCKD"]],
+    rushing: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["fum", "FUM"], ["lng", "LNG"]],
+    receiving: [["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"], ["lng", "LNG"]],
+    defense: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"]]
+  };
+  let statsEditName = "";
+
+  function playerStatsAdminSection() {
+    const name = statsEditName;
+    const key = name.toLowerCase();
+    const edit = name && statEditFor(name);
+    const rows = Object.fromEntries(Object.keys(STAT_EDIT).map((g) => [g, BOX_TOTALS[g][key] || {}]));
+    const gp = edit && edit.gp != null ? edit.gp : Math.max(0, ...Object.values(rows).map((r) => r.gp || 0));
+    const editedNames = Object.keys(SAVED.statEdits || {}).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Player Stats &middot; Season ${LEAGUE.season}</h2></div>
+        <form class="card admin-card" id="statPick" autocomplete="off">
+          <p class="muted small admin-note">Fix a player's Season ${LEAGUE.season} totals by hand if a recap was wrong. What you save replaces their totals from the box scores on the Stats page, leaders, award candidates, records and their player page. Undo it any time to go back to the box scores.</p>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Player</span><input name="player" value="${esc(name)}" list="playerNames" required></label>
+            <button class="btn btn-primary" type="submit">Load stats</button>
+          </div>
+          <datalist id="playerNames">${knownPlayers().map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
+        </form>
+        ${name ? `
+          <form class="card admin-card admin-list" id="statForm" autocomplete="off">
+            <div class="admin-subhead">${esc(name)}${edit ? `<span class="pill">Edited by hand</span>` : `<span class="muted small">from box scores</span>`}</div>
+            <div class="stat-edit-group">
+              <label class="field"><span>Games</span><input name="gp" value="${gp}" inputmode="numeric"></label>
+            </div>
+            ${Object.entries(STAT_EDIT).map(([g, cols]) => `
+              <div class="admin-subhead admin-subhead--small">${BOX[g].label}</div>
+              <div class="stat-edit-group">
+                ${cols.map(([f, h]) => `<label class="field"><span>${h}</span><input name="${g}.${f}" value="${rows[g][f] || 0}" inputmode="decimal"></label>`).join("")}
+              </div>`).join("")}
+            <div class="admin-actions">
+              <button class="btn btn-primary" type="submit">Save stats</button>
+              ${edit ? `<button type="button" class="btn btn-ghost" id="statReset">Undo &mdash; use the box scores</button>` : ""}
+            </div>
+          </form>` : ""}
+        ${editedNames.length ? `
+          <div class="card admin-card admin-list">
+            <div class="admin-subhead admin-subhead--small">Edited by hand (${editedNames.length})</div>
+            ${editedNames.map((n) => `<div class="list-row"><span>${playerLink(n)}</span><button type="button" class="btn btn-ghost btn-sm" data-stat-load="${esc(n)}">Edit</button></div>`).join("")}
+          </div>` : ""}
+      </section>`;
+  }
+
+  // ---- VODs ----
+
+  const ytId = (url) => {
+    const m = String(url).match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|live\/|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/i);
+    return m ? m[1] : null;
+  };
+  const gameLabel = (id) => {
+    const e = allGames().find(({ g }) => g.id === id);
+    return e ? `Week ${e.wk.week} &middot; ${esc(e.g.teams[0])} vs ${esc(e.g.teams[1])}` : id ? esc(id) : "";
+  };
+
+  function vodsAdminSection() {
+    const list = SAVED.vods || [];
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>VODs</h2></div>
+        <form class="card admin-card" id="vodForm" autocomplete="off">
+          <p class="muted small admin-note">Add YouTube videos or Twitch past broadcasts and clips. Pick the game to put a <strong>VOD</strong> button next to its box score. Every VOD is also listed on the VODs page, newest first.</p>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Title</span><input name="title" maxlength="80" placeholder="Week 1 · Jazz vs Samurai" required></label>
+            <label class="field admin-grow"><span>YouTube or Twitch link</span><input name="url" placeholder="https://www.youtube.com/watch?v=..." required></label>
+          </div>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Game (optional)</span>
+              <select name="gameId" class="select">
+                <option value="">Not tied to a game</option>
+                ${LEAGUE.schedule.map((wk) => `<optgroup label="Week ${wk.week}">${wk.games.map((g) => `<option value="${esc(g.id)}">${esc(g.id)} &middot; ${esc(g.teams[0])} vs ${esc(g.teams[1])}</option>`).join("")}</optgroup>`).join("")}
+              </select>
+            </label>
+            <label class="field admin-grow"><span>Note (optional)</span><input name="note" maxlength="80" placeholder="Season 7 · Week 1"></label>
+            <button class="btn btn-primary" type="submit">Add VOD</button>
+          </div>
+          <div class="admin-subhead admin-subhead--small">Added VODs (${list.length})</div>
+          ${list.length ? list.map((v) => `
+            <div class="list-row">
+              <div><strong>${esc(v.title)}</strong><div class="muted small">${[v.gameId && gameLabel(v.gameId), esc(v.note || ""), esc(v.url)].filter(Boolean).join(" &middot; ")}</div></div>
+              <button type="button" class="btn btn-ghost btn-sm" data-del-vod="${esc(v.id)}">Remove</button>
+            </div>`).join("") : `<p class="muted small">No VODs added yet.</p>`}
+        </form>
+      </section>`;
+  }
+
+  function vodsPage() {
+    const list = SAVED.vods || [];
+    return `
+      <div class="wrap">
+        ${pageHead("VODs", "Game replays and highlights, newest first.")}
+        ${list.length ? `<div class="vod-grid">${list.map((v) => {
+          const yt = ytId(v.url);
+          return `
+            <a class="card vod-card" href="${esc(v.url)}" target="_blank" rel="noopener">
+              <div class="vod-thumb">${yt ? `<img src="https://img.youtube.com/vi/${yt}/hqdefault.jpg" alt="" loading="lazy">` : ""}<span class="vod-play">&#9654;</span></div>
+              <div class="vod-body">
+                <div class="vod-title">${esc(v.title)}</div>
+                <div class="muted small">${[v.gameId && gameLabel(v.gameId), esc(v.note || ""), v.at && fmtDate(new Date(v.at).toLocaleDateString("en-CA"))].filter(Boolean).join(" &middot; ")}</div>
+              </div>
+            </a>`;
+        }).join("")}</div>` : empty("No VODs yet", "Game replays and highlights will show up here.")}
+      </div>`;
+  }
+
   let poDraft = null;
   const newGame = () => ({ a: "", b: "", sa: "", sb: "", seedA: "", seedB: "", adv: "", fromA: null, fromB: null });
   const emptyBracket = () => ({ title: `Season ${LEAGUE.season} Playoffs`, logo: (LEAGUE.bowlLogos || {})[LEAGUE.season] || "", rounds: [] });
@@ -2077,7 +2315,8 @@
 
   const ACTIVITY_LABELS = {
     saveResult: "Results", deleteResult: "Results", saveUpdates: "Transactions", deleteUpdate: "Transactions",
-    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history"
+    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history",
+    saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", addVod: "VODs", removeVod: "VODs"
   };
   function activitySection(limit = 100) {
     return `
@@ -2146,6 +2385,7 @@
     awards,
     playoff: playoffPage,
     predictions: predictionsPage,
+    vods: vodsPage,
     bowls: bowlsPage,
     legacy,
     records,
@@ -2216,7 +2456,7 @@
 
   app.addEventListener("submit", async (e) => {
     const id = e.target.id;
-    if (id !== "posForm" && id !== "adminLogin" && id !== "streamForm") return;
+    if (!["posForm", "adminLogin", "streamForm", "teamForm", "statPick", "statForm", "vodForm"].includes(id)) return;
     e.preventDefault();
     const form = new FormData(e.target);
     const btn = e.target.querySelector("button[type=submit]");
@@ -2224,6 +2464,34 @@
     adminError = adminFlash = "";
     try {
       if (id === "posForm") await savePosition(form);
+      else if (id === "statPick") {
+        const typed = String(form.get("player") || "").trim();
+        statsEditName = knownPlayers().find((n) => n.toLowerCase() === aliasName(typed).toLowerCase()) || aliasName(typed);
+      } else if (id === "statForm") {
+        const stats = { gp: form.get("gp") };
+        Object.entries(STAT_EDIT).forEach(([g, cols]) => {
+          stats[g] = Object.fromEntries(cols.map(([f]) => [f, Number(form.get(`${g}.${f}`)) || 0]));
+        });
+        await adminCall({ action: "setStats", name: statsEditName, stats });
+        return reloadWithFlash(`Saved ${statsEditName}'s Season ${LEAGUE.season} stats. Everyone sees them now.`);
+      } else if (id === "teamForm") {
+        const [conference, division] = String(form.get("place") || "").split("||");
+        const current = TEAMS.find((x) => x.key === teamEditKey);
+        const team = {
+          name: String(form.get("name") || "").trim(), code: String(form.get("code") || "").trim().toUpperCase(),
+          coach: String(form.get("coach") || "").trim(), conference, division,
+          logo: teamLogoDraft != null ? teamLogoDraft : current ? current.logo : ""
+        };
+        const key = teamEditKey === "+new" ? `+${crypto.randomUUID()}` : teamEditKey;
+        await adminCall({ action: "saveTeam", key, team });
+        return reloadWithFlash(`Saved ${team.name}. Everyone sees it now.`);
+      } else if (id === "vodForm") {
+        const url = String(form.get("url") || "").trim();
+        if (!streamEmbed(url)) throw new Error("That isn't a YouTube or Twitch link.");
+        const res = await adminCall({ action: "addVod", title: String(form.get("title") || ""), url, gameId: String(form.get("gameId") || ""), note: String(form.get("note") || "") });
+        SAVED.vods = res.vods;
+        adminFlash = "Added the VOD. It's on the VODs page now.";
+      }
       else if (id === "streamForm") {
         const url = String(form.get("url") || "").trim();
         if (!streamEmbed(url)) throw new Error("That isn't a YouTube or Twitch link the site can play.");
@@ -2259,8 +2527,47 @@
     render();
   }
 
+  // Redraw the page but stay where you were scrolled
+  const renderKeepScroll = () => { const y = window.scrollY; render(); window.scrollTo(0, y); };
+
   app.addEventListener("click", async (e) => {
     const t = e.target.closest("button, [data-pick]") || e.target;
+
+    // Box score open / close
+    if (t.hasAttribute && t.hasAttribute("data-box-toggle")) {
+      const box = t.parentElement.nextElementSibling;
+      const open = box.hidden;
+      box.hidden = !open;
+      t.classList.toggle("open", open);
+      t.setAttribute("aria-expanded", String(open));
+      return;
+    }
+
+    // Admin: teams, player stats, VODs
+    if (t.id === "teamNew" || t.dataset.teamPick) {
+      teamEditKey = t.id === "teamNew" ? "+new" : t.dataset.teamPick;
+      teamLogoDraft = null;
+      return renderKeepScroll();
+    }
+    if (t.id === "teamReset") {
+      const current = TEAMS.find((x) => x.key === teamEditKey);
+      const isAdded = teamEditKey.startsWith("+");
+      if (!confirm(isAdded ? `Remove ${current.name} from the league?` : `Undo all your changes to ${current.name}?`)) return;
+      return adminSave(t, { action: "removeTeam", key: teamEditKey }, () =>
+        reloadWithFlash(isAdded ? `Removed ${current.name}.` : `${current.name} is back to its original details.`));
+    }
+    if (t.dataset.statLoad) { statsEditName = t.dataset.statLoad; return renderKeepScroll(); }
+    if (t.id === "statReset") {
+      if (!confirm(`Undo the hand edits for ${statsEditName} and use the box scores again?`)) return;
+      return adminSave(t, { action: "setStats", name: statsEditName, stats: null }, () =>
+        reloadWithFlash(`${statsEditName}'s stats come from the box scores again.`));
+    }
+    if (t.dataset.delVod) {
+      return adminSave(t, { action: "removeVod", id: t.dataset.delVod }, (res) => {
+        SAVED.vods = res.vods;
+        adminFlash = "Removed the VOD.";
+      });
+    }
 
     // Predictions (saved in this browser only)
     if (t.dataset.pick || t.id === "predLock" || t.id === "predReset") {
@@ -2427,6 +2734,18 @@
       if ((f === "a" || f === "b") && game.adv === f && !el.value) game.adv = "";
       showPoEditor();
       return;
+    }
+    if (el.id === "teamLogoFile" && el.files && el.files[0]) {
+      try {
+        const res = await adminCall({ action: "uploadImage", image: await shrinkImage(el.files[0]) });
+        teamLogoDraft = res.url;
+        adminError = "";
+        adminFlash = "Logo uploaded. Press Save team to use it.";
+      } catch (err) {
+        adminFlash = "";
+        adminError = err.message;
+      }
+      return renderKeepScroll();
     }
     if (el.id === "poLogo" && el.files && el.files[0]) {
       try {

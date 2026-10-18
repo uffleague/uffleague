@@ -5,7 +5,14 @@
 //   POST / { action, token, ... }              -> the saved data ("activity" returns the log)
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
-const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, activity: [] };
+const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], activity: [] };
+const STAT_FIELDS = {
+  passing: ["comp", "att", "yds", "td", "int", "lng", "sacked"],
+  rushing: ["att", "yds", "td", "fum", "lng"],
+  receiving: ["tgt", "rec", "yds", "td", "drop", "lng"],
+  defense: ["tak", "tfl", "sck", "saf", "swat", "int", "pbu", "pre", "td"]
+};
+const IMAGE_MAX = 400 * 1024;
 const UPDATE_TYPES = ["sign", "demand", "release", "promotion"];
 const TOKEN_HOURS = 12;
 const ACTIVITY_MAX = 300;
@@ -60,7 +67,7 @@ async function load(env) {
 }
 const publicData = ({ activity, ...rest }) => rest;
 
-const STREAM_HOSTS = /^https:\/\/(www\.|m\.)?(twitch\.tv|youtube\.com|youtu\.be)\//i;
+const STREAM_HOSTS = /^https:\/\/(www\.|m\.|clips\.)?(twitch\.tv|youtube\.com|youtu\.be)\//i;
 
 // Keep only the bracket fields the site uses
 function cleanPlayoffs(p) {
@@ -85,9 +92,21 @@ function cleanPlayoffs(p) {
   };
 }
 
+// Uploaded pictures (team logos) are stored separately and served from /img/<id>
+async function serveImage(env, id) {
+  if (!/^[\w-]{10,60}$/.test(id)) return new Response("Not found", { status: 404, headers: CORS });
+  const { value, metadata } = await env.UFF.getWithMetadata(`img:${id}`, { type: "arrayBuffer" });
+  if (!value) return new Response("Not found", { status: 404, headers: CORS });
+  return new Response(value, {
+    headers: { "content-type": (metadata && metadata.type) || "image/png", "cache-control": "public, max-age=31536000, immutable", ...CORS }
+  });
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+    const path = new URL(req.url).pathname;
+    if (req.method === "GET" && path.startsWith("/img/")) return serveImage(env, path.slice(5));
     if (req.method === "GET") return json(publicData(await load(env)));
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -110,6 +129,15 @@ export default {
     if (!by) return json({ error: "Your login expired. Log in again." }, 401);
     const data = await load(env);
     if (body.action === "activity") return json({ activity: data.activity });
+    if (body.action === "uploadImage") {
+      const m = String(body.image || "").match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+      if (!m) return json({ error: "That file isn't a PNG, JPG or WebP picture." }, 400);
+      const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
+      if (bytes.length > IMAGE_MAX) return json({ error: "That picture is too big." }, 400);
+      const id = crypto.randomUUID();
+      await env.UFF.put(`img:${id}`, bytes, { metadata: { type: m[1], by } });
+      return json({ url: `${new URL(req.url).origin}/img/${id}` });
+    }
 
     let log = "";
     if (body.action === "saveResult") {
@@ -174,6 +202,53 @@ export default {
     } else if (body.action === "savePlayoffs") {
       data.playoffs = cleanPlayoffs(body.playoffs);
       log = `Saved the playoff bracket "${data.playoffs.title}"`;
+    } else if (body.action === "saveTeam") {
+      // key = the team's original name, or "+<id>" for a team added on the Admin page
+      const key = str(body.key, 80);
+      const t = body.team || {};
+      const team = {
+        name: str(t.name, 60), code: str(t.code, 5), coach: str(t.coach, 40),
+        conference: str(t.conference, 60), division: str(t.division, 60),
+        logo: typeof t.logo === "string" && /^(https:\/\/[\w.-]+\/img\/[\w-]+|logos\/[\w\/.-]+\.(png|jpe?g|webp))$/.test(t.logo) ? t.logo : undefined
+      };
+      if (!key || !team.name || !team.conference || !team.division) return json({ error: "A team needs a name, conference and division." }, 400);
+      data.teams = { ...data.teams, [key]: team };
+      log = key.startsWith("+") ? `Saved new team ${team.name}` : `Edited team ${key}${team.name !== key ? ` (now ${team.name})` : ""}`;
+    } else if (body.action === "removeTeam") {
+      const key = String(body.key || "");
+      if (!(key in data.teams)) return json({ error: "That team has no changes to remove." }, 400);
+      const gone = data.teams[key];
+      delete data.teams[key];
+      log = key.startsWith("+") ? `Removed added team ${gone.name}` : `Reset team ${key} to its original details`;
+    } else if (body.action === "setStats") {
+      const name = str(body.name, 60);
+      if (!name) return json({ error: "Pick a player." }, 400);
+      Object.keys(data.statEdits).filter((n) => n.toLowerCase() === name.toLowerCase()).forEach((n) => delete data.statEdits[n]);
+      if (body.stats) {
+        const out = {};
+        Object.entries(STAT_FIELDS).forEach(([g, fields]) => {
+          const src = (body.stats || {})[g];
+          if (!src) return;
+          out[g] = {};
+          fields.forEach((f) => { const v = Number(src[f]); out[g][f] = Number.isFinite(v) ? Math.round(v * 10) / 10 : 0; });
+        });
+        const gp = Number(body.stats.gp);
+        if (Number.isFinite(gp) && gp >= 0) out.gp = Math.round(gp);
+        data.statEdits[name] = out;
+        log = `Edited Season stats for ${name}`;
+      } else {
+        log = `Reset ${name}'s stats to the box scores`;
+      }
+    } else if (body.action === "addVod") {
+      const title = str(body.title, 80);
+      const url = str(body.url, 300);
+      if (!title || !url || !STREAM_HOSTS.test(url)) return json({ error: "Add a title and a YouTube or Twitch link." }, 400);
+      data.vods = [{ id: crypto.randomUUID(), title, url, gameId: str(body.gameId, 20), note: str(body.note, 80), at: Date.now() }, ...data.vods];
+      log = `Added VOD "${title}"${body.gameId ? ` for ${str(body.gameId, 20)}` : ""}`;
+    } else if (body.action === "removeVod") {
+      const gone = data.vods.find((v) => v.id === body.id);
+      data.vods = data.vods.filter((v) => v.id !== body.id);
+      log = `Removed VOD "${gone ? gone.title : "?"}"`;
     } else if (body.action === "saveBowls") {
       const bowls = {};
       Object.entries(body.bowls || {}).forEach(([season, b]) => {
