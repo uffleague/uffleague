@@ -167,7 +167,7 @@ const LEAGUE = {
     // Same players under different names on the old all-time stat sheets
     "Drivxon": "breakxu", "JvkeThingz": "jvkethings", "soto1s": "soto", "Kevskiiiiiiii": "Kevskiiiiiii",
     "coIdview": "coldview", "3va8dkq1zafjmxtn": "3vo8dkq1zafjmxtn", "hello78alt3": "helloo78alt3",
-    "gamerpony4182": "gamerpony4132", "settIe": "settle", "Iaddmcconkey": "laddmcconkey",
+    "gamerpony4182": "gamerpony4132", "settIe": "settle", "Iaddmcconkey": "seaboy", "laddmcconkey": "seaboy", "laddmconkey": "seaboy",
     "loverIoverlover": "248","influencethekilI": "influencethekill", "depthqcfler": "depthacfler",
     "t1memanagement": "tlmemanagement", "maIikvrt": "maiikvrt", "nichelarpers": "day", "cooks423": "cooks", "t8l": "dictator 10",
     // Award winners listed under a shorter or misspelled name
