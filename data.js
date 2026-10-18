@@ -9,7 +9,7 @@ const LEAGUE = {
   brandLogo: "logo-main.png", // sidebar + home page logo
   // Team logos: add logo: "logos/<file>.png" to a team. Teams without one use logo.png.
   // Change logoVersion whenever a logo file is replaced, so browsers load the new picture.
-  logoVersion: "2026-10-17c",
+  logoVersion: "2026-10-18a",
   // United Flag Bowl logos by season (shown on Past Bowls above the score)
   bowlLogos: {
     2: "logos/bowls/ufb-2.png", 3: "logos/bowls/ufb-3.png", 4: "logos/bowls/ufb-4.png",
@@ -22,7 +22,9 @@ const LEAGUE = {
     "Savannah Raiders": "logos/past/savannah-raiders.png",
     "Sinaloa Red Devils": "logos/past/sinaloa-red-devils.png",
     "Saskatoon Stampede": "logos/past/saskatoon-stampede.png",
-    "New York Dragons": "logos/past/new-york-dragons.png"
+    "New York Dragons": "logos/past/new-york-dragons.png",
+    "Salem Snow Hawks": "logos/past/salem-snow-hawks.png",
+    "Salem Snowhawks": "logos/past/salem-snow-hawks.png"
   },
   // Awards shown on the Awards page. featured: true = big card in the top row.
   awards: [
