@@ -291,7 +291,7 @@
   }
 
   // Team a player is on: their roster from Updates, otherwise the team from their latest box score,
-  // otherwise the team they're head coach of
+  // otherwise the team they're head coach of, otherwise their latest staff promotion
   function currentTeam(name) {
     const key = name.toLowerCase();
     const slugOn = Object.keys(ROSTERS).find((s) => ROSTERS[s].has(key));
@@ -299,7 +299,8 @@
     const games = playerGames(name);
     const last = games[games.length - 1];
     const played = last && TEAMS.find((t) => t.name === last.g.teams[last.i]);
-    return played || TEAMS.find((t) => t.coach && t.coach.toLowerCase() === key) || null;
+    const staff = UPDATES.filter((u) => u.type === "promotion" && u.t && aliasName(u.player).toLowerCase() === key).pop();
+    return played || TEAMS.find((t) => t.coach && t.coach.toLowerCase() === key) || (staff && staff.t) || null;
   }
 
   const POS_ORDER = ["QB", "WR", "TE", "DE", "DB", "LB"];
@@ -336,8 +337,14 @@
       })
     );
 
+    // Staff from promotions on the Updates page (latest role per person)
+    const staffBy = new Map();
+    UPDATES.filter((u) => u.type === "promotion" && u.t && u.t.slug === t.slug && u.role)
+      .forEach((u) => staffBy.set(aliasName(u.player).toLowerCase(), u));
+    const staff = [...staffBy.values()];
+
     const games = teamSchedule(t);
-    const short = `${t.conference.replace(/ Conference$/, "")} ${t.division.replace(/ Division$/, "")}`;
+    const short =`${t.conference.replace(/ Conference$/, "")} ${t.division.replace(/ Division$/, "")}`;
     return `
       <div class="wrap">
         <a href="#/teams" class="link back">&larr; All Teams</a>
@@ -346,6 +353,7 @@
           <div>
             <h1>${t.name}</h1>
             <p class="muted">${short}${t.coach ? ` &middot; Head Coach ${playerLink(t.coach, "link-strong")}` : ""}</p>
+            ${staff.length ? `<p class="muted">${staff.map((u) => `${u.role} ${playerLink(u.player, "link-strong")}`).join(" &middot; ")}</p>` : ""}
             <div class="stat-chips">
               <div class="card stat-chip"><span class="eyebrow">Record</span><span class="num">${t.w}-${t.l}</span></div>
               <div class="card stat-chip"><span class="eyebrow">Win %</span><span class="num">${pct(t)}</span></div>

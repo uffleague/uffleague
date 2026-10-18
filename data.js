@@ -132,7 +132,7 @@ const LEAGUE = {
     "t1memanagement": "tlmemanagement", "maIikvrt": "maiikvrt", "nichelarpers": "day", "cooks423": "cooks", "t8l": "dictator 10",
     // Award winners listed under a shorter or misspelled name
     "biglester": "BIGGIECHEESE", "kevski": "Kevskiiiiiii", "VampViolence": "vampviolences", "yavient": "Yavientt",
-    "affused": "lord 9", "2687affused982673260": "lord 9",
+    "affused": "lord 9", "2687affused982673260": "lord 9", "touchdenim": "denim",
     // Head coaches' usernames (from the Season 7 coaches list) -> the name they go by
     "Aloneinnewyorkcity": "2 trey", "marmersie": "msuede", "loverloverlover": "248", "jumpbaI": "splndd"
   },
@@ -226,7 +226,8 @@ const LEAGUE = {
     { date: "2026-10-17", time: "15:12", type: "sign", player: "shazam", team: "San Francisco Miners", by: "sk8erboy111" },
     { date: "2026-10-17", time: "15:13", type: "sign", player: "AsianAustra", team: "Shiroishi Samurai", by: "Vljla6i" },
     { date: "2026-10-17", time: "15:23", type: "sign", player: "Jack", team: "Pittsburg Sentinels", by: "2 trey" },
-    { date: "2026-10-17", time: "15:23", type: "promotion", player: "SUPERKITOBOY9999", team: "Pittsburg Sentinels", role: "Assistant Head Coach", by: "2 trey" }
+    { date: "2026-10-17", time: "15:23", type: "promotion", player: "SUPERKITOBOY9999", team: "Pittsburg Sentinels", role: "Assistant Head Coach", by: "2 trey" },
+    { date: "2026-10-17", time: "21:36", type: "promotion", player: "denim", team: "Baltimore Bluejays", role: "Assistant Coach" }
   ],
   // Schedule. Each game lists its two teams (names must match the teams below).
   // Optional: time: "Sat 8 PM EST" once it's set, score: [21, 14] once it's final (same order as teams).
