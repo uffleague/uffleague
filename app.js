@@ -1483,12 +1483,18 @@
         ${(() => {
           const hasBox = final && g.box;
           const vod = gameVod(g.id);
-          if (!hasBox && !vod) return "";
+          // A live stream tied to this game (Admin -> Live Streams), playable right in the card
+          const live = (SAVED.streams || []).find((s) => s.gameId === g.id && streamEmbed(s.url));
+          const vodEmbed = vod && streamEmbed(vod.url);
+          if (!hasBox && !vod && !live) return "";
           return `
             <div class="game-actions">
               ${hasBox ? `<button type="button" class="box-toggle ${openBox ? "open" : ""}" data-box-toggle aria-expanded="${openBox}">Box score</button>` : ""}
-              ${vod ? `<a class="box-toggle vod-btn" href="${esc(vod.url)}" target="_blank" rel="noopener" title="${esc(vod.title)}">&#9654; VOD</a>` : ""}
+              ${live ? `<button type="button" class="box-toggle watch-btn" data-watch="${esc(streamEmbed(live.url))}" aria-expanded="false" title="${esc(live.title)}"><span class="live-dot"></span>Watch live</button>` : ""}
+              ${vodEmbed ? `<button type="button" class="box-toggle watch-btn" data-watch="${esc(vodEmbed)}" aria-expanded="false" title="${esc(vod.title)}">&#9654; Stream</button>`
+                : vod ? `<a class="box-toggle vod-btn" href="${esc(vod.url)}" target="_blank" rel="noopener" title="${esc(vod.title)}">&#9654; VOD</a>` : ""}
             </div>
+            ${live || vodEmbed ? `<div class="watch" hidden><div class="live-frame"><iframe title="Game stream" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div></div>` : ""}
             ${hasBox ? boxScore(g, [a, b], openBox) : ""}`;
         })()}
       </div>`;
@@ -2489,16 +2495,19 @@
       <section>
         <div class="section-head section-head--left"><h2>Live Streams</h2></div>
         <form class="card admin-card" id="streamForm" autocomplete="off">
-          <p class="muted small admin-note">Add a YouTube or Twitch link and it plays at the top of the home page. Twitch channel (twitch.tv/name), YouTube video or stream (watch?v=... or youtu.be/...), or a YouTube /channel/UC... link. Remove it when the broadcast ends.</p>
+          <p class="muted small admin-note">Add a YouTube or Twitch link and it plays at the top of the home page. Twitch channel (twitch.tv/name), YouTube video or stream (watch?v=... or youtu.be/...), or a YouTube /channel/UC... link. Pick the game to also put a <strong>Watch live</strong> button next to its box score that plays the stream right in the game card. Remove it when the broadcast ends.</p>
           <div class="admin-fields">
             <label class="field admin-grow"><span>Title</span><input name="title" maxlength="80" placeholder="Week 3 · Jazz vs Samurai" required></label>
             <label class="field admin-grow"><span>YouTube or Twitch link</span><input name="url" placeholder="https://www.twitch.tv/..." required></label>
+          </div>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Game (optional)</span>${gamePicker()}</label>
             <button class="btn btn-primary" type="submit">Add live stream</button>
           </div>
           <div class="admin-subhead admin-subhead--small">On the home page now (${list.length})</div>
           ${list.length ? list.map((s) => `
             <div class="list-row">
-              <div><strong>${esc(s.title)}</strong><div class="muted small">${esc(s.url)}</div></div>
+              <div><strong>${esc(s.title)}</strong><div class="muted small">${[s.gameId && gameLabel(s.gameId), esc(s.url)].filter(Boolean).join(" &middot; ")}</div></div>
               <button type="button" class="btn btn-ghost btn-sm" data-del-stream="${esc(s.id)}">Remove</button>
             </div>`).join("") : `<p class="muted small">No live streams added.</p>`}
         </form>
@@ -2626,24 +2635,26 @@
     return e ? `Week ${e.wk.week} &middot; ${esc(e.g.teams[0])} vs ${esc(e.g.teams[1])}` : id ? esc(id) : "";
   };
 
+  // Every scheduled game, by week, for tying a stream or VOD to a game
+  const gamePicker = () => `
+    <select name="gameId" class="select">
+      <option value="">Not tied to a game</option>
+      ${LEAGUE.schedule.map((wk) => `<optgroup label="Week ${wk.week}">${wk.games.map((g) => `<option value="${esc(g.id)}">${esc(g.id)} &middot; ${esc(g.teams[0])} vs ${esc(g.teams[1])}</option>`).join("")}</optgroup>`).join("")}
+    </select>`;
+
   function vodsAdminSection() {
     const list = SAVED.vods || [];
     return `
       <section>
         <div class="section-head section-head--left"><h2>VODs</h2></div>
         <form class="card admin-card" id="vodForm" autocomplete="off">
-          <p class="muted small admin-note">Add YouTube videos or Twitch past broadcasts and clips. Pick the game to put a <strong>VOD</strong> button next to its box score. Every VOD is also listed on the VODs page, newest first.</p>
+          <p class="muted small admin-note">Add YouTube videos or Twitch past broadcasts and clips. Pick the game to put a <strong>Stream</strong> button next to its box score that plays the video right in the game card. Every VOD is also listed on the VODs page, newest first.</p>
           <div class="admin-fields">
             <label class="field admin-grow"><span>Title</span><input name="title" maxlength="80" placeholder="Week 1 · Jazz vs Samurai" required></label>
             <label class="field admin-grow"><span>YouTube or Twitch link</span><input name="url" placeholder="https://www.youtube.com/watch?v=..." required></label>
           </div>
           <div class="admin-fields">
-            <label class="field admin-grow"><span>Game (optional)</span>
-              <select name="gameId" class="select">
-                <option value="">Not tied to a game</option>
-                ${LEAGUE.schedule.map((wk) => `<optgroup label="Week ${wk.week}">${wk.games.map((g) => `<option value="${esc(g.id)}">${esc(g.id)} &middot; ${esc(g.teams[0])} vs ${esc(g.teams[1])}</option>`).join("")}</optgroup>`).join("")}
-              </select>
-            </label>
+            <label class="field admin-grow"><span>Game (optional)</span>${gamePicker()}</label>
             <label class="field admin-grow"><span>Note (optional)</span><input name="note" maxlength="80" placeholder="Season 7 · Week 1"></label>
             <button class="btn btn-primary" type="submit">Add VOD</button>
           </div>
@@ -3212,7 +3223,7 @@
       else if (id === "streamForm") {
         const url = String(form.get("url") || "").trim();
         if (!streamEmbed(url)) throw new Error("That isn't a YouTube or Twitch link the site can play.");
-        const res = await adminCall({ action: "addStream", title: String(form.get("title") || ""), url });
+        const res = await adminCall({ action: "addStream", title: String(form.get("title") || ""), url, gameId: String(form.get("gameId") || "") });
         SAVED.streams = res.streams;
         adminFlash = "Added the live stream. It's on the home page now.";
       } else {
@@ -3273,8 +3284,24 @@
     }
 
     // Box score open / close
+    // Stream / VOD player inside a game card: one player per card, the iframe only loads while it's open
+    if (t.dataset && t.dataset.watch) {
+      const card = t.closest(".game-card");
+      const pane = card.querySelector(".watch");
+      const frame = pane.querySelector("iframe");
+      const open = !t.classList.contains("open");
+      card.querySelectorAll("[data-watch]").forEach((b) => { b.classList.remove("open"); b.setAttribute("aria-expanded", "false"); });
+      if (open) {
+        if (frame.getAttribute("src") !== t.dataset.watch) frame.src = t.dataset.watch;
+        t.classList.add("open");
+        t.setAttribute("aria-expanded", "true");
+      } else frame.removeAttribute("src"); // stops the video
+      pane.hidden = !open;
+      return;
+    }
+
     if (t.hasAttribute && t.hasAttribute("data-box-toggle")) {
-      const box = t.parentElement.nextElementSibling;
+      const box = t.closest(".game-card").querySelector(".box");
       const open = box.hidden;
       box.hidden = !open;
       t.classList.toggle("open", open);

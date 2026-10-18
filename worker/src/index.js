@@ -242,7 +242,7 @@ export default {
       const title = str(body.title, 80);
       const url = str(body.url, 300);
       if (!title || !url || !STREAM_HOSTS.test(url)) return json({ error: "Add a title and a YouTube or Twitch link." }, 400);
-      data.streams = [...data.streams, { id: crypto.randomUUID(), title, url, at: Date.now() }];
+      data.streams = [...data.streams, { id: crypto.randomUUID(), title, url, gameId: str(body.gameId, 20), at: Date.now() }];
       log = `Added live stream "${title}"`;
     } else if (body.action === "removeStream") {
       const gone = data.streams.find((s) => s.id === body.id);

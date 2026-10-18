@@ -665,6 +665,11 @@ button.box-toggle::after { content: " ▾"; }
 .box-toggle.open { background: var(--accent); color: var(--cream); }
 button.box-toggle.open::after { content: " ▴"; }
 .vod-btn:hover { background: var(--accent); color: var(--cream); }
+/* Stream / VOD player that opens inside a game card */
+.watch-btn { display: inline-flex; align-items: center; gap: 7px; }
+.watch-btn .live-dot { width: 8px; height: 8px; box-shadow: 0 0 0 3px rgba(209, 26, 42, .25); }
+.watch { margin-top: 2px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.watch[hidden] { display: none; }
 .box[hidden] { display: none; }
 .box-team { margin-top: 14px; }
 .box-team-head { display: flex; align-items: center; gap: 8px; font-family: var(--head); font-weight: 600; text-transform: uppercase; color: var(--heading); margin-bottom: 6px; }
