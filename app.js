@@ -2366,31 +2366,23 @@
     });
   }
 
-  /* ---------- Build a Team: spin a season, draft legends into a 7v7 lineup, play an 11-game season ---------- */
+  /* ---------- Build a Team: spin a season, draft legends into a 7v7 offense, play a 9-game season ---------- */
 
   const BT_SLOTS = [
     { id: "QB", label: "QB", side: "off", group: "QB", weight: 2 },
     { id: "WR1", label: "WR", side: "off", group: "WR" }, { id: "WR2", label: "WR", side: "off", group: "WR" },
     { id: "WR3", label: "WR", side: "off", group: "WR" }, { id: "WR4", label: "WR", side: "off", group: "WR" },
     { id: "WR5", label: "WR", side: "off", group: "WR" },
-    { id: "TE", label: "TE", side: "off", group: "TE" },
-    { id: "SH1", label: "Short", side: "def", group: "DB" }, { id: "SH2", label: "Short", side: "def", group: "DB" },
-    { id: "DP1", label: "Deep", side: "def", group: "DB" }, { id: "DP2", label: "Deep", side: "def", group: "DB" },
-    { id: "FS", label: "FS", side: "def", group: "DB" },
-    { id: "MLB", label: "MLB", side: "def", group: "LB" },
-    { id: "DE", label: "DE", side: "def", group: "DE" }
+    { id: "TE", label: "TE", side: "off", group: "TE" }
   ];
   const BT_GROUPS = {
     QB: { cats: ["QB"], award: "QBOTY", side: "off" },
     WR: { cats: ["WR"], award: "WROTY", side: "off" },
-    TE: { cats: ["TE"], award: "TEOTY", side: "off" },
-    DB: { cats: ["DB"], award: "DBOTY", side: "def" },
-    LB: { cats: ["LB", "Tackles"], award: "LBOTY", side: "def" },
-    DE: { cats: ["DE"], award: "DEOTY", side: "def" }
+    TE: { cats: ["TE"], award: "TEOTY", side: "off" }
   };
   const BT_GAMES = 9;
   const BT_RESPINS = 3;
-  const BT_BEST_KEY = "uffBuildBest9"; // new key for the 9-game season, so old 11-game bests don't show
+  const BT_BEST_KEY = "uffBuildBestOff9"; // offense-only, 9-game version (older formats' bests don't carry over)
 
   // Every Legacy player's 60-99 rating at each position group, worked out once
   let btLegends = null;
@@ -2466,8 +2458,7 @@
 
   // A 9-game season against random UFF teams; better lineups win more often
   function btPlaySeason(run) {
-    const off = btUnitOvr(run, "off"), def = btUnitOvr(run, "def");
-    const ovr = (off + def) / 2;
+    const ovr = btUnitOvr(run, "off");
     const opponents = shuffle(TEAMS.slice()).slice(0, BT_GAMES);
     const games = opponents.map((t) => {
       // Tuned so a near-perfect draft (OVR ~93) goes 9-0 about 1 time in 5 and an average one wins ~4
@@ -2477,7 +2468,7 @@
       return { team: t.name, win, us: win ? hi : lo, them: win ? lo : hi };
     });
     const wins = games.filter((g) => g.win).length;
-    run.result = { off: Math.round(off), def: Math.round(def), ovr: Math.round(ovr), wins, losses: BT_GAMES - wins, games };
+    run.result = { ovr: Math.round(ovr), wins, losses: BT_GAMES - wins, games };
     try {
       const best = JSON.parse(localStorage.getItem(BT_BEST_KEY));
       if (!best || wins > best.wins || (wins === best.wins && ovr > best.ovr)) localStorage.setItem(BT_BEST_KEY, JSON.stringify({ wins, ovr: Math.round(ovr) }));
@@ -2493,9 +2484,8 @@
   function btResultText(run) {
     const r = run.result;
     const line = (s) => `${s.label} ${legendRatings().get(run.slots[s.id]).name} (${legendRatings().get(run.slots[s.id]).ratings[s.group]})`;
-    return [`UFF Build a Team: ${r.wins}-${r.losses} | OVR ${r.ovr} (OFF ${r.off} / DEF ${r.def})`,
-      `Offense: ${BT_SLOTS.filter((s) => s.side === "off").map(line).join(", ")}`,
-      `Defense: ${BT_SLOTS.filter((s) => s.side === "def").map(line).join(", ")}`,
+    return [`UFF Build a Team: ${r.wins}-${r.losses} | OVR ${r.ovr}`,
+      BT_SLOTS.map(line).join(", "),
       "uffleague.github.io/#/build"].join("\n");
   }
 
@@ -2529,7 +2519,7 @@
           <span class="eyebrow">Your season</span>
           <div class="bt-record">${r.wins}-${r.losses}</div>
           <div class="bt-grade">${btGrade(r.wins)}</div>
-          <div class="muted">Team OVR <strong>${r.ovr}</strong> &middot; Offense ${r.off} &middot; Defense ${r.def}</div>
+          <div class="muted">Offense OVR <strong>${r.ovr}</strong></div>
           <div class="bt-games">${r.games.map((g) => `
             <div class="bt-game ${g.win ? "win" : "loss"}"><span class="bt-wl">${g.win ? "W" : "L"}</span>${anyTeamLogo(g.team)}<span class="bt-opp">${esc(teamShort(g.team))}</span><span class="bt-score">${g.us}-${g.them}</span></div>`).join("")}</div>
           <div class="admin-actions">
@@ -2554,7 +2544,7 @@
               const l = legends.get(k);
               const spots = btSpotsFor(bt, k);
               const top = [...new Map(spots.map((s) => [s.group, s])).values()]
-                .map((s) => [s.label === "Short" || s.label === "Deep" || s.label === "FS" ? "DB" : s.label, l.ratings[s.group]])
+                .map((s) => [s.label, l.ratings[s.group]])
                 .sort((a, b) => b[1] - a[1]).slice(0, 3);
               return `
                 <button type="button" class="bt-option ${bt.choosing === k ? "active" : ""}" data-bt-pick="${esc(k)}">
@@ -2570,7 +2560,7 @@
                 ${btSpotsFor(bt, bt.choosing)
                   .filter((s, i, all) => all.findIndex((x) => x.side === s.side && x.label === s.label) === i) // one button per kind of spot
                   .sort((a, b) => choosing.ratings[b.group] - choosing.ratings[a.group]).map((s) => `
-                  <button type="button" class="btn btn-ghost btn-sm" data-bt-slot="${s.id}">${s.side === "off" ? "OFF" : "DEF"} ${s.label} &middot; <b>${choosing.ratings[s.group]}</b></button>`).join("")}
+                  <button type="button" class="btn btn-ghost btn-sm" data-bt-slot="${s.id}">${s.label} &middot; <b>${choosing.ratings[s.group]}</b></button>`).join("")}
               </div>
             </div>` : `<p class="muted small">Pick a legend, then choose their spot.</p>`}
           <div class="admin-actions">
@@ -2584,7 +2574,7 @@
         <div class="page-head page-head--row">
           <div>
             <h1>Build a Team</h1>
-            <p class="muted">Spin a season, draft its legends into your 7v7 lineup, and see if they can go ${BT_GAMES}-0. Legends can play both ways: once on offense and once on defense.</p>
+            <p class="muted">Spin a season, draft its legends into your 7v7 offense (QB, 5 WR, TE), and see if they can go ${BT_GAMES}-0.</p>
           </div>
           ${best ? `<span class="pill">Your best: ${best.wins}-${BT_GAMES - best.wins} &middot; OVR ${best.ovr}</span>` : ""}
         </div>
@@ -2592,7 +2582,6 @@
           <div>${panel}</div>
           <div class="card admin-card bt-roster">
             ${unit("off", "Offense")}
-            ${unit("def", "Defense")}
             ${filled && !bt.result ? `<button class="btn btn-ghost btn-sm" id="btReset">Start over</button>` : ""}
           </div>
         </div>
