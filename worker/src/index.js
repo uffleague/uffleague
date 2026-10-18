@@ -66,14 +66,18 @@ const STREAM_HOSTS = /^https:\/\/(www\.|m\.)?(twitch\.tv|youtube\.com|youtu\.be)
 function cleanPlayoffs(p) {
   const slot = (v) => str(v, 60) || "";
   const from = (v) => (Number.isInteger(v) && v >= 0 && v < 64 ? v : null);
+  // Logo: an uploaded picture, or an image file that's part of the site (e.g. "ufb-7.png")
+  const logo = typeof (p && p.logo) === "string" ? p.logo : "";
+  const okLogo = (/^data:image\/(png|jpeg|webp);base64,/.test(logo) && logo.length < 400000) || /^[\w-]+(\/[\w-]+)*\.(png|jpe?g|webp)$/i.test(logo);
   return {
     title: str(p && p.title, 80) || "Playoffs",
-    logo: typeof (p && p.logo) === "string" && /^data:image\/(png|jpeg|webp);base64,/.test(p.logo) && p.logo.length < 400000 ? p.logo : "",
+    logo: okLogo ? logo : "",
     rounds: [].concat((p && p.rounds) || []).slice(0, 10).map((r) => ({
       name: str(r && r.name, 40) || "Round",
       games: [].concat((r && r.games) || []).slice(0, 32).map((g) => ({
         a: slot(g && g.a), b: slot(g && g.b),
         sa: str(String((g && g.sa) ?? ""), 4) || "", sb: str(String((g && g.sb) ?? ""), 4) || "",
+        seedA: str(String((g && g.seedA) ?? ""), 3) || "", seedB: str(String((g && g.seedB) ?? ""), 3) || "",
         adv: g && (g.adv === "a" || g.adv === "b") ? g.adv : "",
         fromA: from(g && g.fromA), fromB: from(g && g.fromB)
       }))

@@ -1711,13 +1711,15 @@
 
   // ---- Bracket rules (shared by the Playoff page, Predictions and the admin editor) ----
 
-  // Who won a real bracket game: the "advances" pick, otherwise the higher score
-  function gameWinner(g) {
-    if ((g.adv === "a" || g.adv === "b") && g[g.adv]) return g[g.adv];
+  // Which side won a real bracket game ("a" / "b"): the "advances" pick, otherwise the higher score
+  function winnerSide(g) {
+    if ((g.adv === "a" || g.adv === "b") && g[g.adv]) return g.adv;
     const a = Number(g.sa), b = Number(g.sb);
-    if (g.sa !== "" && g.sb !== "" && Number.isFinite(a) && Number.isFinite(b) && a !== b && g.a && g.b) return a > b ? g.a : g.b;
+    if (g.sa !== "" && g.sb !== "" && Number.isFinite(a) && Number.isFinite(b) && a !== b && g.a && g.b) return a > b ? "a" : "b";
     return "";
   }
+  const gameWinner = (g) => { const s = winnerSide(g); return s ? g[s] : ""; };
+  const seedOf = (g, s) => (s === "a" ? g.seedA : g.seedB) || "";
 
   // Spots in a round that the previous round's winners fill, in order: TBD spots and spots already filled
   // by "Send winners". Each is [game index, "a"|"b", which previous game feeds it].
@@ -1734,7 +1736,11 @@
     return out;
   }
 
-  const bracket = () => (SAVED.playoffs && SAVED.playoffs.rounds && SAVED.playoffs.rounds.length ? SAVED.playoffs : null);
+  // The saved bracket, or the sample one in data.js until an admin saves a real one
+  const bracket = () => {
+    const po = SAVED.playoffs || LEAGUE.playoffs;
+    return po && po.rounds && po.rounds.length ? po : null;
+  };
 
   // The championship result when the last round is a single decided game
   function bracketFinal() {
@@ -1748,10 +1754,10 @@
     return { champion: win, runnerUp: winA ? g.b : g.a, scoreA: winA ? g.sa : g.sb, scoreB: winA ? g.sb : g.sa };
   }
 
-  function bracketHead(po, sub) {
+  function bracketHead(po, sub, showLogo) {
     return `
       <div class="page-head bracket-head">
-        ${po.logo ? `<img class="bracket-logo" src="${po.logo}" alt="">` : ""}
+        ${showLogo && po.logo ? `<img class="bracket-logo" src="${esc(po.logo)}" alt="">` : ""}
         <div>
           <h1>${esc(po.title)}</h1>
           <p class="muted">${sub}</p>
@@ -1759,31 +1765,71 @@
       </div>`;
   }
 
+  // Short team name for bracket boxes: the team's code from data.js ("KCJ"), else its nickname
+  function teamShort(name) {
+    const t = TEAMS.find((x) => x.name === name);
+    return t ? t.code || name.split(" ").pop() : name;
+  }
+  function bracketTeam(name, seed) {
+    if (!name) return `<span class="team-cell muted">${seed ? `<span class="seed">${esc(seed)}</span>` : ""}TBD</span>`;
+    const t = TEAMS.find((x) => x.name === name);
+    return `<span class="team-cell" title="${esc(name)}">${t ? teamLogo(t) : `<img class="team-logo" src="${LEAGUE.brandLogo}" alt="">`}${seed ? `<span class="seed">${esc(seed)}</span>` : ""}<span>${esc(teamShort(name))}</span></span>`;
+  }
+
+  // Lays a bracket out. When the last round is one game and every round before it splits evenly,
+  // the first half of each round goes on the left, the second half on the right (mirrored), and the
+  // final sits in the middle under the bowl logo. Otherwise rounds just go left to right.
+  function bracketBoard(po, rounds, match, champ) {
+    const last = rounds.length - 1;
+    const split = rounds.length >= 2 && rounds[last].games.length === 1 && rounds.slice(0, -1).every((r) => r.games.length && r.games.length % 2 === 0);
+    const col = (r, from, to, cls = "") => `
+      <div class="bracket-round ${cls}">
+        <div class="bracket-round-name">${esc(rounds[r].name)}</div>
+        <div class="bracket-games">${rounds[r].games.slice(from, to).map((g, i) => match(g, r, from + i)).join("")}</div>
+      </div>`;
+    if (!split) {
+      return `
+        <div class="bracket">
+          ${rounds.map((round, r) => col(r, 0, round.games.length)).join("")}
+          ${champ ? `<div class="bracket-round bracket-round--champ"><div class="bracket-round-name">Champion</div><div class="bracket-games">${po.logo ? `<img class="bracket-center-logo" src="${esc(po.logo)}" alt="">` : ""}${champ}</div></div>` : ""}
+        </div>`;
+    }
+    const sides = rounds.slice(0, -1).map((round, r) => r);
+    return `
+      <p class="bracket-swipe">Swipe sideways to see the whole bracket &rarr;</p>
+      <div class="bracket bracket--split">
+        ${sides.map((r) => col(r, 0, rounds[r].games.length / 2, "bracket-round--left")).join("")}
+        <div class="bracket-center">
+          ${po.logo ? `<img class="bracket-center-logo" src="${esc(po.logo)}" alt="${esc(rounds[last].name)} logo">` : ""}
+          <div class="bracket-round-name">${esc(rounds[last].name)}</div>
+          ${match(rounds[last].games[0], last, 0)}
+          ${champ || ""}
+        </div>
+        ${sides.slice().reverse().map((r) => col(r, rounds[r].games.length / 2, rounds[r].games.length, "bracket-round--right")).join("")}
+      </div>`;
+  }
+
   function playoffPage() {
     const po = bracket();
     if (!po) return `<div class="wrap">${pageHead("Playoff")}${empty("Coming soon", "The playoff bracket will be revealed later in the season.")}</div>`;
     const final = bracketFinal();
-    const row = (g, s, win) => `
-      <div class="match-team ${win && win === g[s] ? "win" : win ? "lose" : ""}">
-        ${teamChip(g[s])}<span class="match-score">${esc(s === "a" ? g.sa : g.sb)}</span>
+    const match = (g) => {
+      const win = winnerSide(g);
+      const row = (s) => `
+        <div class="match-team ${win === s ? "win" : win ? "lose" : ""}">
+          ${bracketTeam(g[s], seedOf(g, s))}<span class="match-score">${esc(s === "a" ? g.sa : g.sb)}</span>
+        </div>`;
+      return `<div class="card match">${row("a")}${row("b")}</div>`;
+    };
+    const champ = `
+      <div class="card bracket-champ">
+        <span class="eyebrow">Champion</span>
+        ${final ? bracketTeam(final.champion) : `<span class="muted">To be decided</span>`}
       </div>`;
     return `
       <div class="wrap">
         ${bracketHead(po, `Season ${LEAGUE.season} playoff bracket`)}
-        <div class="bracket">
-          ${po.rounds.map((round) => `
-            <div class="bracket-round">
-              <div class="bracket-round-name">${esc(round.name)}</div>
-              <div class="bracket-games">
-                ${round.games.map((g) => { const win = gameWinner(g); return `<div class="card match">${row(g, "a", win)}${row(g, "b", win)}</div>`; }).join("")}
-              </div>
-            </div>`).join("")}
-          ${final ? `
-            <div class="bracket-round bracket-round--champ">
-              <div class="bracket-round-name">Champion</div>
-              <div class="bracket-games"><div class="card bracket-champ">${po.logo ? `<img class="bracket-champ-logo" src="${po.logo}" alt="">` : icon("awards")}${teamChip(final.champion, "lg")}</div></div>
-            </div>` : ""}
-        </div>
+        ${bracketBoard(po, po.rounds, match, champ)}
       </div>`;
   }
 
@@ -1801,8 +1847,12 @@
   function predictedRounds(po, picks) {
     const rounds = [];
     po.rounds.forEach((round, r) => {
-      const games = round.games.map((g) => ({ a: g.a, b: g.b }));
-      if (r > 0) feederSlots(round, r).forEach(([gi, s, k]) => { games[gi][s] = (rounds[r - 1].games[k] || {}).pick || ""; });
+      const games = round.games.map((g) => ({ a: g.a, b: g.b, seedA: g.seedA || "", seedB: g.seedB || "" }));
+      if (r > 0) feederSlots(round, r).forEach(([gi, s, k]) => {
+        const prev = rounds[r - 1].games[k] || {};
+        games[gi][s] = prev.pick || "";
+        games[gi][s === "a" ? "seedA" : "seedB"] = prev.pick ? (prev.pick === prev.a ? prev.seedA : prev.seedB) : "";
+      });
       games.forEach((g, gi) => {
         const p = picks[`${r}-${gi}`];
         g.pick = p && (p === g.a || p === g.b) ? p : "";
@@ -1824,9 +1874,15 @@
     const total = rounds.reduce((n, r) => n + r.games.length, 0);
     const team = (g, s, r, gi) => {
       const name = g[s];
-      const mark = g.pick === name && g.real ? (g.real === name ? `<span class="pick-mark ok">&#10003;</span>` : `<span class="pick-mark bad">&#10007;</span>`) : "";
-      return `<button type="button" class="match-team pick ${g.pick && g.pick === name ? "picked" : ""}" data-pick="${r}-${gi}" data-team="${esc(name)}" ${!name || state.locked ? "disabled" : ""}>${teamChip(name)}${mark}</button>`;
+      const mark = name && g.pick === name && g.real ? (g.real === name ? `<span class="pick-mark ok">&#10003;</span>` : `<span class="pick-mark bad">&#10007;</span>`) : "";
+      return `<button type="button" class="match-team pick ${g.pick && g.pick === name ? "picked" : ""}" data-pick="${r}-${gi}" data-team="${esc(name)}" ${!name || state.locked ? "disabled" : ""}>${bracketTeam(name, seedOf(g, s))}${mark}</button>`;
     };
+    const match = (g, r, gi) => `<div class="card match">${team(g, "a", r, gi)}${team(g, "b", r, gi)}</div>`;
+    const champBox = `
+      <div class="card bracket-champ">
+        <span class="eyebrow">Your champion</span>
+        ${champ ? bracketTeam(champ) : `<span class="muted">Pick a winner</span>`}
+      </div>`;
     return `
       <div class="wrap">
         ${bracketHead(po, "Pick who wins each game. Only you can see your picks; they're saved on this device.")}
@@ -1838,19 +1894,7 @@
             <button class="btn btn-ghost btn-sm" id="predReset" ${state.locked ? "disabled" : ""}>Reset</button>
           </span>
         </div>
-        <div class="bracket">
-          ${rounds.map((round, r) => `
-            <div class="bracket-round">
-              <div class="bracket-round-name">${esc(round.name)}</div>
-              <div class="bracket-games">
-                ${round.games.map((g, gi) => `<div class="card match">${team(g, "a", r, gi)}${team(g, "b", r, gi)}</div>`).join("")}
-              </div>
-            </div>`).join("")}
-          <div class="bracket-round bracket-round--champ">
-            <div class="bracket-round-name">Your Champion</div>
-            <div class="bracket-games"><div class="card bracket-champ">${po.logo ? `<img class="bracket-champ-logo" src="${po.logo}" alt="">` : icon("awards")}${champ ? teamChip(champ, "lg") : `<span class="muted">Pick a winner</span>`}</div></div>
-          </div>
-        </div>
+        ${bracketBoard(po, rounds, match, champBox)}
       </div>`;
   }
 
@@ -1910,8 +1954,8 @@
   }
 
   let poDraft = null;
-  const newGame = () => ({ a: "", b: "", sa: "", sb: "", adv: "", fromA: null, fromB: null });
-  const draftPlayoffs = () => (poDraft = poDraft || (SAVED.playoffs ? clone(SAVED.playoffs) : { title: `Season ${LEAGUE.season} Playoffs`, logo: "", rounds: [] }));
+  const newGame = () => ({ a: "", b: "", sa: "", sb: "", seedA: "", seedB: "", adv: "", fromA: null, fromB: null });
+  const draftPlayoffs = () => (poDraft = poDraft || (bracket() ? clone(bracket()) : { title: `Season ${LEAGUE.season} Playoffs`, logo: "", rounds: [] }));
 
   function playoffEditor() {
     const d = draftPlayoffs();
@@ -1939,11 +1983,13 @@
           </div>
           ${round.games.length ? round.games.map((g, gi) => `
             <div class="po-game">
+              <input class="po-score po-seed" data-r="${r}" data-g="${gi}" data-po-f="seedA" value="${esc(g.seedA || "")}" maxlength="3" placeholder="#" aria-label="Seed" title="Seed">
               <select class="select" data-r="${r}" data-g="${gi}" data-po-f="a">${opts(g.a)}</select>
               <input class="po-score" data-r="${r}" data-g="${gi}" data-po-f="sa" value="${esc(g.sa)}" inputmode="numeric" maxlength="4" aria-label="Score">
               <span class="muted small">vs</span>
               <input class="po-score" data-r="${r}" data-g="${gi}" data-po-f="sb" value="${esc(g.sb)}" inputmode="numeric" maxlength="4" aria-label="Score">
               <select class="select" data-r="${r}" data-g="${gi}" data-po-f="b">${opts(g.b)}</select>
+              <input class="po-score po-seed" data-r="${r}" data-g="${gi}" data-po-f="seedB" value="${esc(g.seedB || "")}" maxlength="3" placeholder="#" aria-label="Seed" title="Seed">
               <select class="select" data-r="${r}" data-g="${gi}" data-po-f="adv">
                 <option value="">Advances: choose...</option>
                 <option value="a" ${g.adv === "a" ? "selected" : ""}>${esc(g.a || "Team 1")} advances</option>
@@ -1972,17 +2018,22 @@
   // Fill the next round's TBD spots with this round's winners (or make the next round)
   function sendWinners(r) {
     const d = draftPlayoffs();
-    const winners = d.rounds[r].games.map(gameWinner);
+    // Each winner keeps its seed as it moves on
+    const winners = d.rounds[r].games.map((g) => { const s = winnerSide(g); return s ? { team: g[s], seed: seedOf(g, s) } : null; });
     let next = d.rounds[r + 1];
     if (!next) {
       next = { name: `Round ${r + 2}`, games: [] };
-      for (let k = 0; k < winners.length; k += 2) next.games.push({ ...newGame(), a: winners[k] || "", b: winners[k + 1] || "", fromA: k, fromB: k + 1 < winners.length ? k + 1 : null });
+      for (let k = 0; k < winners.length; k += 2) {
+        const [wa, wb] = [winners[k], winners[k + 1]];
+        next.games.push({ ...newGame(), a: wa ? wa.team : "", seedA: wa ? wa.seed : "", b: wb ? wb.team : "", seedB: wb ? wb.seed : "", fromA: k, fromB: k + 1 < winners.length ? k + 1 : null });
+      }
       d.rounds.push(next);
       return;
     }
     feederSlots(next, r + 1).forEach(([gi, s, k]) => {
       if (!winners[k]) return;
-      next.games[gi][s] = winners[k];
+      next.games[gi][s] = winners[k].team;
+      next.games[gi][s === "a" ? "seedA" : "seedB"] = winners[k].seed;
       next.games[gi][s === "a" ? "fromA" : "fromB"] = k;
     });
   }
