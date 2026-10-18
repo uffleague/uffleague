@@ -1,0 +1,8 @@
+# Admin saves for the UFF site. Deploy from this folder with: npx wrangler deploy
+name = "uff-admin"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[[kv_namespaces]]
+binding = "UFF"
+id = "0b794659841d44f9abc05cc76230ea05"

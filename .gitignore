@@ -1,0 +1,9 @@
+node_modules/
+.netlify/
+# Old Netlify hosting (the site is on GitHub Pages now; admin saves are in worker/)
+netlify/
+netlify.toml
+package.json
+package-lock.json
+.wrangler/
+worker/.wrangler/
