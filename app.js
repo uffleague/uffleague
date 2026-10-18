@@ -726,19 +726,23 @@
   ];
 
   // Where a player ranks in each All-Time stat tab (same order as the Stats page), best ranks first
-  let allTimeOrder = null;
-  function allTimeRanks(name) {
-    if (!allTimeOrder) {
-      allTimeOrder = LEAGUE.stats.categories.map((c) => {
-        const cat = allTimeCat(c.key);
-        const rows = statRowsFor(cat, "alltime").sort((a, b) => (b[cat.sort] || 0) - (a[cat.sort] || 0) || a.player.localeCompare(b.player));
+  // Where a player ranks in each stat tab ("alltime" or this "season"), best ranks first
+  const rankOrder = {};
+  function statRanks(name, scope) {
+    if (!rankOrder[scope]) {
+      rankOrder[scope] = LEAGUE.stats.categories.map((c) => {
+        const cat = scope === "alltime" ? allTimeCat(c.key) : c;
+        const rows = statRowsFor(cat, scope)
+          .filter((r) => scope === "alltime" || (r[cat.sort] || 0) > 0) // this season: only players with that stat
+          .sort((a, b) => (b[cat.sort] || 0) - (a[cat.sort] || 0) || a.player.localeCompare(b.player));
         return { key: c.key, of: rows.length, rank: new Map(rows.map((r, i) => [r.player.toLowerCase(), i + 1])) };
       });
     }
     const key = aliasName(name).toLowerCase();
-    return allTimeOrder.filter((c) => c.rank.has(key)).map((c) => ({ key: c.key, rank: c.rank.get(key), of: c.of }))
+    return rankOrder[scope].filter((c) => c.rank.has(key)).map((c) => ({ key: c.key, rank: c.rank.get(key), of: c.of }))
       .sort((a, b) => a.rank - b.rank);
   }
+  const allTimeRanks = (name) => statRanks(name, "alltime");
 
   // Awards a player won, straight from the Awards page history: { code: [seasons...] }
   const AWARD_TO_LEGACY = { EOTY: "EXEOTY" }; // same award, different code in the legacy list
@@ -808,11 +812,18 @@
             <p class="muted">${t ? `<a class="plink" href="#/teams/${t.slug}">${t.name}</a>` : "Free agent"}</p>
             <div class="pos-row">${pos.map((p) => `<span class="pill">${p}</span>`).join("")}</div>
             ${(() => {
-              const ranks = allTimeRanks(name).filter((r) => r.rank <= 50).slice(0, 5); // only ranks worth showing off
-              return ranks.length ? `
+              // Once this season has stats, its ranks go on top and both rows shrink to fit
+              const season = statRanks(name, "season").slice(0, 4);
+              const all = allTimeRanks(name).filter((r) => r.rank <= 50).slice(0, season.length ? 3 : 5); // only ranks worth showing off
+              const row = (label, scope, ranks, topCut, of) => `
                 <div class="alltime-ranks">
-                  <span class="eyebrow">All-Time</span>
-                  ${ranks.map((r) => `<a class="rank-pill ${r.rank <= 10 ? "top" : ""}" href="#/stats/alltime/${r.key}" title="#${r.rank} of ${r.of} in All-Time ${r.key}">${r.key} <b>#${r.rank}</b></a>`).join("")}
+                  <span class="eyebrow rank-label">${label}</span>
+                  ${ranks.map((r) => `<a class="rank-pill ${r.rank <= topCut ? "top" : ""}" href="#/stats/${scope}/${r.key}" title="#${r.rank} of ${r.of} in ${of} ${r.key}">${r.key} <b>#${r.rank}</b></a>`).join("")}
+                </div>`;
+              return season.length || all.length ? `
+                <div class="rank-rows ${season.length ? "compact" : ""}">
+                  ${season.length ? row(`S${LEAGUE.season}`, "season", season, 3, `Season ${LEAGUE.season}`) : ""}
+                  ${all.length ? row("All-Time", "alltime", all, 10, "All-Time") : ""}
                 </div>` : "";
             })()}
           </div>
