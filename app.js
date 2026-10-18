@@ -2524,8 +2524,13 @@
       });
       if (names.size) btPools[season] = [...names];
     });
+    // Legends whose honors aren't tied to a season (UFB titles, All-Flag teams, crowns...) get their own "All-Time" spin
+    const covered = new Set(Object.values(btPools).flat());
+    const rest = [...legends.keys()].filter((k) => !covered.has(k));
+    if (rest.length) btPools.all = rest;
     return btPools;
   }
+  const btPoolLabel = (key) => (key === "all" ? "All-Time" : `Season ${key}`);
 
   let bt = null; // the run in progress
   const btNew = () => ({ slots: {}, spin: null, choosing: null, respins: BT_RESPINS, result: null });
@@ -2626,14 +2631,14 @@
       panel = `
         <div class="card admin-card bt-spin-panel">
           <div class="bt-round">Pick ${filled + 1} of ${BT_SLOTS.length}</div>
-          <p class="muted">Spin to land on a season, then draft one of its legends.</p>
+          <p class="muted">Spin to land on a season (or All-Time), then draft one of its legends.</p>
           <button class="btn btn-primary bt-spin-btn" id="btSpin">Spin a season</button>
         </div>`;
     } else {
       const choosing = bt.choosing && legends.get(bt.choosing);
       panel = `
         <div class="card admin-card bt-spin-panel">
-          <div class="bt-round">Pick ${filled + 1} of ${BT_SLOTS.length} &middot; <span class="bt-season">Season ${bt.spin.season}</span></div>
+          <div class="bt-round">Pick ${filled + 1} of ${BT_SLOTS.length} &middot; <span class="bt-season">${btPoolLabel(bt.spin.season)}</span></div>
           <div class="bt-options">
             ${bt.spin.options.map((k) => {
               const l = legends.get(k);
