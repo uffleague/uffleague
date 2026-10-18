@@ -1217,6 +1217,132 @@
       </div>`;
   }
 
+  /* ---------- Compare (head to head) ---------- */
+
+  // Picked players and scope live in the address: #/compare/season/<a>/<b>
+  const cmp = { scope: "season", a: "", b: "" };
+  const cmpRows = {};
+  // Every stat tab scored with the All-Time FPTS formulas, for this season or all time: [{ key, rows: Map(name -> row) }]
+  function compareTabs(scope) {
+    return (cmpRows[scope] = cmpRows[scope] || LEAGUE.stats.categories.map((c) => ({
+      key: c.key,
+      rows: new Map(statRowsFor(allTimeCat(c.key), scope).map((r) => [r.player.toLowerCase(), r]))
+    })));
+  }
+  const round1 = (n) => Math.round(n * 10) / 10;
+
+  function comparePage() {
+    const names = allPlayerNames();
+    const find = (typed) => {
+      const key = aliasName(String(typed).trim()).toLowerCase();
+      return key ? names.find((n) => n.toLowerCase() === key) || null : null;
+    };
+    const A = find(cmp.a), B = find(cmp.b);
+    const scopeLabel = cmp.scope === "season" ? `Season ${LEAGUE.season}` : "All-Time";
+    const picker = (id, label, value) => `
+      <label class="cmp-pick">
+        <span class="eyebrow">${label}</span>
+        <span class="search">${icon("search")}<input id="${id}" type="search" list="cmpNames" value="${esc(value)}" placeholder="Search any player..." autocomplete="off"></span>
+      </label>`;
+    const top = `
+      <div class="wrap">
+        <div class="page-head">
+          <h1 class="title-icon">${icon("compare")}Head to Head</h1>
+          <p class="muted">Pick any two players to compare their fantasy points by stat category and their awards.</p>
+        </div>
+        <div class="cmp-pickers">
+          ${picker("cmpA", "Player A", A || cmp.a)}
+          <button type="button" class="cmp-swap" id="cmpSwap" title="Swap players" aria-label="Swap players">&#8646;</button>
+          ${picker("cmpB", "Player B", B || cmp.b)}
+          <label class="cmp-pick cmp-pick--scope">
+            <span class="eyebrow">Stats</span>
+            <select id="cmpScope" class="select">
+              <option value="season" ${cmp.scope === "season" ? "selected" : ""}>Season ${LEAGUE.season}</option>
+              <option value="alltime" ${cmp.scope === "alltime" ? "selected" : ""}>All-Time</option>
+            </select>
+          </label>
+        </div>
+        <datalist id="cmpNames">${names.map((n) => `<option value="${esc(n)}">`).join("")}</datalist>`;
+    if (!A || !B) {
+      const missing = [[cmp.a, A], [cmp.b, B]].filter(([typed, hit]) => typed && !hit).map(([typed]) => `"${esc(typed)}"`);
+      return `${top}
+        ${missing.length ? `<p class="login-error cmp-missing">Couldn't find ${missing.join(" or ")}. Pick a name from the list.</p>` : ""}
+        ${empty("Pick two players", "Search for a player in each box to see them head to head.")}
+      </div>`;
+    }
+
+    const tabs = compareTabs(cmp.scope);
+    const scores = [A, B].map((name) => {
+      const cats = tabs.map((t) => {
+        const r = t.rows.get(name.toLowerCase());
+        return { key: t.key, v: r && typeof r.fpts === "number" ? round1(r.fpts) : 0 };
+      });
+      return { name, cats, total: round1(cats.reduce((s, c) => s + c.v, 0)), team: currentTeam(name) };
+    });
+    const [a, b] = scores;
+    const winner = a.total === b.total ? null : a.total > b.total ? a : b;
+    const verdict = !a.total && !b.total
+      ? `No ${scopeLabel} stats yet for either player${cmp.scope === "season" ? ` &middot; <a class="link" href="#/compare/alltime/${encodeURIComponent(A)}/${encodeURIComponent(B)}">see All-Time</a>` : ""}`
+      : winner ? `<strong>${esc(winner.name)} has the better ${cmp.scope === "season" ? "season" : "all-time"} rating</strong> &mdash; ${a.total} vs ${b.total} FPTS`
+      : `<strong>Dead even</strong> &mdash; ${a.total} FPTS each`;
+    const legacy = computeLegacy();
+    const legOf = (name) => legacy.find((p) => p.name.toLowerCase() === name.toLowerCase());
+
+    return `${top}
+        <div class="cmp-verdict">${verdict}</div>
+        <div class="cmp-cards">
+          ${scores.map((s) => `
+            <div class="card cmp-card ${winner === s ? "win" : ""}">
+              <a class="cmp-who" href="#/players/${encodeURIComponent(s.name)}">
+                ${s.team ? teamLogo(s.team, "lg") : `<img class="team-logo lg" src="${LEAGUE.brandLogo}" alt="">`}
+                <span><span class="cmp-name">${esc(s.name)}</span><span class="muted small">${s.team ? s.team.name : "Free agent"}</span></span>
+              </a>
+              <div class="cmp-rating">
+                <span class="eyebrow">${scopeLabel} rating (FPTS)</span>
+                <span class="cmp-num">${s.total}</span>
+                ${winner === s ? `<span class="cmp-badge">&#9733; Higher rating</span>` : ""}
+              </div>
+            </div>`).join("")}
+        </div>
+        <div class="card table-card cmp-table-card">
+          <div class="table-scroll">
+            <table class="standings cmp-table">
+              <thead><tr><th class="team-col">Category (FPTS)</th><th>${esc(A)}</th><th>${esc(B)}</th></tr></thead>
+              <tbody>
+                ${tabs.map((t, i) => {
+                  const va = a.cats[i].v, vb = b.cats[i].v;
+                  return `<tr>
+                    <td class="team-col"><a class="plink" href="#/stats/${cmp.scope}/${t.key}">${t.key}</a></td>
+                    <td class="${va > vb ? "cmp-hi" : ""}">${va.toLocaleString()}</td>
+                    <td class="${vb > va ? "cmp-hi" : ""}">${vb.toLocaleString()}</td>
+                  </tr>`;
+                }).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card player-section cmp-awards">
+          <div class="table-title player-section-head">${icon("scores", "sm")}Awards &amp; Accolades</div>
+          <div class="cmp-award-cols">
+            ${[A, B].map((name) => {
+              const leg = legOf(name);
+              const honors = playerHonors(name, leg);
+              const n = honors.reduce((sum, h) => sum + h.n, 0) + (leg && leg.hof ? 1 : 0);
+              return `
+                <div class="cmp-award-col">
+                  <div class="cmp-award-head"><strong>${esc(name)}</strong>
+                    ${leg ? `<span class="legacy-rank-badge">${icon("legacy")}Legacy #${leg.rank} &middot; ${leg.score} pts</span>` : ""}
+                    <span class="pill">${n} honor${n === 1 ? "" : "s"}</span></div>
+                  ${n ? `<div class="legacy-honors">${leg && leg.hof ? hofBadge : ""}${honors.map((h) => `
+                    <span class="honor">${LEAGUE.legacy.labels[h.code] || h.code.replace(/_/g, " ")}${h.n > 1 ? ` <b>&times;${h.n}</b>` : ""}</span>`).join("")}</div>`
+                    : `<p class="muted small">No honors yet.</p>`}
+                </div>`;
+            }).join("")}
+          </div>
+        </div>
+      </div>`;
+  }
+
   /* ---------- Updates ---------- */
 
   let updatesFilter = "all";
@@ -3359,7 +3485,7 @@
     schedule,
     scores,
     stats,
-    compare: placeholder("Compare", "Head-to-head comparisons are on the way."),
+    compare: comparePage,
     awards,
     allflag: allFlagPage,
     playoff: playoffPage,
@@ -3396,6 +3522,10 @@
     const [section, sub] = parts;
     if (section === "schedule" && sub) scheduleWeek = Number(sub);
     if (section === "allflag") allFlagSeason = Number(sub) || null;
+    if (section === "compare") {
+      cmp.scope = sub === "alltime" ? "alltime" : "season";
+      try { cmp.a = decodeURIComponent(parts[2] || ""); cmp.b = decodeURIComponent(parts[3] || ""); } catch (e) {}
+    }
     if (section === "updates") updatesFilter = UPDATE_TYPES[sub] ? sub : "all";
     if (section === "stats") {
       statsScope = sub === "alltime" ? "alltime" : "season";
@@ -3692,6 +3822,12 @@
 
     if (t.id === "resClear") { resDraft = null; render(); return; }
     if (t.id === "txClear") { txDraft = null; render(); return; }
+    // Compare: swap the two players
+    if (t.id === "cmpSwap") {
+      location.hash = `#/compare/${cmp.scope}/${encodeURIComponent(cmp.b)}/${encodeURIComponent(cmp.a)}`;
+      return;
+    }
+
     // All-Flag adder
     if (t.id === "afClear") { afDraft = null; return renderKeepScroll(); }
     if (t.id === "afSave" || t.dataset.afDel) {
@@ -3871,6 +4007,10 @@
     if (e.target.id === "awardSeason") location.hash = `#/awards/${e.target.value}`;
     if (e.target.id === "scheduleWeek") location.hash = `#/schedule/${e.target.value}`;
     if (e.target.id === "allFlagSeason") location.hash = `#/allflag/${e.target.value}`;
+    if (["cmpA", "cmpB", "cmpScope"].includes(e.target.id)) {
+      const val = (id) => (document.getElementById(id) || {}).value || "";
+      location.hash = `#/compare/${val("cmpScope") || "season"}/${encodeURIComponent(val("cmpA").trim())}/${encodeURIComponent(val("cmpB").trim())}`;
+    }
   });
 
   window.addEventListener("hashchange", render);
