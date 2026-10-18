@@ -259,36 +259,6 @@ const LEAGUE = {
   // Division / conference / non-conference is worked out from the teams automatically.
   // Format: { series: 1, week: 1, games: [{ id: "W1-1", teams: ["Novasota Wolf Pack", "San Jose Scarecrows"] }, ...] }
   schedule: [],
-  // Sample playoff bracket (14 random teams, 7 per conference, no games played yet). Shown on the Playoff page
-  // until an admin saves a real bracket from Admin -> Playoffs. Left half of each round = Grand Central,
-  // right half = The Ridge; the last round sits in the middle. An empty team = winner of the round before.
-  playoffs: {
-    title: "Season 7 Playoffs",
-    logo: "logos/bowls/ufb-7.png",
-    rounds: [
-      { name: "Wild Card", games: [
-        { a: "Detroit Dynasty", seedA: "4", b: "Baltimore Bluejays", seedB: "5", sa: "", sb: "", adv: "", fromA: null, fromB: null },
-        { a: "New Orleans Raiders", seedA: "2", b: "Sarnia City Broncos", seedB: "7", sa: "", sb: "", adv: "", fromA: null, fromB: null },
-        { a: "Havana Toroccoros", seedA: "3", b: "Pittsburg Sentinels", seedB: "6", sa: "", sb: "", adv: "", fromA: null, fromB: null },
-        { a: "Novasota Wolf Pack", seedA: "4", b: "Columbus Colts", seedB: "5", sa: "", sb: "", adv: "", fromA: null, fromB: null },
-        { a: "Rose City Reapers", seedA: "2", b: "Long Beach Pirates", seedB: "7", sa: "", sb: "", adv: "", fromA: null, fromB: null },
-        { a: "San Francisco Miners", seedA: "3", b: "Costa Rica Pumas", seedB: "6", sa: "", sb: "", adv: "", fromA: null, fromB: null }
-      ] },
-      { name: "Divisional", games: [
-        { a: "Kansas City Jazz", seedA: "1", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null },
-        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null },
-        { a: "Shiroishi Samurai", seedA: "1", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null },
-        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null }
-      ] },
-      { name: "Conference Finals", games: [
-        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null },
-        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null }
-      ] },
-      { name: "United Flag Bowl VII", games: [
-        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null }
-      ] }
-    ]
-  },
   // Records page. Each record: label, holders (one or more names), value, and season if single-season.
   // Single-season: `stat` = box score stat this season's games are checked against; beating the record replaces it.
   // Career: `career` = All-Time stat tabs + stat to add up; holders and value are worked out from the All-Time stats.
