@@ -172,7 +172,7 @@
 
   const teamLogo = (t, size = "") =>
     t.logo
-      ? `<img class="team-logo custom ${size}" src="${t.logo}" alt="${t.name} logo">`
+      ? `<img class="team-logo custom ${size}" src="${t.logo}${LEAGUE.logoVersion ? `?v=${LEAGUE.logoVersion}` : ""}" alt="${t.name} logo">`
       : `<img class="team-logo ${size}" src="logo.png" alt="">`;
 
   const pageHead = (title, sub) => `

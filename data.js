@@ -8,6 +8,8 @@ const LEAGUE = {
   year: 2026,
   brandLogo: "logo-main.png", // sidebar + home page logo
   // Team logos: add logo: "logos/<file>.png" to a team. Teams without one use logo.png.
+  // Change logoVersion whenever a logo file is replaced, so browsers load the new picture.
+  logoVersion: "2026-10-17b",
   // Awards shown on the Awards page. featured: true = big card in the top row.
   awards: [
     { code: "MVP", name: "Most Valuable Player", featured: true },
