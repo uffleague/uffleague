@@ -258,6 +258,36 @@ const LEAGUE = {
   // Division / conference / non-conference is worked out from the teams automatically.
   // Format: { series: 1, week: 1, games: [{ id: "W1-1", teams: ["Novasota Wolf Pack", "San Jose Scarecrows"] }, ...] }
   schedule: [],
+  // Sample playoff bracket (14 random teams, 7 per conference, no games played yet). Shown on the Playoff page
+  // until an admin saves a real bracket from Admin -> Playoffs. Left half of each round = Grand Central,
+  // right half = The Ridge; the last round sits in the middle. An empty team = winner of the round before.
+  playoffs: {
+    title: "Season 7 Playoffs",
+    logo: "logos/bowls/ufb-7.png",
+    rounds: [
+      { name: "Wild Card", games: [
+        { a: "Detroit Dynasty", seedA: "4", b: "Baltimore Bluejays", seedB: "5", sa: "", sb: "", adv: "", fromA: null, fromB: null },
+        { a: "New Orleans Raiders", seedA: "2", b: "Sarnia City Broncos", seedB: "7", sa: "", sb: "", adv: "", fromA: null, fromB: null },
+        { a: "Havana Toroccoros", seedA: "3", b: "Pittsburg Sentinels", seedB: "6", sa: "", sb: "", adv: "", fromA: null, fromB: null },
+        { a: "Novasota Wolf Pack", seedA: "4", b: "Columbus Colts", seedB: "5", sa: "", sb: "", adv: "", fromA: null, fromB: null },
+        { a: "Rose City Reapers", seedA: "2", b: "Long Beach Pirates", seedB: "7", sa: "", sb: "", adv: "", fromA: null, fromB: null },
+        { a: "San Francisco Miners", seedA: "3", b: "Costa Rica Pumas", seedB: "6", sa: "", sb: "", adv: "", fromA: null, fromB: null }
+      ] },
+      { name: "Divisional", games: [
+        { a: "Kansas City Jazz", seedA: "1", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null },
+        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null },
+        { a: "Shiroishi Samurai", seedA: "1", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null },
+        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null }
+      ] },
+      { name: "Conference Finals", games: [
+        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null },
+        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null }
+      ] },
+      { name: "United Flag Bowl VII", games: [
+        { a: "", seedA: "", b: "", seedB: "", sa: "", sb: "", adv: "", fromA: null, fromB: null }
+      ] }
+    ]
+  },
   // Records page. Each record: label, holders (one or more names), value, and season if single-season.
   // Single-season: `stat` = box score stat this season's games are checked against; beating the record replaces it.
   // Career: `career` = All-Time stat tabs + stat to add up; holders and value are worked out from the All-Time stats.
@@ -446,21 +476,21 @@ const LEAGUE = {
         {
           name: "North Division",
           teams: [
-            { name: "Pittsburg Sentinels", code: "PIT", coach: "2 trey", logo: "logos/pittsburg-sentinels.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Kansas City Jazz", code: "KCJ", coach: "rekid", logo: "logos/kansas-city-jazz.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Seattle Skyclaws", code: "SEA", coach: "a1w", logo: "logos/seattle-skyclaws.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Havana Toroccoros", code: "HAV", coach: "freudiah", logo: "logos/havana-toroccoros.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Baltimore Bluejays", code: "BAL", coach: "breakxu", logo: "logos/baltimore-bluejays.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
+            { name: "Pittsburg Sentinels", code: "PIT", color: "#1d1d1f", coach: "2 trey", logo: "logos/pittsburg-sentinels.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Kansas City Jazz", code: "KCJ", color: "#8e3fe0", coach: "rekid", logo: "logos/kansas-city-jazz.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Seattle Skyclaws", code: "SEA", color: "#c4161c", coach: "a1w", logo: "logos/seattle-skyclaws.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Havana Toroccoros", code: "HAV", color: "#0041dd", coach: "freudiah", logo: "logos/havana-toroccoros.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Baltimore Bluejays", code: "BAL", color: "#1f6fd1", coach: "breakxu", logo: "logos/baltimore-bluejays.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         },
         {
           name: "South Division",
           teams: [
-            { name: "New Orleans Raiders", code: "NO", coach: "BIGGIECHEESE", logo: "logos/new-orleans-raiders.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "San Jose Scarecrows", code: "SJS", coach: "zay balla", logo: "logos/san-jose-scarecrows.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Detroit Dynasty", code: "DET", coach: "fox balla", logo: "logos/detroit-dynasty.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Sarnia City Broncos", code: "SCB", coach: "desiredsantana", logo: "logos/sarnia-city-broncos.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Toronto Maples", code: "TOR", coach: "zlssei", logo: "logos/toronto-maples.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
+            { name: "New Orleans Raiders", code: "NO", color: "#2b2f36", coach: "BIGGIECHEESE", logo: "logos/new-orleans-raiders.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "San Jose Scarecrows", code: "SJS", color: "#f8aa02", coach: "zay balla", logo: "logos/san-jose-scarecrows.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Detroit Dynasty", code: "DET", color: "#4f1b84", coach: "fox balla", logo: "logos/detroit-dynasty.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Sarnia City Broncos", code: "SCB", color: "#db0028", coach: "desiredsantana", logo: "logos/sarnia-city-broncos.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Toronto Maples", code: "TOR", color: "#4b2381", coach: "zlssei", logo: "logos/toronto-maples.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         }
       ]
@@ -471,21 +501,21 @@ const LEAGUE = {
         {
           name: "North Division",
           teams: [
-            { name: "Olympia Owls", code: "OLY", coach: "fooge", logo: "logos/olympia-owls.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "San Francisco Miners", code: "SF", coach: "sk8erboy111", logo: "logos/san-francisco-miners.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Novasota Wolf Pack", code: "NWP", coach: "Yacht", logo: "logos/novasota-wolf-pack.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Long Beach Pirates", code: "LBP", coach: "splndd", logo: "logos/long-beach-pirates.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Vienna Angels", code: "VIE", coach: "Kamil08", logo: "logos/vienna-angels.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
+            { name: "Olympia Owls", code: "OLY", color: "#1e5b45", coach: "fooge", logo: "logos/olympia-owls.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "San Francisco Miners", code: "SF", color: "#cf1d1d", coach: "sk8erboy111", logo: "logos/san-francisco-miners.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Novasota Wolf Pack", code: "NWP", color: "#2a5a3f", coach: "Yacht", logo: "logos/novasota-wolf-pack.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Long Beach Pirates", code: "LBP", color: "#2a8de0", coach: "splndd", logo: "logos/long-beach-pirates.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Vienna Angels", code: "VIE", color: "#e5ad00", coach: "Kamil08", logo: "logos/vienna-angels.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         },
         {
           name: "South Division",
           teams: [
-            { name: "Columbus Colts", code: "CLB", coach: "9kb2", logo: "logos/columbus-colts.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Costa Rica Pumas", code: "CR", coach: "msuede", logo: "logos/costa-rica-pumas.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Rose City Reapers", code: "RCR", coach: "ACTIVIST000", logo: "logos/rose-city-reapers.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Shiroishi Samurai", code: "SHI", coach: "Vljla6i", logo: "logos/shiroishi-samurai.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Plymouth Huskies", code: "PLY", coach: "248", logo: "logos/plymouth-huskies.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
+            { name: "Columbus Colts", code: "CLB", color: "#1d4fb0", coach: "9kb2", logo: "logos/columbus-colts.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Costa Rica Pumas", code: "CR", color: "#1b2a5c", coach: "msuede", logo: "logos/costa-rica-pumas.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Rose City Reapers", code: "RCR", color: "#6a1fc4", coach: "ACTIVIST000", logo: "logos/rose-city-reapers.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Shiroishi Samurai", code: "SHI", color: "#f08a12", coach: "Vljla6i", logo: "logos/shiroishi-samurai.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Plymouth Huskies", code: "PLY", color: "#3a3d44", coach: "248", logo: "logos/plymouth-huskies.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         }
       ]

@@ -354,6 +354,19 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .bracket--split .match-team { padding: 8px 10px; font-size: 15px; font-family: var(--head); letter-spacing: .03em; }
 .bracket--split .match-team .team-cell { gap: 6px; }
 .bracket--split .match-team .team-logo { width: 28px; height: 28px; }
+/* Team-colored bracket boxes (like a broadcast bracket): team color fill, logo, code, seed */
+.match-team.tinted { background: var(--team); color: var(--team-ink); font-weight: 700; }
+.match-team.tinted .seed { color: var(--team-ink); opacity: .75; }
+.match-team.tinted .team-logo { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35)); }
+.match-team.tbd { background: #2f3447; color: #aab0c4; }
+.match-team.tbd .team-cell.muted { color: #aab0c4; }
+.match-team.tinted.win { box-shadow: inset 5px 0 0 var(--cream); }
+.match-team.tinted.lose, .match-team.tinted.faded { opacity: .4; }
+.match-team.tinted.picked { box-shadow: inset 0 0 0 3px var(--cream), inset 6px 0 0 var(--cream); }
+.match-team.tinted.pick:hover:not(:disabled) { filter: brightness(1.12); background: var(--team); }
+.match-team.tinted.picked, .match-team.tinted.picked:hover:not(:disabled) { background: var(--team); color: var(--team-ink); }
+.match-team.tinted + .match-team, .match-team.tbd + .match-team { border-top: 2px solid var(--surface); }
+.bracket--split .match-team.tinted .team-cell span:last-child { font-size: 17px; letter-spacing: .04em; }
 .pred-seeds { margin-bottom: 20px; }
 .pred-seed-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 28px; }
 .pred-seed { display: flex; align-items: center; gap: 10px; margin-top: 8px; }

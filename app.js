@@ -1864,6 +1864,16 @@
     const t = TEAMS.find((x) => x.name === name);
     return t ? t.code || name.split(" ").pop() : name;
   }
+  // A bracket box filled with the team's color (from data.js), with readable text on light colors
+  function teamTint(name) {
+    const t = name && TEAMS.find((x) => x.name === name);
+    if (!name) return { cls: "tbd", style: "" };
+    if (!t || !/^#[0-9a-f]{6}$/i.test(t.color || "")) return { cls: "", style: "" };
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(t.color.slice(i, i + 2), 16));
+    const light = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6;
+    return { cls: "tinted", style: `--team:${t.color};--team-ink:${light ? "#1a1f3d" : "#ffffff"}` };
+  }
+
   function bracketTeam(name, seed) {
     if (!name) return `<span class="team-cell muted">${seed ? `<span class="seed">${esc(seed)}</span>` : ""}TBD</span>`;
     return `<span class="team-cell" title="${esc(name)}">${anyTeamLogo(name)}${seed ? `<span class="seed">${esc(seed)}</span>` : ""}<span>${esc(teamShort(name))}</span></span>`;
@@ -1908,10 +1918,13 @@
     const final = bracketFinal();
     const match = (g) => {
       const win = winnerSide(g);
-      const row = (s) => `
-        <div class="match-team ${win === s ? "win" : win ? "lose" : ""}">
+      const row = (s) => {
+        const tint = teamTint(g[s]);
+        return `
+        <div class="match-team ${tint.cls} ${win === s ? "win" : win ? "lose" : ""}" style="${tint.style}">
           ${bracketTeam(g[s], seedOf(g, s))}<span class="match-score">${esc(s === "a" ? g.sa : g.sb)}</span>
         </div>`;
+      };
       return `<div class="card match">${row("a")}${row("b")}</div>`;
     };
     const champ = `
@@ -2031,7 +2044,8 @@
       const mark = !picked ? "" : realWon[r] && realWon[r].has(name) ? `<span class="pick-mark ok">&#10003;</span>`
         : realLost[r] && realLost[r].has(name) ? `<span class="pick-mark bad">&#10007;</span>` : "";
       // A game can be picked once both of its teams are known
-      return `<button type="button" class="match-team pick ${picked ? "picked" : ""}" data-pick="${r}-${gi}" data-team="${esc(name)}" ${!g.a || !g.b || state.locked ? "disabled" : ""}>${bracketTeam(name, seedOf(g, s))}${mark}</button>`;
+      const tint = teamTint(name);
+      return `<button type="button" class="match-team pick ${tint.cls} ${picked ? "picked" : g.pick ? "faded" : ""}" style="${tint.style}" data-pick="${r}-${gi}" data-team="${esc(name)}" ${!g.a || !g.b || state.locked ? "disabled" : ""}>${bracketTeam(name, seedOf(g, s))}${mark}</button>`;
     };
     const match = (g, r, gi) => `<div class="card match">${team(g, "a", r, gi)}${team(g, "b", r, gi)}</div>`;
     const champBox = `
