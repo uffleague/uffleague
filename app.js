@@ -1603,35 +1603,54 @@
     sessionStorage.removeItem("uffAdminFlash");
   } catch (e) {}
 
+  const ADMIN_TABS = [
+    ["overview", "Overview", "stats", () => adminOverview()],
+    ["stats", "Stat Adder", "scores", () => resultsSection()],
+    ["transactions", "Transactions", "updates", () => transactionsSection()],
+    ["streams", "Live Streams", "live", () => streamsAdminSection()],
+    ["playoffs", "Playoffs", "playoff", () => playoffsAdminSection()],
+    ["bowls", "Bowl History", "bowl", () => bowlsAdminSection()],
+    ["positions", "Positions", "teams", () => positionsSection()],
+    ["activity", "Activity", "clock", () => activitySection()]
+  ];
+  let adminTab = "overview";
+
+  function adminOverview() {
+    const finals = LEAGUE.schedule.reduce((n, w) => n + w.games.filter((g) => Array.isArray(g.score)).length, 0);
+    const games = LEAGUE.schedule.reduce((n, w) => n + w.games.length, 0);
+    const po = bracket();
+    return `
+      <div class="stat-chips admin-chips">
+        <div class="card stat-chip"><span class="eyebrow">Teams</span><span class="num">${TEAMS.length}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Games final</span><span class="num">${finals} / ${games}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Updates</span><span class="num">${UPDATES.length}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Live streams</span><span class="num">${(SAVED.streams || []).length}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Playoff bracket</span><span class="num">${po ? `${po.rounds.length} round${po.rounds.length === 1 ? "" : "s"}` : "None"}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Legacy players</span><span class="num">${LEAGUE.legacy.players.length}</span></div>
+      </div>
+      ${activitySection(5)}`;
+  }
+
   function admin() {
     const session = getAdmin();
     const user = session && session.user;
     if (user) {
-      const finals = LEAGUE.schedule.reduce((n, w) => n + w.games.filter((g) => Array.isArray(g.score)).length, 0);
-      const games = LEAGUE.schedule.reduce((n, w) => n + w.games.length, 0);
+      const tab = ADMIN_TABS.find(([k]) => k === adminTab) || ADMIN_TABS[0];
       return `
-        <div class="wrap">
+        <div class="wrap admin-page">
           <div class="page-head page-head--row">
             <div>
               <h1>Admin</h1>
-              <p class="muted">Logged in as <strong>${user}</strong></p>
+              <p class="muted">Logged in as <strong>${esc(user)}</strong></p>
             </div>
             <button class="btn btn-ghost" id="adminLogout">Log out</button>
           </div>
-          <div class="stat-chips admin-chips">
-            <div class="card stat-chip"><span class="eyebrow">Teams</span><span class="num">${TEAMS.length}</span></div>
-            <div class="card stat-chip"><span class="eyebrow">Games final</span><span class="num">${finals} / ${games}</span></div>
-            <div class="card stat-chip"><span class="eyebrow">Updates</span><span class="num">${UPDATES.length}</span></div>
-            <div class="card stat-chip"><span class="eyebrow">Legacy players</span><span class="num">${LEAGUE.legacy.players.length}</span></div>
-          </div>
+          <nav class="admin-tabs" aria-label="Admin sections">
+            ${ADMIN_TABS.map(([k, label, ic]) => `
+              <a href="#/admin/${k}" class="admin-tab ${k === tab[0] ? "active" : ""}" ${k === tab[0] ? 'aria-current="page"' : ""}>${icon(ic, "sm")}${label}</a>`).join("")}
+          </nav>
           ${flashBox()}
-          ${resultsSection()}
-          ${transactionsSection()}
-          ${streamsAdminSection()}
-          ${playoffsAdminSection()}
-          ${bowlsAdminSection()}
-          ${positionsSection()}
-          ${activitySection()}
+          ${tab[3]()}
         </div>`;
     }
     return `
@@ -1997,11 +2016,12 @@
     saveResult: "Results", deleteResult: "Results", saveUpdates: "Transactions", deleteUpdate: "Transactions",
     setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history"
   };
-  function activitySection() {
+  function activitySection(limit = 100) {
     return `
       <section>
-        <div class="section-head section-head--left"><h2>Activity Log</h2></div>
-        <div class="card list-card" id="activityList"><p class="muted admin-pad">Loading...</p></div>
+        <div class="section-head section-head--left"><h2>${limit < 100 ? "Recent Activity" : "Activity Log"}</h2>
+          ${limit < 100 ? `<a class="link" href="#/admin/activity">See all &rarr;</a>` : ""}</div>
+        <div class="card list-card" id="activityList" data-limit="${limit}"><p class="muted admin-pad">Loading...</p></div>
       </section>`;
   }
   async function loadActivity() {
@@ -2009,7 +2029,7 @@
     if (!box) return;
     try {
       const { activity } = await adminCall({ action: "activity" });
-      const list = (activity || []).slice(0, 100);
+      const list = (activity || []).slice(0, Number(box.dataset.limit) || 100);
       if (!document.body.contains(box)) return;
       box.innerHTML = list.length ? list.map((a) => `
         <div class="activity-row">
@@ -2099,6 +2119,12 @@
     if (section === "awards") {
       const s = Number(sub);
       awardsSeason = s >= 1 && s <= LEAGUE.season ? s : LEAGUE.season;
+    }
+    if (section === "admin") {
+      const tab = ADMIN_TABS.some(([k]) => k === sub) ? sub : "overview";
+      // A message from one tab doesn't follow you to another
+      if (tab !== adminTab) adminError = adminFlash = "";
+      adminTab = tab;
     }
     const page = section === "teams" && sub ? () => team(sub)
       : section === "players" && sub ? () => player(sub)

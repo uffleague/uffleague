@@ -175,6 +175,18 @@ h1, h2, h3 { font-family: var(--head); font-weight: 700; text-transform: upperca
 button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .honor-seasons { font-weight: 500; color: var(--muted); }
 
+/* ---------- Admin tabs ---------- */
+.admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.admin-tab {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 10px;
+  font-family: var(--head); font-weight: 600; font-size: 13px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--navy); background: var(--surface); border: 1.5px solid var(--line);
+}
+.admin-tab:hover { border-color: var(--navy); background: var(--cream-2); }
+.admin-tab.active { background: var(--navy); color: var(--cream); border-color: var(--navy); }
+.admin-page .section-head { margin-top: 24px; }
+.admin-page .admin-chips { margin-top: 20px; }
+
 /* ---------- Admin: recorded games, streams, playoffs editor, bowls, activity ---------- */
 .admin-subhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-family: var(--head); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--navy); font-size: 17px; margin-bottom: 4px; }
 .admin-subhead--small { font-size: 13px; margin: 18px 0 4px; }
