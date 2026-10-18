@@ -105,7 +105,7 @@
     })));
     SAVED.updates.forEach((u) => {
       if (u.source !== "bot") return;
-      u.player = aliasName(String(u.player).replace(/^@/, "").trim());
+      u.player = aliasName(mentionName(String(u.player)));
       if (u.by) u.by = aliasName(String(u.by).replace(/^@/, "").trim());
       const team = String(u.team).replace(/:[^:\s]+:/g, "").replace(/@/g, "").trim();
       u.team = teamLookup.get(team.toLowerCase()) || team;
@@ -1898,7 +1898,9 @@
     ["sign", /^(.*?)\s+has accepted the offer to\s+(.+?)[\s!.]*$/i],
     ["promotion", /^(.*?)\s+has been promoted to\s+(.+?)\s+of\s+(.+?)[\s!.]*$/i],
     ["release", /^(.*?)\s+(?:has been|was)\s+released\s+(?:by|from)\s+(.+?)[\s!.]*$/i],
-    ["demand", /^(.*?)\s+has\s+demanded\s+(?:a\s+release\s+)?(?:from\s+)?(.+?)[\s!.]*$/i]
+    ["demand", /^(.*?)\s+has\s+demanded\s+(?:a\s+release\s+)?(?:from\s+)?(.+?)[\s!.]*$/i],
+    // "@peachi® lie917 demands release from :NO~1: @New Orleans Raiders"
+    ["demand", /^(.*?)\s+demands?\s+(?:a\s+)?(?:release\s+)?from\s+(.+?)[\s!.]*$/i]
   ];
   const localDay = (d = new Date()) => d.toLocaleDateString("en-CA");
   const to24 = (h, m, ap) => `${String((Number(h) % 12) + (/p/i.test(ap) ? 12 : 0)).padStart(2, "0")}:${m}`;
@@ -1941,12 +1943,15 @@
       if (name.toLowerCase() !== raw.toLowerCase() && !out.renamed.some(([a]) => a === raw)) out.renamed.push([raw, name]);
       return name;
     };
-    let cur = null, wantBy = false;
+    let cur = null, wantBy = false, headerWhen = null;
     text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).forEach((line) => {
+      // A Discord message header ("ZevoraV2 APP — Yesterday at 10:25 PM") dates the transaction under it
+      if (/(^|\s)[—–]\s*(today|yesterday|\d{1,2}\/)/i.test(line) && txWhen(line, day)) { headerWhen = txWhen(line, day); return; }
       for (const [type, re] of TX_EVENTS) {
         const m = line.match(re);
         if (!m) continue;
-        cur = { type, player: rename(mentionName(m[1])) };
+        cur = { type, player: rename(mentionName(m[1])), ...(headerWhen || {}) };
+        headerWhen = null;
         if (type === "promotion") { cur.role = m[2].trim(); cur.team = txTeam(m[3]); } else cur.team = txTeam(m[2]);
         out.list.push(cur);
         wantBy = false;
