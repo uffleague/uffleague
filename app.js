@@ -261,8 +261,11 @@
 
   /* ---------- Players ---------- */
 
-  const playerLink = (name, cls = "") =>
-    `<a class="plink ${cls}" href="#/players/${encodeURIComponent(name)}">${name}</a>`;
+  // Old names (aliases in data.js) show and link as the name the player goes by now
+  const playerLink = (name, cls = "") => {
+    const n = aliasName(name);
+    return `<a class="plink ${cls}" href="#/players/${encodeURIComponent(n)}">${n}</a>`;
+  };
 
   // Every final game a player has a box score line in
   function playerGames(name) {
@@ -388,7 +391,7 @@
   ];
 
   function player(enc) {
-    const raw = decodeURIComponent(enc);
+    const raw = aliasName(decodeURIComponent(enc));
     const key = raw.toLowerCase();
     const games = playerGames(raw);
     const legacyAll = computeLegacy();
