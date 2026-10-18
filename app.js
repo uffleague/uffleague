@@ -1231,6 +1231,31 @@
   }
   const round1 = (n) => Math.round(n * 10) / 10;
 
+  // Every player for the dropdowns: teams A-Z (players A-Z inside each), then free agents A-Z
+  let comboCache = null;
+  function comboPlayers() {
+    if (comboCache) return comboCache;
+    const abc = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" });
+    comboCache = allPlayerNames().map((name) => ({ name, team: currentTeam(name) }))
+      .sort((a, b) => (a.team ? 0 : 1) - (b.team ? 0 : 1) || (a.team && b.team ? abc(a.team.name, b.team.name) : 0) || abc(a.name, b.name));
+    return comboCache;
+  }
+  const COMBO_MAX = 250;
+  // The rows of a dropdown: everyone while the box still shows the chosen player, otherwise matches for what's typed
+  function comboOptions(input) {
+    const selected = input.dataset.selected || "";
+    const q = input.value.trim() === selected ? "" : input.value.trim().toLowerCase();
+    const hits = comboPlayers().filter((p) => !q || p.name.toLowerCase().includes(q) || (p.team && p.team.name.toLowerCase().includes(q)));
+    if (!hits.length) return `<div class="combo-empty">No player matches "${esc(input.value.trim())}"</div>`;
+    return hits.slice(0, COMBO_MAX).map((p) => `
+      <div class="combo-opt ${p.name === selected ? "selected" : ""}" role="option" aria-selected="${p.name === selected}" data-combo-opt="${esc(p.name)}">
+        ${p.team ? teamLogo(p.team) : `<img class="team-logo" src="${LEAGUE.brandLogo}" alt="">`}
+        <span class="combo-name">${esc(p.name)}</span>
+        <span class="combo-team">${p.team ? esc(p.team.name) : "Free agent"}</span>
+        <span class="combo-check">${p.name === selected ? "&#10003;" : ""}</span>
+      </div>`).join("") + (hits.length > COMBO_MAX ? `<div class="combo-empty">${hits.length - COMBO_MAX} more &middot; keep typing to narrow it down</div>` : "");
+  }
+
   function comparePage() {
     const names = allPlayerNames();
     const find = (typed) => {
@@ -1239,11 +1264,17 @@
     };
     const A = find(cmp.a), B = find(cmp.b);
     const scopeLabel = cmp.scope === "season" ? `Season ${LEAGUE.season}` : "All-Time";
-    const picker = (id, label, value) => `
-      <label class="cmp-pick">
-        <span class="eyebrow">${label}</span>
-        <span class="search">${icon("search")}<input id="${id}" type="search" list="cmpNames" value="${esc(value)}" placeholder="Search any player..." autocomplete="off"></span>
-      </label>`;
+    // Player dropdown (see comboOptions): the chosen name is kept in data-selected
+    const picker = (id, label, value, selected, side) => `
+      <div class="cmp-pick">
+        <label class="eyebrow" for="${id}">${label}</label>
+        <div class="combo" data-combo="${side}">
+          <span class="search">${icon("search")}<input id="${id}" class="combo-input" value="${esc(value)}" data-selected="${esc(selected || "")}"
+            placeholder="Search any player or team..." autocomplete="off" spellcheck="false"
+            role="combobox" aria-expanded="false" aria-controls="${id}List" aria-autocomplete="list"></span>
+          <div class="combo-list" id="${id}List" role="listbox" hidden></div>
+        </div>
+      </div>`;
     const top = `
       <div class="wrap">
         <div class="page-head">
@@ -1251,9 +1282,9 @@
           <p class="muted">Pick any two players to compare their fantasy points by stat category and their awards.</p>
         </div>
         <div class="cmp-pickers">
-          ${picker("cmpA", "Player A", A || cmp.a)}
+          ${picker("cmpA", "Player A", A || cmp.a, A, "a")}
           <button type="button" class="cmp-swap" id="cmpSwap" title="Swap players" aria-label="Swap players">&#8646;</button>
-          ${picker("cmpB", "Player B", B || cmp.b)}
+          ${picker("cmpB", "Player B", B || cmp.b, B, "b")}
           <label class="cmp-pick cmp-pick--scope">
             <span class="eyebrow">Stats</span>
             <select id="cmpScope" class="select">
@@ -1262,7 +1293,7 @@
             </select>
           </label>
         </div>
-        <datalist id="cmpNames">${names.map((n) => `<option value="${esc(n)}">`).join("")}</datalist>`;
+      `;
     if (!A || !B) {
       const missing = [[cmp.a, A], [cmp.b, B]].filter(([typed, hit]) => typed && !hit).map(([typed]) => `"${esc(typed)}"`);
       return `${top}
@@ -3572,6 +3603,58 @@
   });
   // Clicking outside the menu or pressing Escape closes it
   document.addEventListener("click", (e) => { if (!menuPanel.hidden && !e.target.closest("#menuPanel, #menuBtn")) closeMenu(); });
+
+  // ---- Compare player dropdowns ----
+  const comboClose = (box) => {
+    if (!box) return;
+    box.querySelector(".combo-list").hidden = true;
+    box.querySelector(".combo-input").setAttribute("aria-expanded", "false");
+  };
+  const comboFill = (input) => {
+    const list = input.closest(".combo").querySelector(".combo-list");
+    list.innerHTML = comboOptions(input);
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    const sel = list.querySelector(".combo-opt.selected");
+    if (sel) list.scrollTop = sel.offsetTop - list.clientHeight / 2 + sel.offsetHeight / 2;
+  };
+  const comboPick = (box, name) => {
+    const side = box.dataset.combo;
+    location.hash = `#/compare/${cmp.scope}/${encodeURIComponent(side === "a" ? name : cmp.a)}/${encodeURIComponent(side === "b" ? name : cmp.b)}`;
+  };
+  const comboMove = (box, step) => {
+    const opts = [...box.querySelectorAll(".combo-opt")];
+    if (!opts.length) return;
+    const cur = opts.findIndex((o) => o.classList.contains("active"));
+    const next = cur < 0 ? (step > 0 ? 0 : opts.length - 1) : Math.max(0, Math.min(opts.length - 1, cur + step));
+    opts.forEach((o, i) => o.classList.toggle("active", i === next));
+    opts[next].scrollIntoView({ block: "nearest" });
+  };
+  app.addEventListener("focusin", (e) => {
+    if (!e.target.classList.contains("combo-input")) return;
+    e.target.select();
+    comboFill(e.target);
+  });
+  app.addEventListener("input", (e) => { if (e.target.classList.contains("combo-input")) comboFill(e.target); });
+  app.addEventListener("keydown", (e) => {
+    if (!e.target.classList.contains("combo-input")) return;
+    const box = e.target.closest(".combo");
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (box.querySelector(".combo-list").hidden) comboFill(e.target);
+      comboMove(box, e.key === "ArrowDown" ? 1 : -1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const opt = box.querySelector(".combo-opt.active") || box.querySelector(".combo-opt");
+      if (opt) comboPick(box, opt.dataset.comboOpt);
+    } else if (e.key === "Escape" || e.key === "Tab") comboClose(box);
+  });
+  // mousedown (not click) so picking happens before the box loses focus
+  app.addEventListener("mousedown", (e) => {
+    const opt = e.target.closest("[data-combo-opt]");
+    if (opt) { e.preventDefault(); comboPick(opt.closest(".combo"), opt.dataset.comboOpt); return; }
+    document.querySelectorAll(".combo").forEach((box) => { if (!box.contains(e.target)) comboClose(box); });
+  });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
 
   app.addEventListener("submit", async (e) => {
@@ -4007,10 +4090,7 @@
     if (e.target.id === "awardSeason") location.hash = `#/awards/${e.target.value}`;
     if (e.target.id === "scheduleWeek") location.hash = `#/schedule/${e.target.value}`;
     if (e.target.id === "allFlagSeason") location.hash = `#/allflag/${e.target.value}`;
-    if (["cmpA", "cmpB", "cmpScope"].includes(e.target.id)) {
-      const val = (id) => (document.getElementById(id) || {}).value || "";
-      location.hash = `#/compare/${val("cmpScope") || "season"}/${encodeURIComponent(val("cmpA").trim())}/${encodeURIComponent(val("cmpB").trim())}`;
-    }
+    if (e.target.id === "cmpScope") location.hash = `#/compare/${e.target.value}/${encodeURIComponent(cmp.a)}/${encodeURIComponent(cmp.b)}`;
   });
 
   window.addEventListener("hashchange", render);
