@@ -448,8 +448,11 @@
   }
 
   const gameSide = (name, score, won) => {
+  // Compact team label: the code ("KCJ"), or the nickname for a team outside the league ("Nightmares")
+  const shortName = (name) => { const t = teamByName(name); return t ? t.code || teamShort(name) : String(name).split(" ").pop(); };
+
     const t = teamByName(name);
-    return `<span class="hx-game-team ${won === false ? "lost" : ""}">${logoOr(t)}<span>${esc(t ? t.code || teamShort(name) : name)}</span>${score != null ? `<b>${score}</b>` : ""}</span>`;
+    return `<span class="hx-game-team ${won === false ? "lost" : ""}">${logoOr(t)}<span>${esc(shortName(name))}</span>${score != null ? `<b>${score}</b>` : ""}</span>`;
   };
 
   // Next games on the schedule, or the latest finals once nothing is left to play
@@ -485,7 +488,7 @@
         ${finals.map(({ g, wk }) => `
           <a class="hx-tick" href="#/scores">
             <span class="hx-tick-head">Final &middot; Week ${wk.week}</span>
-            ${[0, 1].map((i) => `<span class="hx-tick-team ${g.score[i] < g.score[1 - i] ? "lost" : ""}">${logoOr(teamByName(g.teams[i]))}<span>${esc(teamShort(g.teams[i]))}</span><b>${g.score[i]}</b></span>`).join("")}
+            ${[0, 1].map((i) => `<span class="hx-tick-team ${g.score[i] < g.score[1 - i] ? "lost" : ""}">${logoOr(teamByName(g.teams[i]))}<span>${esc(shortName(g.teams[i]))}</span><b>${g.score[i]}</b></span>`).join("")}
           </a>`).join("")}
       </div>`;
   }
