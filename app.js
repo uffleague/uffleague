@@ -380,13 +380,20 @@
       (b.w - b.l) - (a.w - a.l) || b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa) || a.name.localeCompare(b.name));
     const list = [...manual, ...byRecord.filter((t) => !manual.includes(t))];
     const ranked = manual.length || played;
-    const color = (t) => (/^#[0-9a-f]{6}$/i.test(t.color || "") ? t.color : "#2f3f96");
+    const hex = (c, fallback) => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : fallback);
+    // Hover fills the row with the team color, fading into the secondary color; light secondaries get dark text on that side
+    const rowStyle = (t) => {
+      const c2 = hex(t.color2, hex(t.color, "#2f3f96"));
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(c2.slice(i, i + 2), 16));
+      const light = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6;
+      return `--team:${hex(t.color, "#2f3f96")};--team2:${c2};--team2-ink:${light ? "#0b1020" : "#fff"};--team2-shadow:${light ? "none" : "0 1px 3px rgba(0, 0, 0, .7)"}`;
+    };
     return `
       <div class="hx-panel hx-rank-panel">
         ${panelHead("Power Rankings", "#/standings", "Standings")}
         <div class="hx-rows ${rankAll ? "all" : ""}" id="rankRows">
           ${list.map((t, i) => `
-            <a class="hx-row ${i >= 10 ? "hx-row--more" : ""}" href="#/teams/${t.slug}" style="--team:${color(t)}">
+            <a class="hx-row ${i >= 10 ? "hx-row--more" : ""}" href="#/teams/${t.slug}" style="${rowStyle(t)}">
               <span class="hx-rank">${ranked ? i + 1 : "&ndash;"}</span>
               ${teamLogo(t)}
               <span class="hx-row-name">${t.name}</span>

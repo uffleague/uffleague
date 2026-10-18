@@ -954,13 +954,14 @@ body.is-home { background: #0a0e1c; }
 /* Hover: the team pops out in its own colors, like a rankings banner */
 .hx-row:hover, .hx-row:focus-visible {
   z-index: 2; transform: scale(1.05); border-radius: 8px; border-top-color: transparent;
-  background: linear-gradient(90deg, var(--team) 0%, var(--team) 25%, rgba(21, 30, 55, 0) 90%), #151e37;
+  background: linear-gradient(90deg, var(--team) 0%, var(--team) 22%, var(--team2) 78%, var(--team2) 100%);
   box-shadow: 0 10px 24px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(255, 255, 255, .12);
 }
 .hx-row:hover + .hx-row { border-top-color: transparent; }
 .hx-row .team-logo { transition: transform .28s cubic-bezier(.2, .9, .3, 1.4), filter .25s; }
 .hx-row:hover .team-logo { transform: scale(1.4) rotate(-6deg); filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .55)); }
 .hx-row:hover .hx-row-name, .hx-row:hover .hx-rank, .hx-row:hover .hx-rec { color: #fff; font-weight: 700; text-shadow: 0 1px 3px rgba(0, 0, 0, .7); }
+.hx-row:hover .hx-rec { color: var(--team2-ink, #fff); text-shadow: var(--team2-shadow, none); }
 .hx-row--more { display: none; }
 .hx-rows.all .hx-row--more { display: flex; }
 /* With all 20 open, only the rankings panel grows */
