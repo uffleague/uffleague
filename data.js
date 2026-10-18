@@ -280,7 +280,20 @@ const LEAGUE = {
   // Results entered on the Admin page are stored on the server and added on top of these.
   // Division / conference / non-conference is worked out from the teams automatically.
   // Format: { series: 1, week: 1, games: [{ id: "W1-1", teams: ["Novasota Wolf Pack", "San Jose Scarecrows"] }, ...] }
-  schedule: [],
+  schedule: [
+    // TEST GAME (to see how a played game looks) - remove when told to revert
+    { series: 1, week: 1, games: [{
+      id: "W1-1", teams: ["Kansas City Jazz", "Nashville Nightmares"], score: [6, 0], date: "2026-10-14", potg: "breakxu",
+      box: [
+        {
+          passing: [{ player: "breakxu", comp: 2, att: 6, yds: 65, td: 1, int: 0, rtg: "115.0", cmpPct: "33.0", avg: "11.0", lng: 54, sacked: 1 }],
+          rushing: [{ player: "breakxu", att: 1, yds: 20, td: 0, ypc: "20.00", fum: 0, plus20: 1, lng: 20 }],
+          receiving: [{ player: "sk8erboy111", tgt: 5, rec: 2, yds: 65, td: 1, drop: 0, lng: 54 }]
+        },
+        { defense: [{ player: "i56gwe", tak: 2, tfl: 1, sck: 1, saf: 0, swat: 0, int: 0, pbu: 3, pre: 2, td: 0 }] }
+      ]
+    }] }
+  ],
   // Records page. Each record: label, holders (one or more names), value, and season if single-season.
   // Single-season: `stat` = box score stat this season's games are checked against; beating the record replaces it.
   // Career: `career` = All-Time stat tabs + stat to add up; holders and value are worked out from the All-Time stats.
