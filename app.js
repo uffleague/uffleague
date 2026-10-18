@@ -3289,6 +3289,8 @@
     WR: { cats: ["WR"], award: "WROTY", side: "off" },
     TE: { cats: ["TE"], award: "TEOTY", side: "off" }
   };
+  // Hand-set ratings that replace the formula's number for a player (keyed by lowercase league name)
+  const BT_RATING_OVERRIDES = { shazam: { TE: 99 } };
   const BT_GAMES = 9;
   const BT_RESPINS = 3;
   const BT_BEST_KEY = "uffBuildBestOff9"; // offense-only, 9-game version (older formats' bests don't carry over)
@@ -3317,6 +3319,7 @@
         const sidePart = Math.min(3, 1.5 * ((honors.MVP || 0) + (def.side === "off" ? honors.OPOTY || 0 : honors.DPOTY || 0)));
         ratings[g] = Math.min(99, Math.round(60 + statPart + awardPart + legacyPart + sidePart));
       });
+      Object.assign(ratings, BT_RATING_OVERRIDES[key]);
       btLegends.set(key, { name: p.name, hof: p.hof, tier: p.tier, ratings });
     });
     return btLegends;
