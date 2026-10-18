@@ -102,12 +102,61 @@ async function serveImage(env, id) {
   });
 }
 
+// Date ("2026-10-17") and 24-hour time ("15:23") of a moment in the league's time zone
+function leagueDateTime(when, tz) {
+  const d = new Date(typeof when === "number" || /^\d+$/.test(String(when)) ? Number(when) : String(when || ""));
+  if (isNaN(d)) return null;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).formatToParts(d).map((p) => [p.type, p.value]));
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
+}
+
+// The transactions bot (ZevoraV2) posts here the moment it announces a transaction:
+//   POST /bot   Authorization: Bearer <BOT_KEY>
+//   { "transactions": [{ "type": "sign"|"offer"|"demand"|"release"|"promotion", "player": "...", "team": "...",
+//                        "by": "...", "role": "...", "note": "...", "time": "<ISO time>", "id": "<Discord message id>" }] }
+async function botTransactions(req, env) {
+  const key = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!env.BOT_KEY || !key || !same(key, env.BOT_KEY)) return json({ error: "Wrong or missing bot key." }, 401);
+  let body;
+  try { body = await req.json(); } catch (e) { return json({ error: "Send JSON." }, 400); }
+  const list = [].concat(body.transactions || (body.type ? [body] : []));
+  const data = await load(env);
+  const keyOf = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
+  const have = new Set(data.updates.map(keyOf));
+  const ids = new Set(data.updates.map((u) => u.sourceId).filter(Boolean));
+  const added = [], problems = [];
+  list.slice(0, 50).forEach((t, i) => {
+    const type = String(t.type || "").toLowerCase() === "offer" ? "sign" : String(t.type || "").toLowerCase();
+    const when = leagueDateTime(t.time || Date.now(), env.LEAGUE_TZ || "America/New_York");
+    const u = {
+      id: crypto.randomUUID(), date: when && when.date, time: when && when.time, type,
+      player: str(t.player), team: str(t.team), by: str(t.by), role: str(t.role), note: str(t.note, 120),
+      sourceId: str(String(t.id ?? ""), 40), source: "bot"
+    };
+    if (!UPDATE_TYPES.includes(type) || !u.player || !u.team || !when) { problems.push(`#${i + 1}: needs type, player, team and a valid time`); return; }
+    if ((u.sourceId && ids.has(u.sourceId)) || have.has(keyOf(u))) return; // already have it
+    have.add(keyOf(u));
+    if (u.sourceId) ids.add(u.sourceId);
+    added.push(u);
+  });
+  if (added.length) {
+    data.updates = [...data.updates, ...added];
+    data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveUpdates",
+      text: `Added ${added.length} transaction${added.length === 1 ? "" : "s"}: ${added.map((u) => `${u.player} (${u.type}, ${u.team})`).join(", ")}` }, ...data.activity].slice(0, ACTIVITY_MAX);
+    await env.UFF.put(KEY, JSON.stringify(data));
+  }
+  return json({ added: added.length, skipped: list.length - added.length - problems.length, problems }, problems.length && !added.length ? 400 : 200);
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const path = new URL(req.url).pathname;
     if (req.method === "GET" && path.startsWith("/img/")) return serveImage(env, path.slice(5));
     if (req.method === "GET") return json(publicData(await load(env)));
+    if (req.method === "POST" && path === "/bot") return botTransactions(req, env);
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
     const { ADMIN_USERNAME, ADMIN_PASSWORD_HASH } = env;

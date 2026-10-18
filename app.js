@@ -96,6 +96,21 @@
       if (g) Object.assign(g, { score: r.score, date: r.date, potg: r.potg, box: r.box });
     });
 
+    // Transactions sent straight from the Discord bot use Discord names: match players to their site names
+    // (nicknames in data.js) and teams by name or code, like the paste box does
+    const teamLookup = new Map();
+    LEAGUE.conferences.forEach((c) => c.divisions.forEach((d) => d.teams.forEach((t) => {
+      teamLookup.set(t.name.toLowerCase(), t.name);
+      if (t.code) teamLookup.set(t.code.toLowerCase(), t.name);
+    })));
+    SAVED.updates.forEach((u) => {
+      if (u.source !== "bot") return;
+      u.player = aliasName(String(u.player).replace(/^@/, "").trim());
+      if (u.by) u.by = aliasName(String(u.by).replace(/^@/, "").trim());
+      const team = String(u.team).replace(/:[^:\s]+:/g, "").replace(/@/g, "").trim();
+      u.team = teamLookup.get(team.toLowerCase()) || team;
+    });
+
     const have = new Set((LEAGUE.updates = LEAGUE.updates || []).map(updateKey));
     SAVED.updates.forEach((u) => {
       if (!have.has(updateKey(u))) { LEAGUE.updates.push(u); have.add(updateKey(u)); }
