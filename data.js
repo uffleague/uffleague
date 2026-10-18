@@ -129,7 +129,7 @@ const LEAGUE = {
     "coIdview": "coldview", "3va8dkq1zafjmxtn": "3vo8dkq1zafjmxtn", "hello78alt3": "helloo78alt3",
     "gamerpony4182": "gamerpony4132", "settIe": "settle", "Iaddmcconkey": "laddmcconkey",
     "loverIoverlover": "248","influencethekilI": "influencethekill", "depthqcfler": "depthacfler",
-    "t1memanagement": "tlmemanagement", "maIikvrt": "maiikvrt", "nichelarpers": "day",
+    "t1memanagement": "tlmemanagement", "maIikvrt": "maiikvrt", "nichelarpers": "day", "cooks423": "cooks",
     // Head coaches' usernames (from the Season 7 coaches list) -> the name they go by
     "Aloneinnewyorkcity": "2 trey", "marmersie": "msuede", "loverloverlover": "248", "jumpbaI": "splndd"
   },
