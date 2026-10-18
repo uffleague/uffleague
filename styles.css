@@ -174,6 +174,15 @@ h1, h2, h3 { font-family: var(--head); font-weight: 700; text-transform: upperca
 .admin-chips { margin: 8px 0 24px; }
 button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .honor-seasons { font-weight: 500; color: var(--muted); }
+.alltime-ranks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.alltime-ranks .eyebrow { margin-right: 2px; }
+.rank-pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 600; color: var(--navy); background: var(--surface); border: 1.5px solid var(--line);
+}
+.rank-pill b { font-family: var(--head); font-size: 14px; }
+.rank-pill:hover { border-color: var(--navy); }
+.rank-pill.top { background: var(--navy); color: var(--cream); border-color: var(--navy); }
 
 /* ---------- Admin tabs ---------- */
 .admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }

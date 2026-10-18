@@ -450,6 +450,21 @@
     ["defense", "Defense", [["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["INT", "int"], ["PBU", "pbu"], ["SWAT", "swat"], ["TD", "td"]]]
   ];
 
+  // Where a player ranks in each All-Time stat tab (same order as the Stats page), best ranks first
+  let allTimeOrder = null;
+  function allTimeRanks(name) {
+    if (!allTimeOrder) {
+      allTimeOrder = LEAGUE.stats.categories.map((c) => {
+        const cat = allTimeCat(c.key);
+        const rows = statRowsFor(cat, "alltime").sort((a, b) => (b[cat.sort] || 0) - (a[cat.sort] || 0) || a.player.localeCompare(b.player));
+        return { key: c.key, of: rows.length, rank: new Map(rows.map((r, i) => [r.player.toLowerCase(), i + 1])) };
+      });
+    }
+    const key = aliasName(name).toLowerCase();
+    return allTimeOrder.filter((c) => c.rank.has(key)).map((c) => ({ key: c.key, rank: c.rank.get(key), of: c.of }))
+      .sort((a, b) => a.rank - b.rank);
+  }
+
   // Awards a player won, straight from the Awards page history: { code: [seasons...] }
   const AWARD_TO_LEGACY = { EOTY: "EXEOTY" }; // same award, different code in the legacy list
   function awardWins(name) {
@@ -517,6 +532,14 @@
             </h1>
             <p class="muted">${t ? `<a class="plink" href="#/teams/${t.slug}">${t.name}</a>` : "Free agent"}</p>
             <div class="pos-row">${pos.map((p) => `<span class="pill">${p}</span>`).join("")}</div>
+            ${(() => {
+              const ranks = allTimeRanks(name).filter((r) => r.rank <= 50).slice(0, 5); // only ranks worth showing off
+              return ranks.length ? `
+                <div class="alltime-ranks">
+                  <span class="eyebrow">All-Time</span>
+                  ${ranks.map((r) => `<a class="rank-pill ${r.rank <= 10 ? "top" : ""}" href="#/stats/alltime/${r.key}" title="#${r.rank} of ${r.of} in All-Time ${r.key}">${r.key} <b>#${r.rank}</b></a>`).join("")}
+                </div>` : "";
+            })()}
           </div>
         </div>
 
