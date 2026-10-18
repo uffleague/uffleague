@@ -2011,6 +2011,8 @@
   // When a playoff bracket is posted, everyone predicts that bracket; otherwise they pick their own 14 teams first.
   // Each has its own saved picks.
   const PRED_SEEDS = 7;
+  // true = before a bracket is posted, people can pick their own 14 teams and predict those; false = "coming soon"
+  const PRED_OWN_TEAMS = false;
   const predKey = () => (bracket() ? `uffPredictions:S${LEAGUE.season}:${bracket().title}` : `uffPredictions:S${LEAGUE.season}`);
   function loadPred() {
     try { const s = JSON.parse(localStorage.getItem(predKey())); if (s) return { seeds: {}, picks: {}, locked: false, ...s }; } catch (e) {}
@@ -2046,6 +2048,9 @@
   function predictionsPage() {
     const state = loadPred();
     const official = bracket();
+    if (!official && !PRED_OWN_TEAMS) {
+      return `<div class="wrap">${pageHead("Predictions")}${empty("Predictions open soon", "Once the playoff bracket is posted you can pick who wins every game here.")}</div>`;
+    }
     const done = official || predSeedsDone(state);
     const seedPicker = `
       <div class="card admin-card pred-seeds">
