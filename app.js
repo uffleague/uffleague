@@ -593,7 +593,33 @@
               : `<p class="muted">No honors yet.</p>`}
           </div>
         </div>
+
+        ${(() => {
+          const held = playerRecords(name);
+          return `
+        <div class="card player-section">
+          <div class="table-title player-section-head">${icon("records", "sm")}Records<span class="muted small">${held.length} record${held.length === 1 ? "" : "s"}</span></div>
+          <div class="player-section-body">
+            ${held.length
+              ? `<div class="legacy-honors">${held.map((r) => `
+                  <a class="honor honor-link" href="#/records">${esc(r.label)} <b>${esc(r.value)}</b>${r.season ? ` <span class="honor-seasons">S${r.season}</span>` : ""}${r.shared ? ` <span class="honor-seasons">(shared)</span>` : ""}</a>`).join("")}</div>`
+              : `<p class="muted">No records yet.</p>`}
+          </div>
+        </div>`;
+        })()}
       </div>`;
+  }
+
+  // Every record on the Records page this player holds (or shares), using the same live values as that page
+  function playerRecords(name) {
+    const key = aliasName(name).toLowerCase();
+    const out = [];
+    (LEAGUE.records || []).forEach((g) => g.sections.forEach((s) => s.items.forEach((item) => {
+      const r = item.career ? careerRecord(item) : seasonRecord(item);
+      const holders = (r.holders || []).map((h) => aliasName(h).toLowerCase());
+      if (holders.includes(key)) out.push({ label: r.label, value: r.value, season: r.season, shared: holders.length > 1 });
+    })));
+    return out;
   }
 
   /* ---------- Stats ---------- */
