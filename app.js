@@ -15,7 +15,10 @@
     clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     updates: '<path d="M4 10v4a1 1 0 0 0 1 1h2l5 4V5L7 9H5a1 1 0 0 0-1 1Z"/><path d="M16 9a3.5 3.5 0 0 1 0 6M18.5 6.5a7 7 0 0 1 0 11"/>',
     search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
-    trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>'
+    trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    predict: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+    bowl: '<path d="M4 9h16l-1.5 7.5a2 2 0 0 1-2 1.5h-9a2 2 0 0 1-2-1.5L4 9Z"/><path d="M8 9V6.5a4 4 0 0 1 8 0V9"/><path d="M9 21h6"/>',
+    live: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>'
   };
   const icon = (name, cls = "") =>
     `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -31,6 +34,8 @@
     { path: "compare", label: "Compare", icon: "compare" },
     { path: "awards", label: "Awards", icon: "awards" },
     { path: "playoff", label: "Playoff", icon: "playoff" },
+    { path: "predictions", label: "Predictions", icon: "predict" },
+    { path: "bowls", label: "Past Bowls", icon: "bowl" },
     { path: "legacy", label: "Legacy", icon: "legacy" },
     { path: "records", label: "Records", icon: "records" }
   ];
@@ -68,7 +73,7 @@
   // (worker/src/index.js, a Cloudflare Worker) and are mixed into data.js when the page loads.
   const API = "https://uff-admin.uffleague.workers.dev";
   const updateKey = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
-  let SAVED = { results: [], updates: [], positions: {} };
+  let SAVED = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {} };
   try {
     const res = await fetch(API, { cache: "no-store" });
     if (res.ok) SAVED = { ...SAVED, ...(await res.json()) };
@@ -187,6 +192,7 @@
 
   function home() {
     return `
+      ${liveSection()}
       <section class="hero">
         <div class="wrap">
           <img class="hero-logo" src="${LEAGUE.brandLogo}" alt="United Flag Football logo">
@@ -1393,10 +1399,31 @@
       </div>`;
   }
 
+  const statLines = (box) => (box || []).reduce((n, side) =>
+    n + Object.values(side || {}).reduce((m, list) => m + (Array.isArray(list) ? list.length : 0), 0), 0);
+  const resultLabel = (g, score) => `${g.id}: ${g.teams[0]} ${score[0]}-${score[1]} ${g.teams[1]}`;
+
+  // Every game recap saved this season, newest week first
+  function recordedGames() {
+    const rows = SAVED.results.map((r) => ({ r, e: allGames().find(({ g }) => g.id === r.id) }))
+      .sort((a, b) => ((b.e && b.e.wk.week) || 0) - ((a.e && a.e.wk.week) || 0) || String(b.r.date || "").localeCompare(String(a.r.date || "")));
+    return `
+      <div class="card admin-card admin-list">
+        <div class="admin-subhead">Recorded Games &middot; Season ${LEAGUE.season}<span class="muted small">${rows.length} game${rows.length === 1 ? "" : "s"}</span></div>
+        <p class="muted small admin-note">Every recap added this season. Remove a wrong one to take its score and stats back out, then paste it again.</p>
+        ${rows.length ? rows.map(({ r, e }) => `
+          <div class="list-row recorded-row">
+            <div>
+              <strong>${e ? `${esc(e.g.teams[0])} ${r.score[0]} &mdash; ${r.score[1]} ${esc(e.g.teams[1])}` : `${esc(r.id)} &middot; ${r.score[0]}-${r.score[1]}`}</strong>
+              <div class="muted small">${[e && `Week ${e.wk.week}`, r.date && fmtDate(r.date), `${statLines(r.box)} stat lines`].filter(Boolean).join(" &middot; ")}
+                ${e ? `&middot; <span class="ok-text">${esc(e.g.id)} on the schedule</span>` : `&middot; <span class="warn-text">not on the schedule, so it doesn't show on the site</span>`}</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" data-del-result="${esc(r.id)}">Remove</button>
+          </div>`).join("") : `<p class="muted">No games recorded yet.</p>`}
+      </div>`;
+  }
+
   function resultsSection() {
-    const saved = SAVED.results
-      .map((r) => allGames().find(({ g }) => g.id === r.id))
-      .filter(Boolean);
     return `
       <section>
         <div class="section-head section-head--left"><h2>Game Results</h2></div>
@@ -1405,14 +1432,7 @@
           <textarea id="resPaste" class="admin-textarea" rows="8" placeholder="UFF | Week 1 Game Recap&#10;KANSAS CITY JAZZ 6 — 0 SHIROISHI SAMURAI&#10;...">${resDraft ? resDraft.text : ""}</textarea>
           <div id="resPreview">${resultPreview()}</div>
         </div>
-        ${saved.length ? `
-          <div class="card list-card admin-list">
-            ${saved.map(({ g, wk }) => `
-              <div class="list-row">
-                <span><span class="muted small">W${wk.week}</span> ${g.id} &middot; ${g.teams[0]} ${g.score[0]}-${g.score[1]} ${g.teams[1]}</span>
-                <button class="btn btn-ghost btn-sm" data-del-result="${g.id}">Delete</button>
-              </div>`).join("")}
-          </div>` : ""}
+        ${recordedGames()}
       </section>`;
   }
 
@@ -1607,7 +1627,11 @@
           ${flashBox()}
           ${resultsSection()}
           ${transactionsSection()}
+          ${streamsAdminSection()}
+          ${playoffsAdminSection()}
+          ${bowlsAdminSection()}
           ${positionsSection()}
+          ${activitySection()}
         </div>`;
     }
     return `
@@ -1619,11 +1643,404 @@
             <p class="muted">League staff only.</p>
             <label class="field"><span>Username</span><input name="username" autocomplete="username" required></label>
             <label class="field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+            <label class="field"><span>Your name <span class="muted">(shows in the activity log)</span></span><input name="name" autocomplete="nickname" maxlength="30" required></label>
             ${adminError ? `<p class="login-error">${adminError}</p>` : ""}
             <button class="btn btn-primary login-btn" type="submit">Log in</button>
           </form>
         </div>
       </div>`;
+  }
+
+  /* ---------- Live streams, playoffs, predictions, past bowls ---------- */
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+
+  // Team name with its logo (league teams) or the UFF logo (anyone else)
+  function teamChip(name, size = "") {
+    if (!name) return `<span class="team-cell muted">TBD</span>`;
+    const t = TEAMS.find((x) => x.name === name);
+    return `<span class="team-cell">${t ? teamLogo(t, size) : `<img class="team-logo ${size}" src="${LEAGUE.brandLogo}" alt="">`}<span>${esc(name)}</span></span>`;
+  }
+
+  // YouTube / Twitch link -> embeddable player address (Twitch needs this site's domain)
+  function streamEmbed(url) {
+    let m;
+    const host = location.hostname || "localhost";
+    if ((m = url.match(/twitch\.tv\/videos\/(\d+)/i))) return `https://player.twitch.tv/?video=${m[1]}&parent=${host}`;
+    if ((m = url.match(/twitch\.tv\/([A-Za-z0-9_]+)/i))) return `https://player.twitch.tv/?channel=${m[1]}&parent=${host}`;
+    if ((m = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|live\/|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/i))) return `https://www.youtube.com/embed/${m[1]}`;
+    if ((m = url.match(/youtube\.com\/channel\/(UC[\w-]+)/i))) return `https://www.youtube.com/embed/live_stream?channel=${m[1]}`;
+    return null;
+  }
+
+  function liveSection() {
+    const list = (SAVED.streams || []).map((s) => ({ ...s, embed: streamEmbed(s.url) })).filter((s) => s.embed);
+    if (!list.length) return "";
+    return `
+      <section class="wrap live-wrap">
+        <div class="section-head section-head--left"><h2><span class="live-dot"></span>Live Now</h2></div>
+        <div class="live-grid">
+          ${list.map((s) => `
+            <div class="card live-card">
+              <div class="live-frame"><iframe src="${esc(s.embed)}" title="${esc(s.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
+              <div class="live-title">${esc(s.title)}</div>
+            </div>`).join("")}
+        </div>
+      </section>`;
+  }
+
+  // ---- Bracket rules (shared by the Playoff page, Predictions and the admin editor) ----
+
+  // Who won a real bracket game: the "advances" pick, otherwise the higher score
+  function gameWinner(g) {
+    if ((g.adv === "a" || g.adv === "b") && g[g.adv]) return g[g.adv];
+    const a = Number(g.sa), b = Number(g.sb);
+    if (g.sa !== "" && g.sb !== "" && Number.isFinite(a) && Number.isFinite(b) && a !== b && g.a && g.b) return a > b ? g.a : g.b;
+    return "";
+  }
+
+  // Spots in a round that the previous round's winners fill, in order: TBD spots and spots already filled
+  // by "Send winners". Each is [game index, "a"|"b", which previous game feeds it].
+  function feederSlots(round, r) {
+    const out = [];
+    if (r === 0) return out;
+    let k = 0;
+    round.games.forEach((g, gi) => ["a", "b"].forEach((s) => {
+      const from = s === "a" ? g.fromA : g.fromB;
+      if (from == null && g[s]) return;
+      out.push([gi, s, from != null ? from : k]);
+      k++;
+    }));
+    return out;
+  }
+
+  const bracket = () => (SAVED.playoffs && SAVED.playoffs.rounds && SAVED.playoffs.rounds.length ? SAVED.playoffs : null);
+
+  // The championship result when the last round is a single decided game
+  function bracketFinal() {
+    const po = bracket();
+    const last = po && po.rounds[po.rounds.length - 1];
+    if (!last || last.games.length !== 1) return null;
+    const g = last.games[0];
+    const win = gameWinner(g);
+    if (!win) return null;
+    const winA = win === g.a;
+    return { champion: win, runnerUp: winA ? g.b : g.a, scoreA: winA ? g.sa : g.sb, scoreB: winA ? g.sb : g.sa };
+  }
+
+  function bracketHead(po, sub) {
+    return `
+      <div class="page-head bracket-head">
+        ${po.logo ? `<img class="bracket-logo" src="${po.logo}" alt="">` : ""}
+        <div>
+          <h1>${esc(po.title)}</h1>
+          <p class="muted">${sub}</p>
+        </div>
+      </div>`;
+  }
+
+  function playoffPage() {
+    const po = bracket();
+    if (!po) return `<div class="wrap">${pageHead("Playoff")}${empty("Coming soon", "The playoff bracket will be revealed later in the season.")}</div>`;
+    const final = bracketFinal();
+    const row = (g, s, win) => `
+      <div class="match-team ${win && win === g[s] ? "win" : win ? "lose" : ""}">
+        ${teamChip(g[s])}<span class="match-score">${esc(s === "a" ? g.sa : g.sb)}</span>
+      </div>`;
+    return `
+      <div class="wrap">
+        ${bracketHead(po, `Season ${LEAGUE.season} playoff bracket`)}
+        <div class="bracket">
+          ${po.rounds.map((round) => `
+            <div class="bracket-round">
+              <div class="bracket-round-name">${esc(round.name)}</div>
+              <div class="bracket-games">
+                ${round.games.map((g) => { const win = gameWinner(g); return `<div class="card match">${row(g, "a", win)}${row(g, "b", win)}</div>`; }).join("")}
+              </div>
+            </div>`).join("")}
+          ${final ? `
+            <div class="bracket-round bracket-round--champ">
+              <div class="bracket-round-name">Champion</div>
+              <div class="bracket-games"><div class="card bracket-champ">${po.logo ? `<img class="bracket-champ-logo" src="${po.logo}" alt="">` : icon("awards")}${teamChip(final.champion, "lg")}</div></div>
+            </div>` : ""}
+        </div>
+      </div>`;
+  }
+
+  // ---- Predictions: each visitor's own picks, saved only in their browser ----
+
+  const picksKey = (po) => `uffPicks:${po.title}`;
+  function loadPicks(po) {
+    try { return JSON.parse(localStorage.getItem(picksKey(po))) || { picks: {}, locked: false }; } catch (e) { return { picks: {}, locked: false }; }
+  }
+  function savePicks(po, state) {
+    try { localStorage.setItem(picksKey(po), JSON.stringify(state)); } catch (e) {}
+  }
+
+  // The bracket with this visitor's picks carried forward round by round
+  function predictedRounds(po, picks) {
+    const rounds = [];
+    po.rounds.forEach((round, r) => {
+      const games = round.games.map((g) => ({ a: g.a, b: g.b }));
+      if (r > 0) feederSlots(round, r).forEach(([gi, s, k]) => { games[gi][s] = (rounds[r - 1].games[k] || {}).pick || ""; });
+      games.forEach((g, gi) => {
+        const p = picks[`${r}-${gi}`];
+        g.pick = p && (p === g.a || p === g.b) ? p : "";
+        g.real = gameWinner(round.games[gi]);
+      });
+      rounds.push({ name: round.name, games });
+    });
+    return rounds;
+  }
+
+  function predictionsPage() {
+    const po = bracket();
+    if (!po) return `<div class="wrap">${pageHead("Predictions")}${empty("Predictions open soon", "Once the playoff bracket is posted you can fill out your own picks here.")}</div>`;
+    const state = loadPicks(po);
+    const rounds = predictedRounds(po, state.picks);
+    const last = rounds[rounds.length - 1];
+    const champ = last && last.games.length === 1 ? last.games[0].pick : "";
+    const made = rounds.reduce((n, r) => n + r.games.filter((g) => g.pick).length, 0);
+    const total = rounds.reduce((n, r) => n + r.games.length, 0);
+    const team = (g, s, r, gi) => {
+      const name = g[s];
+      const mark = g.pick === name && g.real ? (g.real === name ? `<span class="pick-mark ok">&#10003;</span>` : `<span class="pick-mark bad">&#10007;</span>`) : "";
+      return `<button type="button" class="match-team pick ${g.pick && g.pick === name ? "picked" : ""}" data-pick="${r}-${gi}" data-team="${esc(name)}" ${!name || state.locked ? "disabled" : ""}>${teamChip(name)}${mark}</button>`;
+    };
+    return `
+      <div class="wrap">
+        ${bracketHead(po, "Pick who wins each game. Only you can see your picks; they're saved on this device.")}
+        <div class="pred-bar">
+          <span class="pill">${made} / ${total} picks</span>
+          ${state.locked ? `<span class="pill pill-navy">Final picks &middot; locked</span>` : ""}
+          <span class="pred-actions">
+            <button class="btn btn-ghost btn-sm" id="predLock">${state.locked ? "Edit picks" : "Lock in picks"}</button>
+            <button class="btn btn-ghost btn-sm" id="predReset" ${state.locked ? "disabled" : ""}>Reset</button>
+          </span>
+        </div>
+        <div class="bracket">
+          ${rounds.map((round, r) => `
+            <div class="bracket-round">
+              <div class="bracket-round-name">${esc(round.name)}</div>
+              <div class="bracket-games">
+                ${round.games.map((g, gi) => `<div class="card match">${team(g, "a", r, gi)}${team(g, "b", r, gi)}</div>`).join("")}
+              </div>
+            </div>`).join("")}
+          <div class="bracket-round bracket-round--champ">
+            <div class="bracket-round-name">Your Champion</div>
+            <div class="bracket-games"><div class="card bracket-champ">${po.logo ? `<img class="bracket-champ-logo" src="${po.logo}" alt="">` : icon("awards")}${champ ? teamChip(champ, "lg") : `<span class="muted">Pick a winner</span>`}</div></div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ---- Past United Flag Bowls ----
+
+  const roman = (n) => [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]].reduce((out, [v, s]) => { while (n >= v) { out += s; n -= v; } return out; }, "");
+
+  function bowlsPage() {
+    const rows = [];
+    for (let s = LEAGUE.season; s >= 1; s--) {
+      let b = (SAVED.bowls || {})[s];
+      let fromBracket = false;
+      if ((!b || !b.champion) && s === LEAGUE.season && bracketFinal()) { b = bracketFinal(); fromBracket = true; }
+      if (b && (b.champion || b.runnerUp)) rows.push({ s, ...b, fromBracket });
+    }
+    return `
+      <div class="wrap">
+        <div class="page-head">
+          <h1 class="title-icon">${icon("bowl")}Past Bowls</h1>
+          <p class="muted">Every United Flag Bowl champion.</p>
+        </div>
+        ${rows.length ? `<div class="bowl-list">${rows.map((b) => `
+          <div class="card bowl-card">
+            <div class="bowl-head"><span class="bowl-name">United Flag Bowl ${roman(b.s)}</span><span class="pill">Season ${b.s}</span></div>
+            <div class="bowl-body">
+              <div class="bowl-side bowl-side--win"><span class="eyebrow">Champion</span>${teamChip(b.champion, "lg")}</div>
+              <div class="bowl-score">${b.scoreA || b.scoreB ? `${esc(b.scoreA)}<span class="muted">&ndash;</span>${esc(b.scoreB)}` : `<span class="muted">def.</span>`}</div>
+              <div class="bowl-side"><span class="eyebrow">Runner-up</span>${teamChip(b.runnerUp, "lg")}</div>
+            </div>
+          </div>`).join("")}</div>`
+          : empty("No bowls recorded yet", "United Flag Bowl results will show up here.")}
+      </div>`;
+  }
+
+  // ---- Admin: live streams, playoff editor, bowl history, activity log ----
+
+  function streamsAdminSection() {
+    const list = SAVED.streams || [];
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Live Streams</h2></div>
+        <form class="card admin-card" id="streamForm" autocomplete="off">
+          <p class="muted small admin-note">Add a YouTube or Twitch link and it plays at the top of the home page. Twitch channel (twitch.tv/name), YouTube video or stream (watch?v=... or youtu.be/...), or a YouTube /channel/UC... link. Remove it when the broadcast ends.</p>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Title</span><input name="title" maxlength="80" placeholder="Week 3 · Jazz vs Samurai" required></label>
+            <label class="field admin-grow"><span>YouTube or Twitch link</span><input name="url" placeholder="https://www.twitch.tv/..." required></label>
+            <button class="btn btn-primary" type="submit">Add live stream</button>
+          </div>
+          <div class="admin-subhead admin-subhead--small">On the home page now (${list.length})</div>
+          ${list.length ? list.map((s) => `
+            <div class="list-row">
+              <div><strong>${esc(s.title)}</strong><div class="muted small">${esc(s.url)}</div></div>
+              <button type="button" class="btn btn-ghost btn-sm" data-del-stream="${esc(s.id)}">Remove</button>
+            </div>`).join("") : `<p class="muted small">No live streams added.</p>`}
+        </form>
+      </section>`;
+  }
+
+  let poDraft = null;
+  const newGame = () => ({ a: "", b: "", sa: "", sb: "", adv: "", fromA: null, fromB: null });
+  const draftPlayoffs = () => (poDraft = poDraft || (SAVED.playoffs ? clone(SAVED.playoffs) : { title: `Season ${LEAGUE.season} Playoffs`, logo: "", rounds: [] }));
+
+  function playoffEditor() {
+    const d = draftPlayoffs();
+    const opts = (val) => {
+      const names = TEAMS.map((t) => t.name);
+      if (val && !names.includes(val)) names.push(val);
+      return `<option value="">TBD</option>${names.map((n) => `<option value="${esc(n)}" ${n === val ? "selected" : ""}>${esc(n)}</option>`).join("")}`;
+    };
+    return `
+      <div class="admin-fields">
+        <label class="field admin-grow"><span>Bracket title</span><input data-po-title value="${esc(d.title)}" maxlength="80"></label>
+        <div class="po-logo">
+          ${d.logo ? `<img src="${d.logo}" alt="">` : `<span class="po-logo-empty">${icon("awards")}</span>`}
+          <label class="btn btn-ghost btn-sm">Upload logo<input type="file" id="poLogo" accept="image/*" hidden></label>
+          ${d.logo ? `<button type="button" class="btn btn-ghost btn-sm" data-po-act="removeLogo">Remove logo</button>` : ""}
+        </div>
+      </div>
+      ${d.rounds.map((round, r) => `
+        <div class="po-round">
+          <div class="po-round-head">
+            <input class="po-input" data-po-round="${r}" value="${esc(round.name)}" maxlength="40" aria-label="Round name">
+            <button type="button" class="btn btn-ghost btn-sm" data-po-act="addGame" data-r="${r}">+ Add game</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-po-act="send" data-r="${r}">Send winners to next round</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-po-act="delRound" data-r="${r}">Delete round</button>
+          </div>
+          ${round.games.length ? round.games.map((g, gi) => `
+            <div class="po-game">
+              <select class="select" data-r="${r}" data-g="${gi}" data-po-f="a">${opts(g.a)}</select>
+              <input class="po-score" data-r="${r}" data-g="${gi}" data-po-f="sa" value="${esc(g.sa)}" inputmode="numeric" maxlength="4" aria-label="Score">
+              <span class="muted small">vs</span>
+              <input class="po-score" data-r="${r}" data-g="${gi}" data-po-f="sb" value="${esc(g.sb)}" inputmode="numeric" maxlength="4" aria-label="Score">
+              <select class="select" data-r="${r}" data-g="${gi}" data-po-f="b">${opts(g.b)}</select>
+              <select class="select" data-r="${r}" data-g="${gi}" data-po-f="adv">
+                <option value="">Advances: choose...</option>
+                <option value="a" ${g.adv === "a" ? "selected" : ""}>${esc(g.a || "Team 1")} advances</option>
+                <option value="b" ${g.adv === "b" ? "selected" : ""}>${esc(g.b || "Team 2")} advances</option>
+              </select>
+              <button type="button" class="btn btn-ghost btn-sm" data-po-act="delGame" data-r="${r}" data-g="${gi}" aria-label="Remove game">&#10005;</button>
+            </div>`).join("") : `<p class="muted small">No games yet.</p>`}
+        </div>`).join("")}
+      <div class="admin-actions">
+        <button type="button" class="btn btn-ghost" data-po-act="addRound">+ Add round</button>
+        <button type="button" class="btn btn-primary" data-po-act="save">Save playoffs</button>
+      </div>`;
+  }
+
+  function playoffsAdminSection() {
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Playoffs &middot; Season ${LEAGUE.season}</h2></div>
+        <div class="card admin-card">
+          <p class="muted small admin-note">Build the bracket round by round: add games, pick the two teams, type the score if you like, then choose who advances. Leave a spot as <strong>TBD</strong> for the winner of the round before, and <strong>Send winners to next round</strong> fills those in (a game with no pick uses the higher score). Press <strong>Save playoffs</strong> to publish it on the Playoff page; Predictions use the same bracket.</p>
+          <div id="poEditor">${playoffEditor()}</div>
+        </div>
+      </section>`;
+  }
+
+  // Fill the next round's TBD spots with this round's winners (or make the next round)
+  function sendWinners(r) {
+    const d = draftPlayoffs();
+    const winners = d.rounds[r].games.map(gameWinner);
+    let next = d.rounds[r + 1];
+    if (!next) {
+      next = { name: `Round ${r + 2}`, games: [] };
+      for (let k = 0; k < winners.length; k += 2) next.games.push({ ...newGame(), a: winners[k] || "", b: winners[k + 1] || "", fromA: k, fromB: k + 1 < winners.length ? k + 1 : null });
+      d.rounds.push(next);
+      return;
+    }
+    feederSlots(next, r + 1).forEach(([gi, s, k]) => {
+      if (!winners[k]) return;
+      next.games[gi][s] = winners[k];
+      next.games[gi][s === "a" ? "fromA" : "fromB"] = k;
+    });
+  }
+
+  let bowlDraft = null;
+  function bowlsAdminSection() {
+    bowlDraft = bowlDraft || clone(SAVED.bowls || {});
+    const seasons = Array.from({ length: LEAGUE.season }, (_, i) => LEAGUE.season - i);
+    const val = (s, f) => esc((bowlDraft[s] || {})[f] || "");
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>United Flag Bowl History</h2></div>
+        <div class="card admin-card">
+          <p class="muted small admin-note">Type the champion and runner-up for any season. It shows on the Past Bowls page. Leave Season ${LEAGUE.season}'s champion empty to use the playoff bracket's result.</p>
+          <div class="bowl-admin">
+            ${seasons.map((s) => `
+              <div class="bowl-admin-row">
+                <strong>S${s}</strong>
+                <input data-bowl="${s}" data-bowl-f="champion" value="${val(s, "champion")}" placeholder="Champion" maxlength="60" aria-label="Season ${s} champion">
+                <input data-bowl="${s}" data-bowl-f="runnerUp" value="${val(s, "runnerUp")}" placeholder="Runner-up" maxlength="60" aria-label="Season ${s} runner-up">
+                <input data-bowl="${s}" data-bowl-f="scoreA" value="${val(s, "scoreA")}" placeholder="Score" maxlength="4" inputmode="numeric" aria-label="Champion score">
+                <input data-bowl="${s}" data-bowl-f="scoreB" value="${val(s, "scoreB")}" placeholder="Score" maxlength="4" inputmode="numeric" aria-label="Runner-up score">
+              </div>`).join("")}
+          </div>
+          <div class="admin-actions"><button type="button" class="btn btn-primary" id="bowlSave">Save bowl history</button></div>
+        </div>
+      </section>`;
+  }
+
+  const ACTIVITY_LABELS = {
+    saveResult: "Results", deleteResult: "Results", saveUpdates: "Transactions", deleteUpdate: "Transactions",
+    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history"
+  };
+  function activitySection() {
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Activity Log</h2></div>
+        <div class="card list-card" id="activityList"><p class="muted admin-pad">Loading...</p></div>
+      </section>`;
+  }
+  async function loadActivity() {
+    const box = document.getElementById("activityList");
+    if (!box) return;
+    try {
+      const { activity } = await adminCall({ action: "activity" });
+      const list = (activity || []).slice(0, 100);
+      if (!document.body.contains(box)) return;
+      box.innerHTML = list.length ? list.map((a) => `
+        <div class="activity-row">
+          <div>
+            <span class="eyebrow">${esc(ACTIVITY_LABELS[a.action] || a.action)}</span>
+            <div class="activity-text">${esc(a.text)}</div>
+            <div class="muted small">by ${esc(a.by)}</div>
+          </div>
+          <span class="muted small activity-time">${new Date(a.at).toLocaleString()}</span>
+        </div>`).join("") : `<p class="muted admin-pad">Nothing yet. Admin saves will be listed here.</p>`;
+    } catch (err) {
+      box.innerHTML = `<p class="login-error admin-pad">${esc(err.message)}</p>`;
+    }
+  }
+
+  // Shrink an uploaded logo so it stays small enough to save
+  function shrinkImage(file, max = 256) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const s = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * s);
+        c.height = Math.round(img.height * s);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(img.src);
+        resolve(c.toDataURL("image/png"));
+      };
+      img.onerror = () => reject(new Error("That file isn't an image."));
+      img.src = URL.createObjectURL(file);
+    });
   }
 
   const placeholder = (title, sub) => () => `
@@ -1645,7 +2062,9 @@
     stats,
     compare: placeholder("Compare", "Head-to-head comparisons are on the way."),
     awards,
-    playoff: placeholder("Playoff", "The playoff bracket will be revealed later in the season."),
+    playoff: playoffPage,
+    predictions: predictionsPage,
+    bowls: bowlsPage,
     legacy,
     records,
     updates,
@@ -1694,6 +2113,7 @@
     document.title = label && label.path ? `${label.label} | UFF` : "UFF | United Flag Football";
     closeMenu();
     window.scrollTo(0, 0);
+    if (section === "admin" && getAdmin()) loadActivity();
   }
 
   function closeMenu() {
@@ -1708,7 +2128,7 @@
 
   app.addEventListener("submit", async (e) => {
     const id = e.target.id;
-    if (id !== "posForm" && id !== "adminLogin") return;
+    if (id !== "posForm" && id !== "adminLogin" && id !== "streamForm") return;
     e.preventDefault();
     const form = new FormData(e.target);
     const btn = e.target.querySelector("button[type=submit]");
@@ -1716,9 +2136,18 @@
     adminError = adminFlash = "";
     try {
       if (id === "posForm") await savePosition(form);
-      else {
-        const s = await adminCall({ action: "login", username: String(form.get("username") || ""), password: String(form.get("password") || "") });
-        setAdmin({ user: s.username, token: s.token });
+      else if (id === "streamForm") {
+        const url = String(form.get("url") || "").trim();
+        if (!streamEmbed(url)) throw new Error("That isn't a YouTube or Twitch link the site can play.");
+        const res = await adminCall({ action: "addStream", title: String(form.get("title") || ""), url });
+        SAVED.streams = res.streams;
+        adminFlash = "Added the live stream. It's on the home page now.";
+      } else {
+        const s = await adminCall({
+          action: "login", username: String(form.get("username") || ""),
+          password: String(form.get("password") || ""), name: String(form.get("name") || "")
+        });
+        setAdmin({ user: s.name || s.username, token: s.token });
       }
     } catch (err) {
       adminError = err.message;
@@ -1728,8 +2157,72 @@
 
   const showResultPreview = () => { document.getElementById("resPreview").innerHTML = resultPreview(); };
 
+  const showPoEditor = () => { document.getElementById("poEditor").innerHTML = playoffEditor(); };
+
+  // Run an admin save, then show the result (or the error) at the top of the Admin page
+  async function adminSave(btn, body, after) {
+    if (btn) btn.disabled = true;
+    adminError = adminFlash = "";
+    try {
+      after(await adminCall(body));
+    } catch (err) {
+      adminError = err.message;
+    }
+    render();
+  }
+
   app.addEventListener("click", async (e) => {
-    const t = e.target;
+    const t = e.target.closest("button, [data-pick]") || e.target;
+
+    // Predictions (saved in this browser only)
+    if (t.dataset.pick || t.id === "predLock" || t.id === "predReset") {
+      const po = bracket();
+      const state = loadPicks(po);
+      if (t.dataset.pick) state.picks[t.dataset.pick] = t.dataset.team;
+      if (t.id === "predLock") state.locked = !state.locked;
+      if (t.id === "predReset" && confirm("Clear all your picks?")) state.picks = {};
+      savePicks(po, state);
+      const y = window.scrollY;
+      render();
+      window.scrollTo(0, y);
+      return;
+    }
+
+    // Playoff bracket editor
+    const act = t.dataset.poAct;
+    if (act) {
+      const d = draftPlayoffs();
+      const r = Number(t.dataset.r), g = Number(t.dataset.g);
+      if (act === "addRound") d.rounds.push({ name: d.rounds.length ? `Round ${d.rounds.length + 1}` : "Round 1", games: [newGame()] });
+      if (act === "addGame") d.rounds[r].games.push(newGame());
+      if (act === "delGame") d.rounds[r].games.splice(g, 1);
+      if (act === "delRound" && confirm(`Delete ${d.rounds[r].name} and its games?`)) d.rounds.splice(r, 1);
+      if (act === "send") sendWinners(r);
+      if (act === "removeLogo") d.logo = "";
+      if (act === "save") {
+        return adminSave(t, { action: "savePlayoffs", playoffs: d }, (res) => {
+          SAVED.playoffs = res.playoffs;
+          poDraft = null;
+          adminFlash = "Saved the playoff bracket. It's on the Playoff page now.";
+        });
+      }
+      showPoEditor();
+      return;
+    }
+    if (t.id === "bowlSave") {
+      return adminSave(t, { action: "saveBowls", bowls: bowlDraft || {} }, (res) => {
+        SAVED.bowls = res.bowls;
+        bowlDraft = null;
+        adminFlash = "Saved the United Flag Bowl history. It's on the Past Bowls page now.";
+      });
+    }
+    if (t.dataset.delStream) {
+      return adminSave(t, { action: "removeStream", id: t.dataset.delStream }, (res) => {
+        SAVED.streams = res.streams;
+        adminFlash = "Removed the live stream from the home page.";
+      });
+    }
+
     if (t.id === "resClear") { resDraft = null; render(); return; }
     if (t.id === "txClear") { txDraft = null; render(); return; }
     if (t.id === "txSave" || t.dataset.delUpdate) {
@@ -1755,16 +2248,18 @@
     }
     if (t.id === "resSave" || t.dataset.delResult) {
       const del = t.dataset.delResult;
-      if (del && !confirm(`Delete the result for ${del}? Its score and stats come off the site.`)) return;
+      if (del && !confirm(`Remove the result for ${del}? Its score and stats come off the site.`)) return;
       t.disabled = true;
       try {
         if (del) {
-          await adminCall({ action: "deleteResult", id: del });
-          reloadWithFlash(`Deleted the result for ${del}.`);
+          const saved = SAVED.results.find((x) => x.id === del);
+          const e2 = allGames().find(({ g }) => g.id === del);
+          await adminCall({ action: "deleteResult", id: del, label: saved && e2 ? resultLabel(e2.g, saved.score) : del });
+          reloadWithFlash(`Removed the result for ${del}.`);
         } else {
           const g = allGames().find(({ g }) => g.id === resDraft.gameId).g;
           const r = recapResult(resDraft.recap, g);
-          await adminCall({ action: "saveResult", result: r, source: resDraft.text });
+          await adminCall({ action: "saveResult", result: r, source: resDraft.text, label: resultLabel(g, r.score) });
           resDraft = null;
           reloadWithFlash(`Saved ${g.id}: ${g.teams[0]} ${r.score[0]}-${r.score[1]} ${g.teams[1]}. Everyone sees it now.`);
         }
@@ -1781,6 +2276,20 @@
   });
 
   app.addEventListener("input", (e) => {
+    const el = e.target;
+    // Typing in the bracket editor / bowl history only updates the draft (no redraw, so focus stays)
+    if (el.tagName === "INPUT" && (el.hasAttribute("data-po-title") || el.dataset.poRound || el.dataset.poF)) {
+      const d = draftPlayoffs();
+      if (el.hasAttribute("data-po-title")) d.title = el.value;
+      else if (el.dataset.poRound) d.rounds[Number(el.dataset.poRound)].name = el.value;
+      else d.rounds[Number(el.dataset.r)].games[Number(el.dataset.g)][el.dataset.poF] = el.value.trim();
+      return;
+    }
+    if (el.dataset.bowl) {
+      bowlDraft = bowlDraft || clone(SAVED.bowls || {});
+      (bowlDraft[el.dataset.bowl] = bowlDraft[el.dataset.bowl] || {})[el.dataset.bowlF] = el.value;
+      return;
+    }
     if (e.target.id === "resPaste") {
       updateResultDraft(e.target.value);
       showResultPreview();
@@ -1812,7 +2321,27 @@
       legacyRows(legacyList.filter((p) => p.name.toLowerCase().includes(q)));
   });
 
-  app.addEventListener("change", (e) => {
+  app.addEventListener("change", async (e) => {
+    const el = e.target;
+    if (el.tagName === "SELECT" && el.dataset.poF) {
+      const game = draftPlayoffs().rounds[Number(el.dataset.r)].games[Number(el.dataset.g)];
+      const f = el.dataset.poF;
+      game[f] = el.value;
+      // Back to TBD = the winner of the round before goes here again
+      if ((f === "a" || f === "b") && !el.value) game[f === "a" ? "fromA" : "fromB"] = null;
+      if ((f === "a" || f === "b") && game.adv === f && !el.value) game.adv = "";
+      showPoEditor();
+      return;
+    }
+    if (el.id === "poLogo" && el.files && el.files[0]) {
+      try {
+        draftPlayoffs().logo = await shrinkImage(el.files[0]);
+      } catch (err) {
+        alert(err.message);
+      }
+      showPoEditor();
+      return;
+    }
     if (e.target.id === "resGame" && resDraft) {
       resDraft.gameId = e.target.value;
       showResultPreview();
