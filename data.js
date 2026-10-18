@@ -280,7 +280,8 @@ const LEAGUE = {
     { date: "2026-10-18", time: "15:38", type: "sign", player: "denim", team: "Columbus Colts" },
     { date: "2026-10-18", time: "15:38", type: "sign", player: "mr_devy1122", team: "Columbus Colts" },
     { date: "2026-10-18", time: "15:38", type: "sign", player: "ripburied", team: "Columbus Colts" },
-    { date: "2026-10-18", time: "15:57", type: "sign", player: "lord 9", team: "Columbus Colts" }
+    { date: "2026-10-18", time: "15:57", type: "sign", player: "lord 9", team: "Columbus Colts" },
+    { date: "2026-10-18", time: "16:03", type: "promotion", player: "denim", team: "Columbus Colts", role: "Assistant Coach" }
   ],
   // Schedule. Each game lists its two teams (names must match the teams below).
   // Optional: time: "Sat 8 PM EST" once it's set, score: [21, 14] once it's final (same order as teams).
