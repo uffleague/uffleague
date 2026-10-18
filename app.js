@@ -127,7 +127,7 @@
         if (!key.startsWith("+")) return; // edit for a team that's no longer in data.js
         t = { key, w: 0, l: 0, pf: 0, pa: 0, streak: "-" };
       } else if (e.name && e.name !== t.name) renames[t.name] = e.name;
-      ["name", "code", "coach", "logo"].forEach((f) => { if (e[f]) t[f] = e[f]; });
+      ["name", "code", "coach", "logo", "color", "color2"].forEach((f) => { if (e[f]) t[f] = e[f]; });
       // Move it if its conference or division changed (or place a new team)
       const target = allDivs().find(({ c, d }) => c.name === e.conference && d.name === e.division);
       if (target && (!spot || target.d !== spot.d)) {
@@ -1908,14 +1908,16 @@
     const t = TEAMS.find((x) => x.name === name);
     return t ? t.code || name.split(" ").pop() : name;
   }
-  // A bracket box filled with the team's color (from data.js), with readable text on light colors
+  // A bracket box filled with the team's color, its text in the team's secondary color (both in data.js);
+  // teams without a secondary color get dark or white text, whichever reads better
   function teamTint(name) {
     const t = name && TEAMS.find((x) => x.name === name);
     if (!name) return { cls: "tbd", style: "" };
     if (!t || !/^#[0-9a-f]{6}$/i.test(t.color || "")) return { cls: "", style: "" };
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(t.color.slice(i, i + 2), 16));
     const light = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6;
-    return { cls: "tinted", style: `--team:${t.color};--team-ink:${light ? "#1a1f3d" : "#ffffff"}` };
+    const ink = /^#[0-9a-f]{6}$/i.test(t.color2 || "") ? t.color2 : light ? "#1a1f3d" : "#ffffff";
+    return { cls: "tinted", style: `--team:${t.color};--team-ink:${ink}` };
   }
 
   function bracketTeam(name, seed) {
@@ -2211,6 +2213,8 @@
                   <label class="field admin-grow"><span>Team name</span><input name="name" value="${esc(t ? t.name : "")}" maxlength="60" required></label>
                   <label class="field"><span>Short code</span><input name="code" value="${esc(t ? t.code || "" : "")}" maxlength="5" placeholder="KCJ"></label>
                   <label class="field admin-grow"><span>Head coach</span><input name="coach" value="${esc(t ? t.coach || "" : "")}" maxlength="40" list="playerNames"></label>
+                  <label class="field"><span>Main color</span><input type="color" name="color" class="color-input" value="${esc(t && t.color ? t.color : "#1f2547")}"></label>
+                  <label class="field"><span>Secondary color</span><input type="color" name="color2" class="color-input" value="${esc(t && t.color2 ? t.color2 : "#ffffff")}"></label>
                   <label class="field admin-grow"><span>Conference &middot; Division</span>
                     <select name="place" class="select" required>
                       ${teamPlaces().map(([c, d]) => `<option value="${esc(`${c}||${d}`)}" ${`${c}||${d}` === place ? "selected" : ""}>${esc(c)} &middot; ${esc(d)}</option>`).join("")}
@@ -2853,6 +2857,7 @@
         const team = {
           name: String(form.get("name") || "").trim(), code: String(form.get("code") || "").trim().toUpperCase(),
           coach: String(form.get("coach") || "").trim(), conference, division,
+          color: String(form.get("color") || ""), color2: String(form.get("color2") || ""),
           logo: teamLogoDraft != null ? teamLogoDraft : current ? current.logo : ""
         };
         const key = teamEditKey === "+new" ? `+${crypto.randomUUID()}` : teamEditKey;

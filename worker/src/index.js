@@ -258,6 +258,8 @@ export default {
       const team = {
         name: str(t.name, 60), code: str(t.code, 5), coach: str(t.coach, 40),
         conference: str(t.conference, 60), division: str(t.division, 60),
+        color: /^#[0-9a-f]{6}$/i.test(t.color || "") ? t.color : undefined,
+        color2: /^#[0-9a-f]{6}$/i.test(t.color2 || "") ? t.color2 : undefined,
         logo: typeof t.logo === "string" && /^(https:\/\/[\w.-]+\/img\/[\w-]+|logos\/[\w\/.-]+\.(png|jpe?g|webp))$/.test(t.logo) ? t.logo : undefined
       };
       if (!key || !team.name || !team.conference || !team.division) return json({ error: "A team needs a name, conference and division." }, 400);

@@ -244,6 +244,7 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .team-logo-edit img, .team-logo-edit .po-logo-empty { width: 72px; height: 72px; object-fit: contain; border-radius: 10px; border: 1px solid var(--line); background: var(--cream-2); }
 .team-logo-edit label.btn { cursor: pointer; }
 #teamForm .admin-fields { margin-bottom: 8px; }
+.color-input { width: 64px; height: 44px; padding: 3px; border: 1.5px solid var(--navy); border-radius: 10px; background: var(--surface); cursor: pointer; }
 @media (max-width: 860px) { .team-admin { grid-template-columns: 1fr; } .team-admin-list { max-height: 320px; } }
 
 /* Admin: hand-edited stats */
