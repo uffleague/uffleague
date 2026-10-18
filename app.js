@@ -248,7 +248,7 @@
     const list = (HOME.slides || []).filter((s) => s.image || s.title);
     if (list.length) return list;
     const bowl = (LEAGUE.bowlLogos || {})[LEAGUE.season];
-    return [{ kind: "brand" }, ...(bowl ? [{ kind: "bowl", logo: bowl }] : [])];
+    return [{ kind: "brand" }, ...(bowl ? [{ kind: "bowl", logo: bowl }] : []), { kind: "awards" }];
   }
 
   function heroSlide(s, i) {
@@ -279,6 +279,37 @@
         </div>
         <img class="hx-slide-art" src="${gfxSrc(s.logo)}" alt="United Flag Bowl ${roman(LEAGUE.season)} logo">
       </div>`;
+    // Award race: the current leader for the three big awards (from Award Candidates)
+    if (s.kind === "awards") {
+      const race = awardCandidates().filter((c) => ["MVP", "OPOTY", "DPOTY"].includes(c.code));
+      return `
+      <div class="hx-slide hx-slide--awards ${on}">
+        <div class="hx-slide-text">
+          <span class="hx-kicker">Season ${LEAGUE.season} Award Race</span>
+          <h1 class="hx-title">Award<br>Candidates</h1>
+          <p class="hx-sub">Who's leading the MVP, OPOTY and DPOTY races? Updated after every game by fantasy points.</p>
+          <div class="hx-actions">
+            <a class="btn hx-btn" href="#/awards">See Candidates ${icon("arrow", "sm")}</a>
+            <a class="btn hx-btn-ghost" href="#/awards/${LEAGUE.season - 1}">Past Winners</a>
+          </div>
+        </div>
+        <div class="hx-race">
+          ${race.map((c) => {
+            const p = c.top[0];
+            const t = p && currentTeam(p.player);
+            return `
+              <a class="hx-race-card" href="#/awards">
+                <span class="hx-race-code">${c.code}</span>
+                ${p ? logoOr(t, "md") : `<span class="hx-race-icon">${icon("awards")}</span>`}
+                <span class="hx-race-who">
+                  <span class="hx-race-name">${p ? esc(p.player) : "Up for grabs"}</span>
+                  <span class="hx-race-sub">${p ? `${t ? esc(t.name) : "Free agent"} &middot; ${fmtPts(p.pts)} pts` : "Race starts Week 1"}</span>
+                </span>
+              </a>`;
+          }).join("")}
+        </div>
+      </div>`;
+    }
     // A graphic. Text on top is optional (leave it out when it's already in the picture).
     const hasText = s.kicker || s.title || s.sub;
     const tag = s.link ? "a" : "div";

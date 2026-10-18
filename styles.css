@@ -777,6 +777,25 @@ body.is-home { background: #0a0e1c; }
 .hx-slide::before { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(115deg, rgba(255, 255, 255, .025) 0 2px, transparent 2px 26px); pointer-events: none; }
 .hx-slide--brand { background: radial-gradient(ellipse 55% 90% at 80% 50%, rgba(244, 234, 203, .2), transparent 70%), radial-gradient(ellipse at 0% 120%, #34408a 0%, transparent 55%), linear-gradient(120deg, #0c1230 0%, #1f2547 55%, #0c1230 100%); }
 .hx-slide--bowl { background: radial-gradient(ellipse 50% 90% at 80% 55%, rgba(255, 120, 170, .35), transparent 70%), radial-gradient(ellipse at 0% 120%, #5b2a8c 0%, transparent 55%), linear-gradient(120deg, #120a2a 0%, #33124a 55%, #0b1a3a 100%); }
+.hx-slide--awards { background: radial-gradient(ellipse 50% 90% at 78% 50%, rgba(240, 196, 90, .28), transparent 70%), radial-gradient(ellipse at 0% 120%, #2f3f96 0%, transparent 55%), linear-gradient(120deg, #0c1230 0%, #1d2350 55%, #0c1230 100%); }
+/* Award race cards on the right of the Award Candidates slide */
+.hx-race { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px; width: min(380px, 40%); flex-shrink: 0; }
+.hx-race-card {
+  display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+  background: rgba(10, 14, 28, .6); border: 1px solid rgba(240, 196, 90, .35); border-radius: 12px;
+  backdrop-filter: blur(4px); transition: transform .25s, border-color .25s;
+}
+.hx-race-card:hover { transform: translateX(-4px); border-color: #f0c45a; }
+.hx-race-code {
+  width: 64px; flex-shrink: 0; text-align: center; padding: 4px 0; border-radius: 6px;
+  background: #f0c45a; color: var(--navy); font-family: var(--head); font-weight: 700; font-size: 14px; letter-spacing: .06em;
+}
+.hx-race-icon { width: 36px; height: 36px; display: grid; place-items: center; color: #f0c45a; }
+.hx-race-icon .icon { width: 26px; height: 26px; }
+.hx-race-who { display: flex; flex-direction: column; min-width: 0; }
+.hx-race-name { font-family: var(--head); font-weight: 600; font-size: 20px; line-height: 1.1; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hx-race-sub { font-size: 12px; color: rgba(255, 255, 255, .65); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 1000px) { .hx-race { display: none; } }
 .hx-slide-text { position: relative; z-index: 1; max-width: 620px; }
 .hx-kicker { display: inline-flex; align-items: center; gap: 10px; font-family: var(--head); font-weight: 600; font-size: 14px; letter-spacing: .32em; text-transform: uppercase; color: var(--cream); }
 .hx-kicker::before { content: ""; width: 28px; height: 3px; background: var(--cream); }
