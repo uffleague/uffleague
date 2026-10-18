@@ -53,6 +53,8 @@
           });
           const renamed = Object.keys(sheet.rename || {}).find((n) => n.toLowerCase() === row.player.toLowerCase());
           if (renamed) row.player = sheet.rename[renamed];
+          // Some old sheet rows have TGT and REC swapped (more catches than targets can't happen)
+          if (typeof row.rec === "number" && typeof row.tgt === "number" && row.rec > row.tgt) [row.tgt, row.rec] = [row.rec, row.tgt];
           const conf = LEAGUE.stats.categories.find((c) => c.key === cat);
           const weights = sheet.recalcFpts && conf && conf.allTime && conf.allTime.fpts;
           if (weights) row.fpts = Object.entries(weights).reduce((sum, [k, w]) => sum + (row[k] || 0) * w, 0);
@@ -1044,6 +1046,42 @@
 
   const SECTION_ICONS = { Passing: "stats", Receiving: "stats", Rushing: "stats", Defense: "awards", Team: "teams", Achievements: "legacy" };
 
+  const allTimeCat = (key) => {
+    const c = LEAGUE.stats.categories.find((x) => x.key === key);
+    return c && c.allTime ? { ...c, ...c.allTime } : c;
+  };
+
+  // Everyone tied for the top value
+  function topOf(totals) {
+    const best = Math.max(...totals.map((t) => t.v));
+    return best > 0 ? { best, holders: totals.filter((t) => t.v === best).map((t) => t.player) } : null;
+  }
+
+  // Career records come straight from the All-Time stats, so the two always agree
+  function careerRecord(r) {
+    const totals = new Map();
+    r.career.forEach((spec) => {
+      const [cat, field] = spec.split(".");
+      statRowsFor(allTimeCat(cat), "alltime").forEach((row) => {
+        const key = row.player.toLowerCase();
+        const cur = totals.get(key) || { player: row.player, v: 0 };
+        cur.v += row[field] || 0;
+        totals.set(key, cur);
+      });
+    });
+    const top = topOf([...totals.values()]);
+    return top ? { ...r, holders: top.holders, value: top.best.toLocaleString() } : { ...r, holders: [], value: "—" };
+  }
+
+  // A single-season record is replaced when someone this season beats it
+  function seasonRecord(r) {
+    if (!r.stat) return r;
+    const [group, field] = r.stat.split(".");
+    const top = topOf(Object.values(BOX_TOTALS[group] || {}).map((row) => ({ player: row.player, v: row[field] || 0 })));
+    const old = Number(String(r.value).replace(/[^\d.]/g, ""));
+    return top && top.best > old ? { ...r, holders: top.holders, value: top.best.toLocaleString(), season: LEAGUE.season } : r;
+  }
+
   function records() {
     return `
       <div class="wrap">
@@ -1057,7 +1095,8 @@
             ${g.sections.map((s) => `
               <h3 class="div-title">${s.name}</h3>
               <div class="record-grid">
-                ${s.items.map((r) => {
+                ${s.items.map((item) => {
+                  const r = item.career ? careerRecord(item) : seasonRecord(item);
                   const t = TEAMS.find((x) => x.name === r.holders[0]);
                   return `
                   <div class="card record-card">

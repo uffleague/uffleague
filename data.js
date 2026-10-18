@@ -237,33 +237,35 @@ const LEAGUE = {
   // Format: { series: 1, week: 1, games: [{ id: "W1-1", teams: ["Novasota Wolf Pack", "San Jose Scarecrows"] }, ...] }
   schedule: [],
   // Records page. Each record: label, holders (one or more names), value, and season if single-season.
+  // Single-season: `stat` = box score stat this season's games are checked against; beating the record replaces it.
+  // Career: `career` = All-Time stat tabs + stat to add up; holders and value are worked out from the All-Time stats.
   records: [
     {
       group: "Single-Season Records",
       sections: [
         { name: "Passing", items: [
-          { label: "Most Passing Yards", holders: ["soto"], value: "5,190", season: 5 },
-          { label: "Most Passing TDs", holders: ["soto"], value: "48", season: 5 },
-          { label: "Most Passing Attempts", holders: ["youngvtee"], value: "226", season: 3 },
-          { label: "Most Completions", holders: ["wery"], value: "160", season: 5 },
-          { label: "Most Interceptions Thrown", holders: ["Vljla6i"], value: "18", season: 4 }
+          { label: "Most Passing Yards", holders: ["soto"], value: "5,190", season: 5, stat: "passing.yds" },
+          { label: "Most Passing TDs", holders: ["soto"], value: "48", season: 5, stat: "passing.td" },
+          { label: "Most Passing Attempts", holders: ["youngvtee"], value: "226", season: 3, stat: "passing.att" },
+          { label: "Most Completions", holders: ["wery"], value: "160", season: 5, stat: "passing.comp" },
+          { label: "Most Interceptions Thrown", holders: ["Vljla6i"], value: "18", season: 4, stat: "passing.int" }
         ] },
         { name: "Receiving", items: [
-          { label: "Most Receiving Yards", holders: ["n4w"], value: "2,436", season: 1 },
-          { label: "Most Receiving TDs", holders: ["n4w"], value: "25", season: 1 },
-          { label: "Most Receptions", holders: ["lord 9"], value: "46", season: 4 }
+          { label: "Most Receiving Yards", holders: ["n4w"], value: "2,436", season: 1, stat: "receiving.yds" },
+          { label: "Most Receiving TDs", holders: ["n4w"], value: "25", season: 1, stat: "receiving.td" },
+          { label: "Most Receptions", holders: ["lord 9"], value: "46", season: 4, stat: "receiving.rec" }
         ] },
         { name: "Rushing", items: [
-          { label: "Most Rushing Yards", holders: ["breakxu"], value: "359", season: 5 },
-          { label: "Most Rushing TDs", holders: ["breakxu"], value: "5", season: 3 },
-          { label: "Most Rushing Attempts", holders: ["breakxu"], value: "21", season: 3 }
+          { label: "Most Rushing Yards", holders: ["breakxu"], value: "359", season: 5, stat: "rushing.yds" },
+          { label: "Most Rushing TDs", holders: ["breakxu"], value: "5", season: 3, stat: "rushing.td" },
+          { label: "Most Rushing Attempts", holders: ["breakxu"], value: "21", season: 3, stat: "rushing.att" }
         ] },
         { name: "Defense", items: [
-          { label: "Most Defensive INTs", holders: ["n4w", "synappseuser"], value: "13", season: 1 },
-          { label: "Most Tackles", holders: ["sk8erboy111"], value: "43", season: 5 },
-          { label: "Most Pass Breakups", holders: ["stunaaaaaaaaaaaaa"], value: "8", season: 5 },
-          { label: "Most Sacks", holders: ["knqq"], value: "22", season: 5 },
-          { label: "Most Safeties", holders: ["day"], value: "7", season: 6 }
+          { label: "Most Defensive INTs", holders: ["n4w", "synappseuser"], value: "13", season: 1, stat: "defense.int" },
+          { label: "Most Tackles", holders: ["sk8erboy111"], value: "43", season: 5, stat: "defense.tak" },
+          { label: "Most Pass Breakups", holders: ["stunaaaaaaaaaaaaa"], value: "8", season: 5, stat: "defense.pbu" },
+          { label: "Most Sacks", holders: ["knqq"], value: "22", season: 5, stat: "defense.sck" },
+          { label: "Most Safeties", holders: ["day"], value: "7", season: 6, stat: "defense.saf" }
         ] }
       ]
     },
@@ -271,24 +273,28 @@ const LEAGUE = {
       group: "Career Records",
       sections: [
         { name: "Passing", items: [
-          { label: "Most Career Passing Yards", holders: ["wery"], value: "14,268" },
-          { label: "Most Career Passing TDs", holders: ["breakxu"], value: "128" },
-          { label: "Most Career Passing Attempts", holders: ["wery"], value: "626" },
-          { label: "Most Career Completions", holders: ["wery"], value: "446" },
-          { label: "Most Career INTs Thrown", holders: ["zach"], value: "56" }
+          { label: "Most Career Passing Yards", career: ["QB.yds"] },
+          { label: "Most Career Passing TDs", career: ["QB.td"] },
+          { label: "Most Career Passing Attempts", career: ["QB.att"] },
+          { label: "Most Career Completions", career: ["QB.comp"] },
+          { label: "Most Career INTs Thrown", career: ["QB.int"] }
         ] },
         { name: "Receiving", items: [
-          { label: "Most Career Receiving Yards", holders: ["n4w"], value: "5,514" },
-          { label: "Most Career Receiving TDs", holders: ["n4w"], value: "79" },
-          { label: "Most Career Receptions", holders: ["lord 9"], value: "156" }
+          { label: "Most Career Receiving Yards", career: ["WR.yds", "TE.yds"] },
+          { label: "Most Career Receiving TDs", career: ["WR.td", "TE.td"] },
+          { label: "Most Career Receptions", career: ["WR.rec", "TE.rec"] }
+        ] },
+        { name: "Rushing", items: [
+          { label: "Most Career Rushing Yards", career: ["RB.yds"] },
+          { label: "Most Career Rushing TDs", career: ["RB.td"] }
         ] },
         { name: "Defense", items: [
-          { label: "Most Career Tackles", holders: ["splndd"], value: "77" },
-          { label: "Most Career Sacks", holders: ["knqq"], value: "40" },
-          { label: "Most Career Defensive INTs", holders: ["cityboyalura"], value: "27" },
-          { label: "Most Career Pass Breakups", holders: ["splndd"], value: "17" },
-          { label: "Most Career Tackles for Loss", holders: ["knqq"], value: "24" },
-          { label: "Most Career Safeties", holders: ["knqq"], value: "10" }
+          { label: "Most Career Tackles", career: ["Tackles.tak"] },
+          { label: "Most Career Sacks", career: ["DE.sck"] },
+          { label: "Most Career Defensive INTs", career: ["DB.int", "LB.int"] },
+          { label: "Most Career Pass Breakups", career: ["DB.pbu"] },
+          { label: "Most Career Tackles for Loss", career: ["Tackles.tfl"] },
+          { label: "Most Career Safeties", career: ["DE.saf"] }
         ] }
       ]
     },
