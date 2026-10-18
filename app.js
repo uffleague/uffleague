@@ -2388,7 +2388,7 @@
     LB: { cats: ["LB", "Tackles"], award: "LBOTY", side: "def" },
     DE: { cats: ["DE"], award: "DEOTY", side: "def" }
   };
-  const BT_GAMES = 11;
+  const BT_GAMES = 9;
   const BT_RESPINS = 3;
   const BT_BEST_KEY = "uffBuildBest";
 
@@ -2464,14 +2464,14 @@
     return w ? slots.reduce((n, s) => n + legendRatings().get(run.slots[s.id]).ratings[s.group] * (s.weight || 1), 0) / w : 0;
   };
 
-  // 11 games against random UFF teams; better lineups win more often
+  // A 9-game season against random UFF teams; better lineups win more often
   function btPlaySeason(run) {
     const off = btUnitOvr(run, "off"), def = btUnitOvr(run, "def");
     const ovr = (off + def) / 2;
     const opponents = shuffle(TEAMS.slice()).slice(0, BT_GAMES);
     const games = opponents.map((t) => {
-      // Tuned so a near-perfect draft (OVR ~93) goes 11-0 about 1 time in 5 and an average one wins ~5
-      const opp = 76 + Math.random() * 8;
+      // Tuned so a near-perfect draft (OVR ~93) goes 9-0 about 1 time in 5 and an average one wins ~4
+      const opp = 77 + Math.random() * 8;
       const win = Math.random() < 1 / (1 + Math.exp(-(ovr - opp) / 7));
       const hi = 21 + 7 * Math.floor(Math.random() * 5), lo = Math.max(0, hi - 7 * (1 + Math.floor(Math.random() * 3)) + (Math.random() < 0.3 ? 1 : 0));
       return { team: t.name, win, us: win ? hi : lo, them: win ? lo : hi };
@@ -2487,7 +2487,7 @@
   // Only used by offline tests (window.UFF_TEST is never set on the real site)
   if (window.UFF_TEST) Object.assign(window.UFF_TEST, { legendRatings, seasonPools, btNew, btSpin, btSpotsFor, btOpen, btPlaySeason, BT_SLOTS });
 
-  const btGrade = (w) => (w === BT_GAMES ? "Perfect season. Undefeated." : w >= 9 ? "Title contender." : w >= 6 ? "Playoff bubble." : "Rebuild year.");
+  const btGrade = (w) => (w === BT_GAMES ? "Perfect season. Undefeated." : w >= 7 ? "Title contender." : w >= 5 ? "Playoff bubble." : "Rebuild year.");
   const btRatingClass = (r) => (r >= 90 ? "elite" : r >= 80 ? "good" : r >= 70 ? "ok" : "low");
 
   function btResultText(run) {
