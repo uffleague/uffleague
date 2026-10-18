@@ -234,54 +234,321 @@
 
   /* ---------- Pages ---------- */
 
-  function home() {
+  /* ---------- Home ---------- */
+
+  const HOME = LEAGUE.home || {};
+  const gfxSrc = (src) => `${src}${LEAGUE.logoVersion ? `?v=${LEAGUE.logoVersion}` : ""}`;
+  const shortDate = (d) => new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const teamByName = (name) => TEAMS.find((t) => t.name === name);
+  const logoOr = (t, size = "") => (t ? teamLogo(t, size) : `<img class="team-logo ${size}" src="${LEAGUE.brandLogo}" alt="">`);
+
+  // Banner slides: graphics from data.js (home.slides), otherwise the built-in league and bowl slides
+  let heroAt = 0;
+  function heroSlides() {
+    const list = (HOME.slides || []).filter((s) => s.image || s.title);
+    if (list.length) return list;
+    const bowl = (LEAGUE.bowlLogos || {})[LEAGUE.season];
+    return [{ kind: "brand" }, ...(bowl ? [{ kind: "bowl", logo: bowl }] : [])];
+  }
+
+  function heroSlide(s, i) {
+    const on = i === heroAt ? "on" : "";
+    if (s.kind === "brand") return `
+      <div class="hx-slide hx-slide--brand ${on}">
+        <div class="hx-slide-text">
+          <span class="hx-kicker">Season ${LEAGUE.season} &middot; ${LEAGUE.year}</span>
+          <h1 class="hx-title">United Flag<br>Football</h1>
+          <p class="hx-sub">The premier Roblox flag football league. ${TEAMS.length} teams. ${confCount} conferences. One champion.</p>
+          <div class="hx-actions">
+            <a class="btn hx-btn" href="#/standings">View Standings ${icon("arrow", "sm")}</a>
+            <a class="btn hx-btn-ghost" href="#/stats">Stat Leaders</a>
+          </div>
+        </div>
+        <img class="hx-slide-art hx-slide-art--round" src="${LEAGUE.brandLogo}" alt="">
+      </div>`;
+    if (s.kind === "bowl") return `
+      <div class="hx-slide hx-slide--bowl ${on}">
+        <div class="hx-slide-text">
+          <span class="hx-kicker">Road to the Bowl</span>
+          <h1 class="hx-title">United Flag<br>Bowl ${roman(LEAGUE.season)}</h1>
+          <p class="hx-sub">Season ${LEAGUE.season} ends with one game for the title. Who's lifting the trophy?</p>
+          <div class="hx-actions">
+            <a class="btn hx-btn" href="#/playoff">Playoff Bracket ${icon("arrow", "sm")}</a>
+            <a class="btn hx-btn-ghost" href="#/predictions">Make Predictions</a>
+          </div>
+        </div>
+        <img class="hx-slide-art" src="${gfxSrc(s.logo)}" alt="United Flag Bowl ${roman(LEAGUE.season)} logo">
+      </div>`;
+    // A graphic. Text on top is optional (leave it out when it's already in the picture).
+    const hasText = s.kicker || s.title || s.sub;
+    const tag = s.link ? "a" : "div";
     return `
-      ${liveSection()}
-      <section class="hero">
-        <div class="wrap">
-          <img class="hero-logo" src="${LEAGUE.brandLogo}" alt="United Flag Football logo">
-          <span class="pill">Season ${LEAGUE.season} &middot; ${LEAGUE.year}</span>
-          <h1 class="hero-title">United Flag<br>Football</h1>
-          <p class="hero-sub">The premier Roblox flag football league. ${TEAMS.length} teams. ${confCount} conferences. One champion.</p>
-          <div class="hero-actions">
-            <a class="btn btn-primary" href="#/standings">View Standings ${icon("arrow", "sm")}</a>
-            <a class="btn btn-ghost" href="#/stats">Stat Leaders</a>
-          </div>
-        </div>
-      </section>
-      <section class="wrap home-grid">
-        <div>
-          <div class="section-head">
-            <h2>Latest Scores</h2>
-            <a href="#/scores" class="link">View All &rarr;</a>
-          </div>
-          ${finalWeeks().length
-            ? `<div class="game-list">${finalWeeks().flatMap((w) => w.games).slice(0, 4).map(gameCard).join("")}</div>`
-            : empty("No games played yet", "Scores will show up here once the season kicks off.")}
-        </div>
-        <div>
-          <div class="section-head">
-            <h2>${icon("trend", "accent")} Season Leaders</h2>
-          </div>
-          ${seasonLeaders() || empty("No leaders yet", "Stat leaders will be posted after week one.")}
-          <a href="#/stats" class="link leaders-more">All stat leaders &rarr;</a>
-        </div>
-      </section>
-      <section class="wrap">${candidatesSection()}</section>
-      <section class="wrap">
-        <div class="section-head"><h2>The League</h2></div>
-        <div class="conf-overview">
-          ${LEAGUE.conferences.map((c) => `
-            <a class="card conf-card" href="#/teams">
-              <h3>${c.name}</h3>
-              ${c.divisions.map((d) => `
-                <div class="conf-div">
-                  <span class="eyebrow">${d.name}</span>
-                  <span>${d.teams.length} teams</span>
-                </div>`).join("")}
+      <${tag} class="hx-slide hx-slide--gfx ${hasText ? "has-text" : ""} ${on}" ${s.link ? `href="${esc(s.link)}"` : ""}>
+        <img class="hx-slide-bg" src="${esc(gfxSrc(s.image))}" alt="${esc(s.title || "")}" ${i ? `loading="lazy"` : ""}>
+        ${hasText ? `
+          <div class="hx-slide-text">
+            ${s.kicker ? `<span class="hx-kicker">${esc(s.kicker)}</span>` : ""}
+            ${s.title ? `<h1 class="hx-title">${esc(s.title)}</h1>` : ""}
+            ${s.sub ? `<p class="hx-sub">${esc(s.sub)}</p>` : ""}
+            ${s.link && s.button ? `<div class="hx-actions"><span class="btn hx-btn">${esc(s.button)} ${icon("arrow", "sm")}</span></div>` : ""}
+          </div>` : ""}
+      </${tag}>`;
+  }
+
+  function heroSection() {
+    const slides = heroSlides();
+    heroAt %= slides.length;
+    heroMoved = Date.now();
+    const many = slides.length > 1;
+    return `
+      <section class="hx-hero" aria-roledescription="carousel">
+        ${slides.map(heroSlide).join("")}
+        ${many ? `
+          <button type="button" class="hx-arrow hx-arrow--prev" data-hero="prev" aria-label="Previous">${icon("arrow")}</button>
+          <button type="button" class="hx-arrow hx-arrow--next" data-hero="next" aria-label="Next">${icon("arrow")}</button>
+          <div class="hx-dots">${slides.map((_, i) => `<button type="button" class="hx-dot ${i === heroAt ? "on" : ""}" data-hero="${i}" aria-label="Slide ${i + 1}"></button>`).join("")}</div>` : ""}
+      </section>`;
+  }
+
+  let heroMoved = 0;
+  function heroGo(n) {
+    const hero = document.querySelector(".hx-hero");
+    if (!hero) return;
+    heroMoved = Date.now();
+    const slides = hero.querySelectorAll(".hx-slide");
+    heroAt = (n + slides.length) % slides.length;
+    slides.forEach((s, i) => s.classList.toggle("on", i === heroAt));
+    hero.querySelectorAll(".hx-dot").forEach((d, i) => d.classList.toggle("on", i === heroAt));
+  }
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    setInterval(() => {
+      const hero = document.querySelector(".hx-hero");
+      // A full 7 seconds on each slide, counted from the last change (arrows and dots too)
+      if (hero && !document.hidden && Date.now() - heroMoved > 6900 && !hero.matches(":hover, :focus-within")) heroGo(heroAt + 1);
+    }, 1000);
+  }
+
+  const panelHead = (title, link, linkText, extra = "") => `
+    <div class="hx-head">
+      <h2>${title}</h2>${extra}
+      ${link ? `<a class="hx-more" href="${link}">${linkText} ${icon("arrow", "sm")}</a>` : ""}
+    </div>`;
+
+  // Power rankings: the order in data.js (home.powerRankings) if there is one, otherwise by record
+  function powerRankingsPanel() {
+    const find = (n) => TEAMS.find((t) => [t.name, t.code].some((x) => x && x.toLowerCase() === String(n).toLowerCase()));
+    const manual = [...new Set((HOME.powerRankings || []).map(find).filter(Boolean))];
+    const played = TEAMS.some((t) => t.w + t.l);
+    const byRecord = [...TEAMS].sort((a, b) =>
+      (b.w - b.l) - (a.w - a.l) || b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa) || a.name.localeCompare(b.name));
+    const list = [...manual, ...byRecord.filter((t) => !manual.includes(t))].slice(0, 10);
+    const ranked = manual.length || played;
+    return `
+      <div class="hx-panel hx-rank-panel">
+        ${panelHead("Power Rankings", "#/standings", "Standings")}
+        <div class="hx-rows">
+          ${list.map((t, i) => `
+            <a class="hx-row" href="#/teams/${t.slug}">
+              <span class="hx-rank">${ranked ? i + 1 : "&ndash;"}</span>
+              ${teamLogo(t)}
+              <span class="hx-row-name">${t.name}</span>
+              <span class="hx-rec">${t.w}-${t.l}</span>
             </a>`).join("")}
         </div>
-      </section>`;
+      </div>`;
+  }
+
+  // Latest News: the first story in data.js (home.news), otherwise the newest signing in that team's colors
+  function newsPanel() {
+    const n = (HOME.news || [])[0];
+    if (n) {
+      const tag = n.link ? "a" : "div";
+      return `
+        <${tag} class="hx-panel hx-news" ${n.link ? `href="${esc(n.link)}"` : ""}>
+          ${n.image ? `<img class="hx-news-bg" src="${esc(gfxSrc(n.image))}" alt="">` : ""}
+          <span class="hx-label">Latest News${n.date ? ` &middot; ${shortDate(n.date)}` : ""}</span>
+          <div class="hx-news-body">
+            <h2 class="hx-news-title">${esc(n.title)}</h2>
+            ${n.sub ? `<p class="hx-news-sub">${esc(n.sub)}</p>` : ""}
+            ${n.link ? `<span class="btn hx-btn">${esc(n.button || "Read More")}</span>` : ""}
+          </div>
+        </${tag}>`;
+    }
+    const u = UPDATES[UPDATES.length - 1];
+    if (!u) return `<div class="hx-panel hx-news hx-news--empty"><span class="hx-label">Latest News</span><div class="hx-news-body"><h2 class="hx-news-title">Season ${LEAGUE.season} is coming</h2></div></div>`;
+    const t = u.t;
+    const tint = t ? teamTint(t.name) : { style: "" };
+    const what = u.type === "promotion" ? `Promoted to ${esc(u.role || "staff")} of the ${esc(u.team)}`
+      : `${{ sign: "Signs with", demand: "Demands out of", release: "Released by" }[u.type] || ""} the ${esc(u.team)}`;
+    return `
+      <a class="hx-panel hx-news hx-news--move" href="#/updates" style="${tint.style}">
+        ${t ? `<img class="hx-news-logo" src="${gfxSrc(t.logo || "logo.png")}" alt="">` : ""}
+        <span class="hx-label">Latest Move &middot; ${shortDate(u.date)}</span>
+        <div class="hx-news-body">
+          <h2 class="hx-news-title">${esc(u.player)}</h2>
+          <p class="hx-news-sub">${what}</p>
+          <span class="btn hx-btn">All Updates</span>
+        </div>
+      </a>`;
+  }
+
+  // Stat leaders: this season's box scores, or the All-Time sheets until the first game is played
+  const HOME_LEADERS = [
+    { label: "Passing", group: "passing", f: "yds", unit: "YDS", cats: ["QB"] },
+    { label: "Receiving", group: "receiving", f: "yds", unit: "YDS", cats: ["WR", "TE"] },
+    { label: "Rushing", group: "rushing", f: "yds", unit: "YDS", cats: ["RB"] },
+    { label: "Defense", group: "defense", f: "tak", unit: "TAK", cats: ["Tackles"] }
+  ];
+  let leadTab = 0;
+  function leadersPanel() {
+    const season = HOME_LEADERS.some((l) => Object.values(BOX_TOTALS[l.group]).some((r) => r[l.f] > 0));
+    const tabs = HOME_LEADERS.map((l) => {
+      let rows;
+      if (season) rows = Object.values(BOX_TOTALS[l.group]);
+      else {
+        const sum = new Map();
+        l.cats.forEach((c) => statRowsFor(allTimeCat(c), "alltime").forEach((r) => {
+          const key = r.player.toLowerCase();
+          const cur = sum.get(key) || { player: r.player, [l.f]: 0 };
+          cur[l.f] += r[l.f] || 0;
+          sum.set(key, cur);
+        }));
+        rows = [...sum.values()];
+      }
+      return rows.filter((r) => r[l.f] > 0).sort((a, b) => b[l.f] - a[l.f] || a.player.localeCompare(b.player)).slice(0, 5);
+    });
+    return `
+      <div class="hx-panel">
+        ${panelHead("Stat Leaders", `#/stats/${season ? "season" : "alltime"}`, "View All", `<span class="hx-note">${season ? `Season ${LEAGUE.season}` : "All-Time"}</span>`)}
+        <div class="hx-tabs" role="tablist">
+          ${HOME_LEADERS.map((l, i) => `<button type="button" class="hx-tab ${i === leadTab ? "on" : ""}" data-lead-tab="${i}" role="tab">${l.label}</button>`).join("")}
+        </div>
+        ${tabs.map((rows, i) => `
+          <div class="hx-lead-pane" data-lead-pane="${i}" ${i === leadTab ? "" : "hidden"}>
+            ${rows.length ? rows.map((r, n) => {
+              const t = currentTeam(r.player);
+              return `
+                <div class="hx-lead">
+                  <span class="hx-lead-rank ${n ? "" : "top"}">${n + 1}</span>
+                  <span class="hx-lead-logo">${logoOr(t, "md")}</span>
+                  <span class="hx-lead-who">${playerLink(r.player, "hx-lead-name")}<span class="hx-lead-team">${t ? t.name : "Free agent"}</span></span>
+                  <span class="hx-lead-val">${Math.round(r[HOME_LEADERS[i].f]).toLocaleString()}<small>${HOME_LEADERS[i].unit}</small></span>
+                </div>`;
+            }).join("") : `<p class="hx-empty">No ${HOME_LEADERS[i].label.toLowerCase()} stats yet.</p>`}
+          </div>`).join("")}
+      </div>`;
+  }
+
+  const gameSide = (name, score, won) => {
+    const t = teamByName(name);
+    return `<span class="hx-game-team ${won === false ? "lost" : ""}">${logoOr(t)}<span>${esc(t ? t.code || teamShort(name) : name)}</span>${score != null ? `<b>${score}</b>` : ""}</span>`;
+  };
+
+  // Next games on the schedule, or the latest finals once nothing is left to play
+  function gamesPanel() {
+    const upcoming = allGames().filter(({ g }) => !Array.isArray(g.score)).slice(0, 5);
+    if (upcoming.length || !finalWeeks().length) return `
+      <div class="hx-panel">
+        ${panelHead("Upcoming Games", "#/schedule", "Schedule")}
+        ${upcoming.length ? upcoming.map(({ g, wk }) => `
+          <a class="hx-game" href="#/schedule/${wk.week}">
+            ${gameSide(g.teams[0])}<span class="hx-game-vs">vs</span>${gameSide(g.teams[1])}
+            <span class="hx-game-time">${esc(g.time || `Week ${wk.week}`)}</span>
+          </a>`).join("") : `<p class="hx-empty">The Season ${LEAGUE.season} schedule will be posted soon.</p>`}
+      </div>`;
+    const finals = finalWeeks().flatMap((w) => w.games.map((g) => ({ g, wk: w }))).slice(0, 5);
+    return `
+      <div class="hx-panel">
+        ${panelHead("Latest Scores", "#/scores", "All Scores")}
+        ${finals.map(({ g, wk }) => `
+          <a class="hx-game" href="#/scores">
+            ${gameSide(g.teams[0], g.score[0], g.score[0] >= g.score[1])}<span class="hx-game-vs">&ndash;</span>${gameSide(g.teams[1], g.score[1], g.score[1] >= g.score[0])}
+            <span class="hx-game-time">Final &middot; W${wk.week}</span>
+          </a>`).join("")}
+      </div>`;
+  }
+
+  // Final scores strip under the banner (only once games have been played)
+  function scoreTicker() {
+    const finals = finalWeeks().flatMap((w) => w.games.map((g) => ({ g, wk: w }))).slice(0, 12);
+    if (!finals.length) return "";
+    return `
+      <div class="hx-ticker">
+        ${finals.map(({ g, wk }) => `
+          <a class="hx-tick" href="#/scores">
+            <span class="hx-tick-head">Final &middot; Week ${wk.week}</span>
+            ${[0, 1].map((i) => `<span class="hx-tick-team ${g.score[i] < g.score[1 - i] ? "lost" : ""}">${logoOr(teamByName(g.teams[i]))}<span>${esc(teamShort(g.teams[i]))}</span><b>${g.score[i]}</b></span>`).join("")}
+          </a>`).join("")}
+      </div>`;
+  }
+
+  function mediaPanel() {
+    const list = (SAVED.vods || []).slice(0, 3);
+    return `
+      <div class="hx-panel">
+        ${panelHead("Featured Media", "#/vods", "View All")}
+        ${list.length ? `<div class="hx-media-grid">${list.map((v) => {
+          const yt = ytId(v.url);
+          return `
+            <a class="hx-media" href="${esc(v.url)}" target="_blank" rel="noopener">
+              <span class="hx-media-thumb">${yt ? `<img src="https://img.youtube.com/vi/${yt}/hqdefault.jpg" alt="" loading="lazy">` : ""}<span class="hx-media-play">&#9654;</span></span>
+              <span class="hx-media-title">${esc(v.title)}</span>
+              <span class="hx-media-date">${v.at ? shortDate(new Date(v.at).toLocaleDateString("en-CA")) : esc(v.note || "")}</span>
+            </a>`;
+        }).join("")}</div>` : `<p class="hx-empty">Game replays and highlights will show up here.</p>`}
+      </div>`;
+  }
+
+  const SOCIAL_ICONS = {
+    discord: '<path d="M8 7.5a14 14 0 0 1 8 0M7 16.5c3 1.4 7 1.4 10 0"/><path d="M8.5 6 7 4.5C5 5 3.8 5.8 3.5 6.5 2.3 9.3 2 12.4 2.5 16c1.4 1.5 3 2.4 4.5 2.8L8 17M15.5 6 17 4.5c2 .5 3.2 1.3 3.5 2 1.2 2.8 1.5 5.9 1 9.5-1.4 1.5-3 2.4-4.5 2.8L16 17"/><circle cx="9" cy="12.5" r="1.2"/><circle cx="15" cy="12.5" r="1.2"/>',
+    youtube: '<rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="m10 9.2 5 2.8-5 2.8Z"/>',
+    x: '<path d="M4 4l16 16M20 4 4 20"/>',
+    tiktok: '<path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 3c.4 2.6 2 4.2 5 4.5"/>'
+  };
+
+  // Newest signings, demands, releases and promotions
+  function movesPanel() {
+    const list = UPDATES.slice(-6).reverse();
+    const social = Object.entries(HOME.social || {}).filter(([k, url]) => url && SOCIAL_ICONS[k]);
+    const links = social.length ? `<span class="hx-social">${social.map(([k, url]) =>
+      `<a href="${esc(url)}" target="_blank" rel="noopener" aria-label="${k}"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${SOCIAL_ICONS[k]}</svg></a>`).join("")}</span>` : "";
+    return `
+      <div class="hx-panel">
+        ${panelHead("Latest Moves", social.length ? "" : "#/updates", "Updates", links)}
+        ${list.length ? list.map((u) => {
+          const type = UPDATE_TYPES[u.type] || { verb: "" };
+          const what = u.type === "promotion" ? `promoted to ${esc(u.role || "staff")}` : type.verb;
+          return `
+            <div class="hx-move">
+              ${logoOr(u.t)}
+              <span class="hx-move-text">${playerLink(u.player, "hx-move-name")} ${what} ${u.t ? `<a href="#/teams/${u.t.slug}">${esc(u.t.code || u.team)}</a>` : esc(u.team)}</span>
+              <span class="hx-move-date">${shortDate(u.date)}</span>
+            </div>`;
+        }).join("") : `<p class="hx-empty">Signings will show up here as they happen.</p>`}
+      </div>`;
+  }
+
+  function home() {
+    const cands = awardCandidates().some((c) => c.top.length);
+    return `
+      <div class="home">
+        ${liveSection()}
+        ${heroSection()}
+        <div class="wrap">
+          ${scoreTicker()}
+          <div class="hx-grid hx-grid--top">
+            <div class="hx-area-rank">${powerRankingsPanel()}</div>
+            <div class="hx-area-news">${newsPanel()}</div>
+            <div class="hx-area-lead">${leadersPanel()}</div>
+          </div>
+          <div class="hx-grid hx-grid--bottom">
+            <div class="hx-area-games">${gamesPanel()}</div>
+            <div class="hx-area-media">${mediaPanel()}</div>
+            <div class="hx-area-moves">${movesPanel()}</div>
+          </div>
+          ${cands ? candidatesSection() : ""}
+        </div>
+      </div>`;
   }
 
   function teams() {
@@ -445,7 +712,7 @@
 
   const PLAYER_CARDS = [
     ["passing", "Passing", [["GP", "gp"], ["CMP", "comp"], ["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["INT", "int"]]],
-    ["rushing", "Rushing", [["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["FUM", "fum"]]],
+    ["rushing", "Rushing", [["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["FUM", "fum"], ["PRE", "pre"]]],
     ["receiving", "Receiving", [["TGT", "tgt"], ["REC", "rec"], ["YDS", "yds"], ["TD", "td"], ["DROP", "drop"]]],
     ["defense", "Defense", [["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["INT", "int"], ["PBU", "pbu"], ["SWAT", "swat"], ["TD", "td"]]]
   ];
@@ -796,6 +1063,11 @@
     const shown = cat.columns.map(([k]) => k).filter((k) => k !== "gp" && k !== "fpts");
     const fromBox = (cat.from ? Object.values(BOX_TOTALS[cat.from]) : [])
       .filter((r) => !cat.pos || positionOf(r.player, cat.from) === cat.pos)
+      // `addFrom` pulls a stat in from another box score section (a DE's pressures can be on their defense line)
+      .map((r) => Object.entries(cat.addFrom || {}).reduce((row, [f, g]) => {
+        const other = g !== cat.from && BOX_TOTALS[g][row.player.toLowerCase()];
+        return other && other[f] ? { ...row, [f]: (row[f] || 0) + other[f] } : row;
+      }, r))
       // All-Time tabs only list players who have something in that tab's columns
       .filter((r) => scope === "season" || shown.some((k) => typeof r[k] === "number" && r[k] !== 0))
       .map((r) => (cat.fpts
@@ -1123,7 +1395,7 @@
 
   const BOX = {
     passing: { label: "Passing", cols: [["C/ATT", (r) => `${r.comp}/${r.att}`], ["YDS", "yds"], ["TD", "td"], ["INT", "int"], ["RTG", "rtg"], ["CMP%", "cmpPct"], ["AVG", "avg"], ["LNG", "lng"], ["SCKD", "sacked"]] },
-    rushing: { label: "Rushing", cols: [["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["YPC", "ypc"], ["FUM", "fum"], ["20+", "plus20"], ["LNG", "lng"]] },
+    rushing: { label: "Rushing", cols: [["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["YPC", "ypc"], ["FUM", "fum"], ["20+", "plus20"], ["LNG", "lng"], ["PRE", "pre"]] },
     receiving: { label: "Receiving", cols: [["TGT", "tgt"], ["REC", "rec"], ["YDS", "yds"], ["TD", "td"], ["DROP", "drop"], ["LNG", "lng"]] },
     defense: { label: "Defense", cols: [["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["SWAT", "swat"], ["INT", "int"], ["PBU", "pbu"], ["PRE", "pre"], ["TD", "td"]] }
   };
@@ -1414,7 +1686,7 @@
 
   const RECAP_FIELDS = {
     passing: { YDS: "yds", TD: "td", INT: "int", RTG: "rtg", CMP: "cmpPct", AVG: "avg", LNG: "lng", SCKED: "sacked", SCKD: "sacked", SACKED: "sacked" },
-    rushing: { ATT: "att", YDS: "yds", TD: "td", YPC: "ypc", FUM: "fum", "20+": "plus20", LNG: "lng" },
+    rushing: { ATT: "att", YDS: "yds", TD: "td", YPC: "ypc", FUM: "fum", "20+": "plus20", LNG: "lng", PRE: "pre", PRS: "pre", PRESSURE: "pre", PRESSURES: "pre" },
     receiving: { TGT: "tgt", REC: "rec", YDS: "yds", TD: "td", DROP: "drop", LNG: "lng" },
     defense: { TAK: "tak", TFL: "tfl", SCK: "sck", SAF: "saf", SWAT: "swat", INT: "int", PBU: "pbu", PRE: "pre", TD: "td" }
   };
@@ -2268,7 +2540,7 @@
 
   const STAT_EDIT = {
     passing: [["comp", "CMP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["int", "INT"], ["lng", "LNG"], ["sacked", "SCKD"]],
-    rushing: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["fum", "FUM"], ["lng", "LNG"]],
+    rushing: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["fum", "FUM"], ["lng", "LNG"], ["pre", "PRE"]],
     receiving: [["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"], ["lng", "LNG"]],
     defense: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"]]
   };
@@ -2840,6 +3112,7 @@
       : section === "players" && sub ? () => player(sub)
       : ROUTES[section] || notFound;
     app.innerHTML = page();
+    document.body.classList.toggle("is-home", page === home);
     nav.querySelectorAll("a").forEach((a) =>
       a.classList.toggle("active", a.dataset.path === (section || ""))
     );
@@ -2941,6 +3214,18 @@
 
   app.addEventListener("click", async (e) => {
     const t = e.target.closest("button, [data-pick]") || e.target;
+
+    // Home: banner arrows / dots and the Stat Leaders tabs
+    if (t.dataset && t.dataset.hero) {
+      const h = t.dataset.hero;
+      return heroGo(h === "next" ? heroAt + 1 : h === "prev" ? heroAt - 1 : Number(h));
+    }
+    if (t.dataset && t.dataset.leadTab) {
+      leadTab = Number(t.dataset.leadTab);
+      document.querySelectorAll("[data-lead-tab]").forEach((b) => b.classList.toggle("on", b === t));
+      document.querySelectorAll("[data-lead-pane]").forEach((p) => { p.hidden = Number(p.dataset.leadPane) !== leadTab; });
+      return;
+    }
 
     // Box score open / close
     if (t.hasAttribute && t.hasAttribute("data-box-toggle")) {

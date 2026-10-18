@@ -26,6 +26,22 @@ const LEAGUE = {
     "Salem Snow Hawks": "logos/past/salem-snow-hawks.png",
     "Salem Snowhawks": "logos/past/salem-snow-hawks.png"
   },
+  // Home page. Put graphics in the gfx/ folder (change logoVersion above when a picture is replaced).
+  //   slides: the big rotating banner at the top. Best size 1920 x 600; keep the important part near the middle.
+  //     { image: "gfx/ufb-7-banner.png", link: "#/playoff" }
+  //     Optional text over the picture (leave it out if the text is in the graphic):
+  //     kicker: "Road to the Bowl", title: "Sinaloa vs Salem", sub: "Toronto 2026", button: "View Bowl"
+  //     No slides = the built-in league and bowl slides.
+  //   news: Latest News card (the first one shows). { title, sub, image, link, date: "2026-10-18", button: "Read More" }
+  //     No news = the newest signing in that team's colors.
+  //   powerRankings: team names (or codes) in order, top 10 show. Empty = ranked by record.
+  //   social: links shown on the Latest Moves panel.
+  home: {
+    slides: [],
+    news: [],
+    powerRankings: [],
+    social: { discord: "", youtube: "", x: "", tiktok: "" }
+  },
   // Awards shown on the Awards page. featured: true = big card in the top row.
   awards: [
     { code: "MVP", name: "Most Valuable Player", featured: true },
@@ -124,8 +140,9 @@ const LEAGUE = {
         allTime: { sort: "fpts", fpts: { yds: 0.1, td: 6 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"]] } },
       { key: "Tackles", from: "defense", sort: "tak", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["pbu", "PBU"], ["int", "INT"]],
         allTime: { sort: "fpts", fpts: { tak: 1, tfl: 2 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["tak", "TAK"], ["tfl", "TFL"]] } },
-      { key: "DE", from: "rushing", sort: "yds", columns: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["ypc", "YPC"], ["fum", "FUM"], ["plus20", "20+"], ["lng", "LNG"]],
-        allTime: { from: "defense", sort: "fpts", fpts: { sck: 1, saf: 2 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["sck", "SCK"], ["saf", "SAF"]] } },
+      // PRE (pressures) counts from the DE's rushing lines plus any defense lines they have
+      { key: "DE", from: "rushing", sort: "yds", addFrom: { pre: "defense" }, columns: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["ypc", "YPC"], ["fum", "FUM"], ["plus20", "20+"], ["lng", "LNG"], ["pre", "PRE"]],
+        allTime: { from: "defense", addFrom: null, sort: "fpts", fpts: { sck: 1, saf: 2 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["sck", "SCK"], ["saf", "SAF"]] } },
       { key: "DB", from: "defense", pos: "DB", sort: "int", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"]],
         allTime: { sort: "fpts", fpts: { int: 1, pbu: 0.5 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["int", "INT"], ["pbu", "PBU"]] } },
       // The old LB sheet's FPTS used stats it didn't show, so this season's LB points are a best guess
@@ -157,7 +174,7 @@ const LEAGUE = {
   // Fantasy points per stat, used to rank Award Candidates. Change these to match your league.
   fantasy: {
     passing: { yds: 0.04, td: 4, int: -2 },
-    rushing: { yds: 0.1, td: 6, fum: -2 },
+    rushing: { yds: 0.1, td: 6, fum: -2, pre: 0.5 },
     receiving: { rec: 1, yds: 0.1, td: 6 },
     defense: { tak: 1, tfl: 1, sck: 2, saf: 2, swat: 1, int: 3, pbu: 1, pre: 0.5, td: 6 }
   },

@@ -8,7 +8,7 @@ const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], activity: [] };
 const STAT_FIELDS = {
   passing: ["comp", "att", "yds", "td", "int", "lng", "sacked"],
-  rushing: ["att", "yds", "td", "fum", "lng"],
+  rushing: ["att", "yds", "td", "fum", "lng", "pre"],
   receiving: ["tgt", "rec", "yds", "td", "drop", "lng"],
   defense: ["tak", "tfl", "sck", "saf", "swat", "int", "pbu", "pre", "td"]
 };
