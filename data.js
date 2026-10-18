@@ -178,6 +178,7 @@ const LEAGUE = {
     "biglester": "BIGGIECHEESE", "kevski": "Kevskiiiiiii", "VampViolence": "vampviolences", "yavient": "Yavientt",
     "affused": "lord 9", "2687affused982673260": "lord 9", "touchdenim": "denim", "shazamzq": "shazam", "xv89r12azk74m3a4": "stunaaaaaaaaaaaaa", "nskx": "curfaw", "GalanBlox2": "Galan101dragon20",
     "rip": "ripburied", "ripb_ried": "ripburied", "iluvphenom": "mr_devy1122", ".coaserh": "coaserh", "LighttExe": "Vljla6i", "LightExe": "Vljla6i", "i56gwe": "rekid",
+    "sk8star": "1021juice", "slazery": "Conaments", "UFF_HighRANK": "dictator 10", "JpingRandySanchez": "dictator 10",
     // Head coaches' usernames (from the Season 7 coaches list) -> the name they go by
     "Aloneinnewyorkcity": "2 trey", "marmersie": "msuede", "loverloverlover": "248", "jumpbaI": "splndd"
   },
