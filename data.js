@@ -245,7 +245,8 @@ const LEAGUE = {
     { date: "2026-10-17", time: "15:13", type: "sign", player: "AsianAustra", team: "Shiroishi Samurai", by: "Vljla6i" },
     { date: "2026-10-17", time: "15:23", type: "sign", player: "Jack", team: "Pittsburg Sentinels", by: "2 trey" },
     { date: "2026-10-17", time: "15:23", type: "promotion", player: "SUPERKITOBOY9999", team: "Pittsburg Sentinels", role: "Assistant Head Coach", by: "2 trey" },
-    { date: "2026-10-17", time: "21:36", type: "promotion", player: "denim", team: "Baltimore Bluejays", role: "Assistant Coach" }
+    { date: "2026-10-17", time: "21:36", type: "promotion", player: "denim", team: "Baltimore Bluejays", role: "Assistant Coach" },
+    { date: "2026-10-18", time: "00:44", type: "sign", player: "n4w", team: "Baltimore Bluejays" }
   ],
   // Schedule. Each game lists its two teams (names must match the teams below).
   // Optional: time: "Sat 8 PM EST" once it's set, score: [21, 14] once it's final (same order as teams).
