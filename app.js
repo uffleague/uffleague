@@ -447,10 +447,10 @@
       </div>`;
   }
 
-  const gameSide = (name, score, won) => {
   // Compact team label: the code ("KCJ"), or the nickname for a team outside the league ("Nightmares")
   const shortName = (name) => { const t = teamByName(name); return t ? t.code || teamShort(name) : String(name).split(" ").pop(); };
 
+  const gameSide = (name, score, won) => {
     const t = teamByName(name);
     return `<span class="hx-game-team ${won === false ? "lost" : ""}">${logoOr(t)}<span>${esc(shortName(name))}</span>${score != null ? `<b>${score}</b>` : ""}</span>`;
   };
