@@ -45,7 +45,9 @@ const LEAGUE = {
       "Plymouth Huskies", "Pittsburg Sentinels", "San Jose Scarecrows", "New Orleans Raiders", "Baltimore Bluejays",
       "Havana Toroccoros", "Novasota Wolf Pack", "Rose City Reapers", "Sarnia City Broncos", "Seattle Skyclaws"
     ],
-    social: { discord: "", youtube: "", x: "", tiktok: "" }
+    social: { discord: "", youtube: "", x: "", tiktok: "" },
+    // VOD links to keep off the home page Featured Media (they stay on the VODs page)
+    hideMedia: ["twitch.tv/videos/2900293561"]
   },
   // Awards shown on the Awards page. featured: true = big card in the top row.
   awards: [

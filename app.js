@@ -494,7 +494,9 @@
   }
 
   function mediaPanel() {
-    const list = (SAVED.vods || []).slice(0, 3);
+    // VODs listed in home.hideMedia (by link) stay on the VODs page but not here
+    const hidden = (HOME.hideMedia || []).map((u) => String(u).toLowerCase());
+    const list = (SAVED.vods || []).filter((v) => !hidden.some((h) => h && String(v.url).toLowerCase().includes(h))).slice(0, 3);
     return `
       <div class="hx-panel">
         ${panelHead("Featured Media", "#/vods", "View All")}
