@@ -715,11 +715,32 @@
   }
 
   // Old sheet names -> site names (aliases in data.js), so one player's rows add up together
-  function aliasName(name) {
+  function rawAlias(name) {
     const aliases = LEAGUE.aliases || {};
     if (name in aliases) return aliases[name];
-    const hit = Object.keys(aliases).find((k) => k.toLowerCase() === name.toLowerCase());
+    const hit = Object.keys(aliases).find((k) => k.toLowerCase() === String(name).toLowerCase());
     return hit ? aliases[hit] : name;
+  }
+  // Capital letters never matter: "N4W" and "n4w" are one player. They're always shown with one spelling,
+  // taken from (in order) the Legacy list, rosters, head coaches, then the All-Time stat sheets.
+  let nameSpelling = null;
+  function preferredSpellings() {
+    if (nameSpelling) return nameSpelling;
+    nameSpelling = new Map();
+    const add = (n) => {
+      if (typeof n !== "string" || !n || n === "N/A") return;
+      const a = rawAlias(n);
+      if (!nameSpelling.has(a.toLowerCase())) nameSpelling.set(a.toLowerCase(), a);
+    };
+    LEAGUE.legacy.players.forEach((p) => add(p.name));
+    (LEAGUE.updates || []).forEach((u) => add(u.player));
+    LEAGUE.conferences.forEach((c) => c.divisions.forEach((d) => d.teams.forEach((t) => add(t.coach))));
+    Object.values(LEAGUE.stats.allTime || {}).forEach((rows) => rows.forEach((r) => add(r.player)));
+    return nameSpelling;
+  }
+  function aliasName(name) {
+    const a = rawAlias(name);
+    return preferredSpellings().get(String(a).toLowerCase()) || a;
   }
 
   function statRowsFor(cat, scope) {
@@ -908,7 +929,7 @@
     if (Array.isArray(raw)) {
       // Several winners; repeated names are counted
       const counts = new Map();
-      raw.forEach((n) => counts.set(n, (counts.get(n) || 0) + 1));
+      raw.forEach((n) => { const name = aliasName(n); counts.set(name, (counts.get(name) || 0) + 1); }); // "N4W" and "n4w" count together
       return `
       <div class="card award-card ${a.featured ? "featured" : ""}">
         ${head}
@@ -978,7 +999,7 @@
       const score = honors.reduce((sum, [code, n]) => sum + (value[code] || 0) * n, p.bonus || 0);
       return {
         name: p.name,
-        hof: LEAGUE.legacy.hallOfFame.includes(p.name),
+        hof: LEAGUE.legacy.hallOfFame.some((n) => n.toLowerCase() === p.name.toLowerCase()),
         score,
         tier: LEAGUE.legacy.tiers.find((t) => score >= t.min),
         honors: honors.map(([code, n]) => ({ code, n, scored: code in value }))
