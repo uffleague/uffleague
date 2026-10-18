@@ -201,6 +201,9 @@
       (ROSTERS[u.t.slug] = ROSTERS[u.t.slug] || new Map()).set(key, u.player);
     } else if ((u.type === "demand" || u.type === "release") && ROSTERS[u.t.slug]) {
       ROSTERS[u.t.slug].delete(key);
+    } else if (u.type === "promotion") {
+      // Joining another team's staff (owner, coach...) takes them off their old team's roster
+      Object.entries(ROSTERS).forEach(([s, r]) => { if (s !== u.t.slug) r.delete(key); });
     }
   });
 
