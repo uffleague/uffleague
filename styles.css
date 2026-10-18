@@ -362,7 +362,7 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .match-team.tbd .team-cell.muted { color: #aab0c4; }
 .match-team.tinted.win { box-shadow: inset 5px 0 0 var(--cream); }
 .match-team.tinted.lose, .match-team.tinted.faded { opacity: .4; }
-.match-team.tinted.picked { box-shadow: inset 0 0 0 3px var(--cream), inset 6px 0 0 var(--cream); }
+.match-team.tinted.picked { box-shadow: inset 5px 0 0 var(--cream); }
 .match-team.tinted.pick:hover:not(:disabled) { filter: brightness(1.12); background: var(--team); }
 .match-team.tinted.picked, .match-team.tinted.picked:hover:not(:disabled) { background: var(--team); color: var(--team-ink); }
 .match-team.tinted + .match-team, .match-team.tbd + .match-team { border-top: 2px solid var(--surface); }

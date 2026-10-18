@@ -1962,14 +1962,16 @@
   }
 
   // Each visitor picks their own playoff field: 7 seeds per conference, then winners. Saved only on this device.
-  const PRED_KEY = `uffPredictions:S${LEAGUE.season}`;
+  // When a playoff bracket is posted, everyone predicts that bracket; otherwise they pick their own 14 teams first.
+  // Each has its own saved picks.
   const PRED_SEEDS = 7;
+  const predKey = () => (bracket() ? `uffPredictions:S${LEAGUE.season}:${bracket().title}` : `uffPredictions:S${LEAGUE.season}`);
   function loadPred() {
-    try { const s = JSON.parse(localStorage.getItem(PRED_KEY)); if (s) return { seeds: {}, picks: {}, locked: false, ...s }; } catch (e) {}
+    try { const s = JSON.parse(localStorage.getItem(predKey())); if (s) return { seeds: {}, picks: {}, locked: false, ...s }; } catch (e) {}
     return { seeds: {}, picks: {}, locked: false };
   }
   function savePred(state) {
-    try { localStorage.setItem(PRED_KEY, JSON.stringify(state)); } catch (e) {}
+    try { localStorage.setItem(predKey(), JSON.stringify(state)); } catch (e) {}
   }
   const predSeedsDone = (state) => LEAGUE.conferences.every((c) => (state.seeds[c.name] || []).filter(Boolean).length === PRED_SEEDS);
 
@@ -1997,7 +1999,8 @@
 
   function predictionsPage() {
     const state = loadPred();
-    const done = predSeedsDone(state);
+    const official = bracket();
+    const done = official || predSeedsDone(state);
     const seedPicker = `
       <div class="card admin-card pred-seeds">
         <div class="admin-subhead">1. Pick your playoff teams<span class="muted small">${PRED_SEEDS} per conference</span></div>
@@ -2023,26 +2026,25 @@
       </div>`;
     const head = `
       <div class="page-head">
-        <h1>Predictions</h1>
-        <p class="muted">Pick your ${PRED_SEEDS * LEAGUE.conferences.length} playoff teams, then who wins every game. Only you can see your picks; they're saved on this device.</p>
+        <h1>${official ? esc(official.title.replace(/Playoffs?$/i, "").trim() || "Playoff") + " Predictions" : "Predictions"}</h1>
+        <p class="muted">${official
+          ? "Pick who wins every game, all the way to the United Flag Bowl."
+          : `Pick your ${PRED_SEEDS * LEAGUE.conferences.length} playoff teams, then who wins every game.`} Only you can see your picks; they're saved on this device.</p>
       </div>`;
     if (!done) return `<div class="wrap">${head}${seedPicker}</div>`;
 
-    const po = predictionBracket(state.seeds);
+    // The posted playoff bracket, or the one built from this person's own 14 teams
+    const po = official || predictionBracket(state.seeds);
     const rounds = predictedRounds(po, state.picks);
     const last = rounds[rounds.length - 1];
     const champ = last && last.games.length === 1 ? last.games[0].pick : "";
     const made = rounds.reduce((n, r) => n + r.games.filter((g) => g.pick).length, 0);
     const total = rounds.reduce((n, r) => n + r.games.length, 0);
-    // Once the real bracket is posted: who actually won / lost in each round
-    const real = bracket();
-    const realWon = real ? real.rounds.map((r) => new Set(r.games.map(gameWinner).filter(Boolean))) : [];
-    const realLost = real ? real.rounds.map((r) => new Set(r.games.filter((g) => gameWinner(g)).map((g) => (gameWinner(g) === g.a ? g.b : g.a)))) : [];
+    // Once a game on the posted bracket is decided, picks get a check or a cross (g.real = the actual winner)
     const team = (g, s, r, gi) => {
       const name = g[s];
       const picked = name && g.pick === name;
-      const mark = !picked ? "" : realWon[r] && realWon[r].has(name) ? `<span class="pick-mark ok">&#10003;</span>`
-        : realLost[r] && realLost[r].has(name) ? `<span class="pick-mark bad">&#10007;</span>` : "";
+      const mark = !picked || !g.real ? "" : g.real === name ? `<span class="pick-mark ok">&#10003;</span>` : `<span class="pick-mark bad">&#10007;</span>`;
       // A game can be picked once both of its teams are known
       const tint = teamTint(name);
       return `<button type="button" class="match-team pick ${tint.cls} ${picked ? "picked" : g.pick ? "faded" : ""}" style="${tint.style}" data-pick="${r}-${gi}" data-team="${esc(name)}" ${!g.a || !g.b || state.locked ? "disabled" : ""}>${bracketTeam(name, seedOf(g, s))}${mark}</button>`;
@@ -2056,8 +2058,7 @@
     return `
       <div class="wrap">
         ${head}
-        ${seedPicker}
-        <div class="admin-subhead pred-step">2. Pick your winners</div>
+        ${official ? "" : `${seedPicker}<div class="admin-subhead pred-step">2. Pick your winners</div>`}
         <div class="pred-bar">
           <span class="pill">${made} / ${total} picks</span>
           ${state.locked ? `<span class="pill pill-navy">Final picks &middot; locked</span>` : ""}
@@ -2920,7 +2921,7 @@
       if (t.dataset.pick) state.picks[t.dataset.pick] = t.dataset.team;
       if (t.id === "predLock") state.locked = !state.locked;
       if (t.id === "predReset") {
-        if (!confirm("Clear your playoff teams and all your picks?")) return;
+        if (!confirm(bracket() ? "Clear all your picks?" : "Clear your playoff teams and all your picks?")) return;
         state.seeds = {};
         state.picks = {};
       }
