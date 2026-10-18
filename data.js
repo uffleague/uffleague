@@ -9,7 +9,16 @@ const LEAGUE = {
   brandLogo: "logo-main.png", // sidebar + home page logo
   // Team logos: add logo: "logos/<file>.png" to a team. Teams without one use logo.png.
   // Change logoVersion whenever a logo file is replaced, so browsers load the new picture.
-  logoVersion: "2026-10-17b",
+  logoVersion: "2026-10-17c",
+  // Logos for teams from past seasons that aren't in the league now (Past Bowls, Team of the Year, brackets)
+  pastTeams: {
+    "Virginia Venom": "logos/past/virginia-venom.png",
+    "Laredo Longhorns": "logos/past/laredo-longhorns.png",
+    "Savannah Raiders": "logos/past/savannah-raiders.png",
+    "Sinaloa Red Devils": "logos/past/sinaloa-red-devils.png",
+    "Saskatoon Stampede": "logos/past/saskatoon-stampede.png",
+    "New York Dragons": "logos/past/new-york-dragons.png"
+  },
   // Awards shown on the Awards page. featured: true = big card in the top row.
   awards: [
     { code: "MVP", name: "Most Valuable Player", featured: true },

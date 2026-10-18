@@ -859,7 +859,7 @@
           ? `<p class="award-empty">Not awarded</p>`
           : w
           ? `<div class="award-winner">
-              ${t ? teamLogo(t, "md") : ""}
+              ${t ? teamLogo(t, "md") : w && w.team && Object.keys(LEAGUE.pastTeams || {}).some((n) => n.toLowerCase() === w.team.toLowerCase()) ? anyTeamLogo(w.team, "md") : ""}
               <div>
                 <div class="winner-name">${w.player ? playerLink(w.player) : title}</div>
                 ${sub ? `<div class="muted small">${sub}</div>` : ""}
@@ -1610,8 +1610,7 @@
     ["streams", "Live Streams", "live", () => streamsAdminSection()],
     ["playoffs", "Playoffs", "playoff", () => playoffsAdminSection()],
     ["bowls", "Bowl History", "bowl", () => bowlsAdminSection()],
-    ["positions", "Positions", "teams", () => positionsSection()],
-    ["activity", "Activity", "clock", () => activitySection()]
+    ["positions", "Positions", "teams", () => positionsSection()]
   ];
   let adminTab = "overview";
 
@@ -1628,7 +1627,7 @@
         <div class="card stat-chip"><span class="eyebrow">Playoff bracket</span><span class="num">${po ? `${po.rounds.length} round${po.rounds.length === 1 ? "" : "s"}` : "None"}</span></div>
         <div class="card stat-chip"><span class="eyebrow">Legacy players</span><span class="num">${LEAGUE.legacy.players.length}</span></div>
       </div>
-      ${activitySection(5)}`;
+      ${activitySection(25)}`;
   }
 
   function admin() {
@@ -1675,11 +1674,20 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
-  // Team name with its logo (league teams) or the UFF logo (anyone else)
+  // Logo for any team name: league teams, past teams listed in data.js, otherwise the UFF logo
+  function anyTeamLogo(name, size = "") {
+    const t = TEAMS.find((x) => x.name === name);
+    if (t) return teamLogo(t, size);
+    const past = Object.keys(LEAGUE.pastTeams || {}).find((n) => n.toLowerCase() === String(name || "").trim().toLowerCase());
+    return past
+      ? `<img class="team-logo custom ${size}" src="${LEAGUE.pastTeams[past]}${LEAGUE.logoVersion ? `?v=${LEAGUE.logoVersion}` : ""}" alt="${esc(past)} logo">`
+      : `<img class="team-logo ${size}" src="${LEAGUE.brandLogo}" alt="">`;
+  }
+
+  // Team name with its logo
   function teamChip(name, size = "") {
     if (!name) return `<span class="team-cell muted">TBD</span>`;
-    const t = TEAMS.find((x) => x.name === name);
-    return `<span class="team-cell">${t ? teamLogo(t, size) : `<img class="team-logo ${size}" src="${LEAGUE.brandLogo}" alt="">`}<span>${esc(name)}</span></span>`;
+    return `<span class="team-cell">${anyTeamLogo(name, size)}<span>${esc(name)}</span></span>`;
   }
 
   // YouTube / Twitch link -> embeddable player address (Twitch needs this site's domain)
@@ -1772,8 +1780,7 @@
   }
   function bracketTeam(name, seed) {
     if (!name) return `<span class="team-cell muted">${seed ? `<span class="seed">${esc(seed)}</span>` : ""}TBD</span>`;
-    const t = TEAMS.find((x) => x.name === name);
-    return `<span class="team-cell" title="${esc(name)}">${t ? teamLogo(t) : `<img class="team-logo" src="${LEAGUE.brandLogo}" alt="">`}${seed ? `<span class="seed">${esc(seed)}</span>` : ""}<span>${esc(teamShort(name))}</span></span>`;
+    return `<span class="team-cell" title="${esc(name)}">${anyTeamLogo(name)}${seed ? `<span class="seed">${esc(seed)}</span>` : ""}<span>${esc(teamShort(name))}</span></span>`;
   }
 
   // Lays a bracket out. When the last round is one game and every round before it splits evenly,
@@ -2070,8 +2077,7 @@
   function activitySection(limit = 100) {
     return `
       <section>
-        <div class="section-head section-head--left"><h2>${limit < 100 ? "Recent Activity" : "Activity Log"}</h2>
-          ${limit < 100 ? `<a class="link" href="#/admin/activity">See all &rarr;</a>` : ""}</div>
+        <div class="section-head section-head--left"><h2>Recent Activity</h2></div>
         <div class="card list-card" id="activityList" data-limit="${limit}"><p class="muted admin-pad">Loading...</p></div>
       </section>`;
   }
