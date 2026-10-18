@@ -173,6 +173,7 @@ h1, h2, h3 { font-family: var(--head); font-weight: 700; text-transform: upperca
 .login-error { margin: 0; color: #b4123a; font-size: 14px; font-weight: 600; }
 .admin-chips { margin: 8px 0 24px; }
 button.btn { font: inherit; font-weight: 600; cursor: pointer; }
+.honor-seasons { font-weight: 500; color: var(--muted); }
 .admin-card { padding: 20px 22px; }
 .admin-note { margin: 0 0 14px; }
 .admin-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }

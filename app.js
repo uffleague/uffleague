@@ -392,6 +392,37 @@
     ["defense", "Defense", [["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["INT", "int"], ["PBU", "pbu"], ["SWAT", "swat"], ["TD", "td"]]]
   ];
 
+  // Awards a player won, straight from the Awards page history: { code: [seasons...] }
+  const AWARD_TO_LEGACY = { EOTY: "EXEOTY" }; // same award, different code in the legacy list
+  function awardWins(name) {
+    const key = aliasName(name).toLowerCase();
+    const wins = {};
+    Object.entries(LEAGUE.awardWinners || {}).forEach(([season, list]) =>
+      Object.entries(list).forEach(([code, v]) => {
+        const names = Array.isArray(v) ? v : typeof v === "string" ? [v] : v && v.player ? [v.player] : [];
+        names.forEach((n) => {
+          if (n === "N/A" || aliasName(n).toLowerCase() !== key) return;
+          const c = AWARD_TO_LEGACY[code] || code;
+          (wins[c] = wins[c] || []).push(Number(season));
+        });
+      })
+    );
+    return wins;
+  }
+
+  // Legacy-list honors and Awards-page wins together; when both count an award, the higher count is used
+  function playerHonors(name, leg) {
+    const wins = awardWins(name);
+    const byCode = new Map((leg ? leg.honors.filter((h) => h.scored) : []).map((h) => [h.code, { code: h.code, n: h.n }]));
+    Object.entries(wins).forEach(([code, seasons]) => {
+      const cur = byCode.get(code) || { code, n: 0 };
+      byCode.set(code, { code, n: Math.max(cur.n, seasons.length), seasons });
+    });
+    const order = [...LEAGUE.legacy.points.flatMap((g) => g.codes), ...LEAGUE.awards.map((a) => a.code)];
+    const rank = (c) => (order.includes(c) ? order.indexOf(c) : order.length);
+    return [...byCode.values()].sort((a, b) => rank(a.code) - rank(b.code));
+  }
+
   function player(enc) {
     const raw = aliasName(decodeURIComponent(enc));
     const key = raw.toLowerCase();
@@ -407,7 +438,7 @@
     games.forEach(({ lines }) => Object.entries(lines).forEach(([k, l]) => addLine((totals[k] = totals[k] || {}), l)));
     totals.passing = { ...(totals.passing || {}), gp: games.length };
 
-    const honors = leg ? leg.honors.filter((h) => h.scored) : [];
+    const honors = playerHonors(name, leg);
     const honorCount = honors.reduce((n, h) => n + h.n, 0) + (leg && leg.hof ? 1 : 0);
 
     return `
@@ -470,8 +501,8 @@
           <div class="table-title player-section-head">${icon("scores", "sm")}Achievements<span class="muted small">${honorCount} honor${honorCount === 1 ? "" : "s"}</span></div>
           <div class="player-section-body">
             ${honorCount
-              ? `<div class="legacy-honors">${leg.hof ? hofBadge : ""}${honors.map((h) => `
-                  <span class="honor">${LEAGUE.legacy.labels[h.code] || h.code.replace(/_/g, " ")}${h.n > 1 ? ` <b>&times;${h.n}</b>` : ""}</span>`).join("")}</div>`
+              ? `<div class="legacy-honors">${leg && leg.hof ? hofBadge : ""}${honors.map((h) => `
+                  <span class="honor">${LEAGUE.legacy.labels[h.code] || h.code.replace(/_/g, " ")}${h.n > 1 ? ` <b>&times;${h.n}</b>` : ""}${h.seasons ? ` <span class="honor-seasons">${[...new Set(h.seasons)].map((s) => `S${s}`).join(", ")}</span>` : ""}</span>`).join("")}</div>`
               : `<p class="muted">No honors yet.</p>`}
           </div>
         </div>
