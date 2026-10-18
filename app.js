@@ -419,7 +419,7 @@
         }));
         rows = [...sum.values()];
       }
-      return rows.filter((r) => r[l.f] > 0).sort((a, b) => b[l.f] - a[l.f] || a.player.localeCompare(b.player)).slice(0, 5);
+      return rows.filter((r) => r[l.f] > 0).sort((a, b) => b[l.f] - a[l.f] || a.player.localeCompare(b.player)).slice(0, 7);
     });
     return `
       <div class="hx-panel">
