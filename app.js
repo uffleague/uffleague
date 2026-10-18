@@ -335,26 +335,29 @@
     </div>`;
 
   // Power rankings: the order in data.js (home.powerRankings) if there is one, otherwise by record
+  let rankAll = false;
   function powerRankingsPanel() {
     const find = (n) => TEAMS.find((t) => [t.name, t.code].some((x) => x && x.toLowerCase() === String(n).toLowerCase()));
     const manual = [...new Set((HOME.powerRankings || []).map(find).filter(Boolean))];
     const played = TEAMS.some((t) => t.w + t.l);
     const byRecord = [...TEAMS].sort((a, b) =>
       (b.w - b.l) - (a.w - a.l) || b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa) || a.name.localeCompare(b.name));
-    const list = [...manual, ...byRecord.filter((t) => !manual.includes(t))].slice(0, 10);
+    const list = [...manual, ...byRecord.filter((t) => !manual.includes(t))];
     const ranked = manual.length || played;
+    const color = (t) => (/^#[0-9a-f]{6}$/i.test(t.color || "") ? t.color : "#2f3f96");
     return `
       <div class="hx-panel hx-rank-panel">
         ${panelHead("Power Rankings", "#/standings", "Standings")}
-        <div class="hx-rows">
+        <div class="hx-rows ${rankAll ? "all" : ""}" id="rankRows">
           ${list.map((t, i) => `
-            <a class="hx-row" href="#/teams/${t.slug}">
+            <a class="hx-row ${i >= 10 ? "hx-row--more" : ""}" href="#/teams/${t.slug}" style="--team:${color(t)}">
               <span class="hx-rank">${ranked ? i + 1 : "&ndash;"}</span>
               ${teamLogo(t)}
               <span class="hx-row-name">${t.name}</span>
               <span class="hx-rec">${t.w}-${t.l}</span>
             </a>`).join("")}
         </div>
+        ${list.length > 10 ? `<button type="button" class="hx-rank-more" data-rank-all aria-expanded="${rankAll}">${rankAll ? "Show top 10" : `Show all ${list.length}`}</button>` : ""}
       </div>`;
   }
 
@@ -3232,6 +3235,11 @@
     if (t.dataset && t.dataset.hero) {
       const h = t.dataset.hero;
       return heroGo(h === "next" ? heroAt + 1 : h === "prev" ? heroAt - 1 : Number(h));
+    }
+    if (t.dataset && "rankAll" in t.dataset) {
+      rankAll = !rankAll;
+      document.querySelector(".hx-area-rank").innerHTML = powerRankingsPanel();
+      return;
     }
     if (t.dataset && t.dataset.leadScope) {
       leadScope = t.dataset.leadScope;

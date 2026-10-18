@@ -34,12 +34,17 @@ const LEAGUE = {
   //     No slides = the built-in league and bowl slides.
   //   news: Latest News card (the first one shows). { title, sub, image, link, date: "2026-10-18", button: "Read More" }
   //     No news = the newest signing in that team's colors.
-  //   powerRankings: team names (or codes) in order, top 10 show. Empty = ranked by record.
+  //   powerRankings: team names (or codes) in order, 1-20 (top 10 show, "Show all" opens the rest). Empty = ranked by record.
   //   social: links shown on the Latest Moves panel.
   home: {
     slides: [],
     news: [],
-    powerRankings: [],
+    powerRankings: [
+      "Toronto Maples", "San Francisco Miners", "Vienna Angels", "Kansas City Jazz", "Olympia Owls",
+      "Long Beach Pirates", "Costa Rica Pumas", "Shiroishi Samurai", "Columbus Colts", "Detroit Dynasty",
+      "Plymouth Huskies", "Pittsburg Sentinels", "San Jose Scarecrows", "New Orleans Raiders", "Baltimore Bluejays",
+      "Havana Toroccoros", "Novasota Wolf Pack", "Rose City Reapers", "Sarnia City Broncos", "Seattle Skyclaws"
+    ],
     social: { discord: "", youtube: "", x: "", tiktok: "" }
   },
   // Awards shown on the Awards page. featured: true = big card in the top row.
