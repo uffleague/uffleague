@@ -2390,7 +2390,7 @@
   };
   const BT_GAMES = 9;
   const BT_RESPINS = 3;
-  const BT_BEST_KEY = "uffBuildBest";
+  const BT_BEST_KEY = "uffBuildBest9"; // new key for the 9-game season, so old 11-game bests don't show
 
   // Every Legacy player's 60-99 rating at each position group, worked out once
   let btLegends = null;
