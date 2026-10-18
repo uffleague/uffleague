@@ -132,7 +132,7 @@ body.is-home .site-head { position: absolute; top: 0; left: 0; right: 0; color: 
   background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius);
   padding: 44px 24px; text-align: center;
 }
-.empty img { width: 56px; height: 56px; border-radius: 50%; opacity: .55; margin-bottom: 12px; }
+.empty img { width: 64px; height: 64px; border-radius: 50%; margin-bottom: 14px; box-shadow: 0 0 0 4px rgba(244, 234, 203, .08), 0 0 28px rgba(244, 234, 203, .15); }
 .empty h3 { font-size: 18px; margin-bottom: 4px; }
 .empty p { margin: 0; color: var(--muted); }
 

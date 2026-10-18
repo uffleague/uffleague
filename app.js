@@ -227,7 +227,7 @@
 
   const empty = (title, text) => `
     <div class="empty">
-      <img src="logo.png" alt="">
+      <img src="${LEAGUE.brandLogo}" alt="">
       <h3>${title}</h3>
       <p>${text}</p>
     </div>`;
