@@ -2540,12 +2540,16 @@
   const btSpotsFor = (run, key) => btOpen(run).filter((s) => !btUsedOn(run, s.side).has(key));
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
+  const BT_OPTIONS = 6;
   function btSpin(run) {
     const pools = seasonPools();
-    const seasons = shuffle(Object.keys(pools)).filter((s) => pools[s].some((k) => btSpotsFor(run, k).length));
+    const open = Object.fromEntries(Object.entries(pools).map(([s, list]) => [s, list.filter((k) => btSpotsFor(run, k).length)]));
+    const seasons = Object.keys(open).filter((s) => open[s].length);
     if (!seasons.length) return null;
-    const season = seasons[0];
-    run.spin = { season, options: shuffle(pools[season].filter((k) => btSpotsFor(run, k).length)).slice(0, 5) };
+    // Bigger seasons come up more often, so every legend gets about the same chance to be offered
+    let roll = Math.random() * seasons.reduce((n, s) => n + open[s].length, 0);
+    const season = seasons.find((s) => (roll -= open[s].length) < 0) || seasons[seasons.length - 1];
+    run.spin = { season, options: shuffle(open[season].slice()).slice(0, BT_OPTIONS) };
     run.choosing = null;
     return run.spin;
   }
@@ -2562,7 +2566,7 @@
     const opponents = shuffle(TEAMS.slice()).slice(0, BT_GAMES);
     const games = opponents.map((t) => {
       // Tuned so a near-perfect draft (OVR ~93) goes 9-0 about 1 time in 5 and an average one wins ~4
-      const opp = 77 + Math.random() * 8;
+      const opp = 75.5 + Math.random() * 8;
       const win = Math.random() < 1 / (1 + Math.exp(-(ovr - opp) / 7));
       const hi = 21 + 7 * Math.floor(Math.random() * 5), lo = Math.max(0, hi - 7 * (1 + Math.floor(Math.random() * 3)) + (Math.random() < 0.3 ? 1 : 0));
       return { team: t.name, win, us: win ? hi : lo, them: win ? lo : hi };
