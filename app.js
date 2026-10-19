@@ -101,10 +101,10 @@
     // Transactions sent straight from the Discord bot use Discord names: match players to their site names
     // (nicknames in data.js) and teams by name or code, like the paste box does
     const teamLookup = new Map();
-    LEAGUE.conferences.forEach((c) => c.divisions.forEach((d) => d.teams.forEach((t) => {
+    LEAGUE.conferences.flatMap((c) => c.divisions.flatMap((d) => d.teams)).concat(LEAGUE.formerTeams || []).forEach((t) => {
       teamLookup.set(t.name.toLowerCase(), t.name);
       if (t.code) teamLookup.set(t.code.toLowerCase(), t.name);
-    })));
+    });
     SAVED.updates.forEach((u) => {
       if (u.source !== "bot") return;
       u.player = aliasName(mentionName(String(u.player)));
@@ -188,9 +188,15 @@
     release: { label: "Release", verb: "was released by" },
     promotion: { label: "Promotion", verb: "was promoted" }
   };
+  // Disbanded teams: not in the league anymore, but their old transactions still point at them
+  const FORMER = (LEAGUE.formerTeams || []).map((t) => ({ ...t, slug: slug(t.name), former: true }));
+  const byTime = (a, b) => `${a.date} ${a.time || ""}`.localeCompare(`${b.date} ${b.time || ""}`) || a.i - b.i;
   const UPDATES = (LEAGUE.updates || [])
-    .map((u, i) => ({ ...u, i, t: TEAMS.find((x) => x.name === u.team) }))
-    .sort((a, b) => `${a.date} ${a.time || ""}`.localeCompare(`${b.date} ${b.time || ""}`) || a.i - b.i);
+    .map((u, i) => ({ ...u, i, t: TEAMS.find((x) => x.name === u.team) || FORMER.find((x) => x.name === u.team) }))
+    .sort(byTime);
+  // What the Updates page and home panels list: transactions plus a "Disbanded" row per former team
+  const FEED = UPDATES.concat(FORMER.filter((t) => t.disbanded).map((t) =>
+    ({ ...t.disbanded, type: "disband", team: t.name, t, i: Infinity }))).sort(byTime);
 
   const ROSTERS = {};
   UPDATES.forEach((u) => {
@@ -206,6 +212,8 @@
       Object.entries(ROSTERS).forEach(([s, r]) => { if (s !== u.t.slug) r.delete(key); });
     }
   });
+  // A disbanded team's players are free agents
+  FORMER.forEach((t) => delete ROSTERS[t.slug]);
 
   const confCount = LEAGUE.conferences.length;
   const divCount = LEAGUE.conferences.reduce((n, c) => n + c.divisions.length, 0);
@@ -420,18 +428,19 @@
           </div>
         </${tag}>`;
     }
-    const u = UPDATES[UPDATES.length - 1];
+    const u = FEED[FEED.length - 1];
     if (!u) return `<div class="hx-panel hx-news hx-news--empty"><span class="hx-label">Latest News</span><div class="hx-news-body"><h2 class="hx-news-title">Season ${LEAGUE.season} is coming</h2></div></div>`;
     const t = u.t;
     const tint = t ? teamTint(t.name) : { style: "" };
-    const what = u.type === "promotion" ? `Promoted to ${esc(u.role || "staff")} of the ${esc(u.team)}`
+    const what = u.type === "disband" ? "Team disbanded"
+      : u.type === "promotion" ? `Promoted to ${esc(u.role || "staff")} of the ${esc(u.team)}`
       : `${{ sign: "Signs with", demand: "Demands out of", release: "Released by" }[u.type] || ""} the ${esc(u.team)}`;
     return `
       <a class="hx-panel hx-news hx-news--move" href="#/updates" style="${tint.style}">
         ${t ? `<img class="hx-news-logo" src="${gfxSrc(t.logo || "logo.png")}" alt="">` : ""}
         <span class="hx-label">Latest Move &middot; ${shortDate(u.date)}</span>
         <div class="hx-news-body">
-          <h2 class="hx-news-title">${esc(u.player)}</h2>
+          <h2 class="hx-news-title">${esc(u.type === "disband" ? u.team : u.player)}</h2>
           <p class="hx-news-sub">${what}</p>
           <span class="btn hx-btn">All Updates</span>
         </div>
@@ -564,7 +573,7 @@
 
   // Newest signings, demands, releases and promotions
   function movesPanel() {
-    const list = UPDATES.slice(-6).reverse();
+    const list = FEED.slice(-6).reverse();
     const social = Object.entries(HOME.social || {}).filter(([k, url]) => url && SOCIAL_ICONS[k]);
     const links = social.length ? `<span class="hx-social">${social.map(([k, url]) =>
       `<a href="${esc(url)}" target="_blank" rel="noopener" aria-label="${k}"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${SOCIAL_ICONS[k]}</svg></a>`).join("")}</span>` : "";
@@ -574,10 +583,11 @@
         ${list.length ? list.map((u) => {
           const type = UPDATE_TYPES[u.type] || { verb: "" };
           const what = u.type === "promotion" ? `promoted to ${esc(u.role || "staff")}` : type.verb;
+          const team = u.t && !u.t.former ? `<a href="#/teams/${u.t.slug}">${esc(u.t.code || u.team)}</a>` : esc(u.team);
           return `
             <div class="hx-move">
               ${logoOr(u.t)}
-              <span class="hx-move-text">${playerLink(u.player, "hx-move-name")} ${what} ${u.t ? `<a href="#/teams/${u.t.slug}">${esc(u.t.code || u.team)}</a>` : esc(u.team)}</span>
+              <span class="hx-move-text">${u.type === "disband" ? `<span class="hx-move-name">${team}</span> disbanded` : `${playerLink(u.player, "hx-move-name")} ${what} ${team}`}</span>
               <span class="hx-move-date">${shortDate(u.date)}</span>
             </div>`;
         }).join("") : `<p class="hx-empty">Signings will show up here as they happen.</p>`}
@@ -673,7 +683,7 @@
     const last = games[games.length - 1];
     const played = last && TEAMS.find((t) => t.name === last.g.teams[last.i]);
     const staff = UPDATES.filter((u) => u.type === "promotion" && u.t && aliasName(u.player).toLowerCase() === key).pop();
-    return played || TEAMS.find((t) => t.coach && t.coach.toLowerCase() === key) || (staff && staff.t) || null;
+    return played || TEAMS.find((t) => t.coach && t.coach.toLowerCase() === key) || (staff && !staff.t.former && staff.t) || null;
   }
 
   const POS_ORDER = ["QB", "WR", "TE", "DE", "DB", "LB"];
@@ -1394,7 +1404,16 @@
   function updateRow(u, extra = "") {
     const t = u.t || TEAMS.find((x) => x.name === u.team);
     const type = UPDATE_TYPES[u.type] || { label: u.type, verb: "&middot;" };
-    const team = t ? `<a class="link-strong" href="#/teams/${t.slug}">${u.team}</a>` : u.team;
+    const team = t && !t.former ? `<a class="link-strong" href="#/teams/${t.slug}">${u.team}</a>` : u.team;
+    if (u.type === "disband") return `
+      <div class="card update-row">
+        ${teamLogo(t, "md")}
+        <div class="update-main">
+          <div><strong>The ${team}</strong> have disbanded. Their players are now free agents.</div>
+          <div class="muted small">${[fmtDate(u.date), u.time && fmtTime(u.time)].filter(Boolean).join(" &middot; ")}</div>
+        </div>
+        <span class="update-type update-type--release">Disbanded</span>${extra}
+      </div>`;
     const what = u.type === "promotion"
       ? `${type.verb} to <strong>${u.role || "staff"}</strong> of ${team}`
       : `${type.verb} ${team}`;
@@ -1412,7 +1431,7 @@
   }
 
   function updates() {
-    const list = UPDATES.filter((u) => updatesFilter === "all" || u.type === updatesFilter).reverse();
+    const list = FEED.filter((u) => updatesFilter === "all" || u.type === updatesFilter).reverse();
     const filters = [["all", "All"], ...Object.entries(UPDATE_TYPES).map(([k, v]) => [k, `${v.label}s`])];
     return `
       <div class="wrap">
@@ -2664,7 +2683,7 @@
   // A bracket box filled with the team's color, its text in the team's secondary color (both in data.js);
   // teams without a secondary color get dark or white text, whichever reads better
   function teamTint(name) {
-    const t = name && TEAMS.find((x) => x.name === name);
+    const t = name && (TEAMS.find((x) => x.name === name) || FORMER.find((x) => x.name === name));
     if (!name) return { cls: "tbd", style: "" };
     if (!t || !/^#[0-9a-f]{6}$/i.test(t.color || "")) return { cls: "", style: "" };
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(t.color.slice(i, i + 2), 16));

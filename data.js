@@ -26,6 +26,11 @@ const LEAGUE = {
     "Salem Snow Hawks": "logos/past/salem-snow-hawks.png",
     "Salem Snowhawks": "logos/past/salem-snow-hawks.png"
   },
+  // Teams that disbanded this season. They're off the standings, but their old transactions still show on Updates
+  // (with a "Disbanded" row at disbanded: date + time), and their players become free agents.
+  formerTeams: [
+    { name: "Columbus Colts", code: "CLB", color: "#1d4fb0", color2: "#ffffff", logo: "logos/columbus-colts.png", disbanded: { date: "2026-10-19", time: "17:53" } }
+  ],
   // Home page. Put graphics in the gfx/ folder (change logoVersion above when a picture is replaced).
   //   slides: the big rotating banner at the top. Best size 1920 x 600; keep the important part near the middle.
   //     { image: "gfx/ufb-7-banner.png", link: "#/playoff" }
@@ -34,15 +39,15 @@ const LEAGUE = {
   //     No slides = the built-in league and bowl slides.
   //   news: Latest News card (the first one shows). { title, sub, image, link, date: "2026-10-18", button: "Read More" }
   //     No news = the newest signing in that team's colors.
-  //   powerRankings: team names (or codes) in order, 1-20 (top 10 show, "Show all" opens the rest). Empty = ranked by record.
+  //   powerRankings: team names (or codes) in order, 1-19 (top 10 show, "Show all" opens the rest). Empty = ranked by record.
   //   social: links shown on the Latest Moves panel.
   home: {
     slides: [],
     news: [],
     powerRankings: [
       "Toronto Maples", "San Francisco Miners", "Vienna Angels", "Kansas City Jazz", "Olympia Owls",
-      "Long Beach Pirates", "Costa Rica Pumas", "Shiroishi Samurai", "Columbus Colts", "Detroit Dynasty",
-      "Plymouth Huskies", "Pittsburg Sentinels", "San Jose Scarecrows", "New Orleans Raiders", "Baltimore Bluejays",
+      "Long Beach Pirates", "Costa Rica Pumas", "Shiroishi Samurai", "Detroit Dynasty", "Plymouth Huskies",
+      "Pittsburg Sentinels", "San Jose Scarecrows", "New Orleans Raiders", "Baltimore Bluejays",
       "Havana Toroccoros", "Novasota Wolf Pack", "Rose City Reapers", "Sarnia City Broncos", "Seattle Skyclaws"
     ],
     social: { discord: "", youtube: "", x: "", tiktok: "" },
@@ -520,7 +525,6 @@ const LEAGUE = {
         {
           name: "South Division",
           teams: [
-            { name: "Columbus Colts", code: "CLB", color: "#1d4fb0", color2: "#ffffff", coach: "9kb2", logo: "logos/columbus-colts.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
             { name: "Costa Rica Pumas", code: "CR", color: "#1b2a5c", color2: "#ef1b3a", coach: "msuede", logo: "logos/costa-rica-pumas.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
             { name: "Rose City Reapers", code: "RCR", color: "#6a1fc4", color2: "#e3e2e3", coach: "ACTIVIST000", logo: "logos/rose-city-reapers.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
             { name: "Shiroishi Samurai", code: "SHI", color: "#f08a12", color2: "#050505", coach: "Vljla6i", logo: "logos/shiroishi-samurai.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
