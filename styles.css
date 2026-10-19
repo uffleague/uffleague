@@ -412,6 +412,7 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .pred-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 12px; }
 .pred-actions { margin-left: auto; display: flex; gap: 8px; }
 .pill-navy { background: var(--accent); color: var(--cream); border-color: var(--accent); }
+.pill-disbanded { background: transparent; color: var(--muted); border-color: var(--line); font-size: 10.5px; padding: 1px 7px; letter-spacing: .06em; text-transform: uppercase; vertical-align: middle; }
 
 /* ---------- Past bowls ---------- */
 .bowl-list { display: flex; flex-direction: column; gap: 14px; }

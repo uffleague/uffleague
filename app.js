@@ -101,10 +101,10 @@
     // Transactions sent straight from the Discord bot use Discord names: match players to their site names
     // (nicknames in data.js) and teams by name or code, like the paste box does
     const teamLookup = new Map();
-    LEAGUE.conferences.flatMap((c) => c.divisions.flatMap((d) => d.teams)).concat(LEAGUE.formerTeams || []).forEach((t) => {
+    LEAGUE.conferences.forEach((c) => c.divisions.forEach((d) => d.teams.forEach((t) => {
       teamLookup.set(t.name.toLowerCase(), t.name);
       if (t.code) teamLookup.set(t.code.toLowerCase(), t.name);
-    });
+    })));
     SAVED.updates.forEach((u) => {
       if (u.source !== "bot") return;
       u.player = aliasName(mentionName(String(u.player)));
@@ -188,15 +188,14 @@
     release: { label: "Release", verb: "was released by" },
     promotion: { label: "Promotion", verb: "was promoted" }
   };
-  // Disbanded teams: not in the league anymore, but their old transactions still point at them
-  const FORMER = (LEAGUE.formerTeams || []).map((t) => ({ ...t, slug: slug(t.name), former: true }));
   const byTime = (a, b) => `${a.date} ${a.time || ""}`.localeCompare(`${b.date} ${b.time || ""}`) || a.i - b.i;
   const UPDATES = (LEAGUE.updates || [])
-    .map((u, i) => ({ ...u, i, t: TEAMS.find((x) => x.name === u.team) || FORMER.find((x) => x.name === u.team) }))
+    .map((u, i) => ({ ...u, i, t: TEAMS.find((x) => x.name === u.team) }))
     .sort(byTime);
-  // What the Updates page and home panels list: transactions plus a "Disbanded" row per former team
-  const FEED = UPDATES.concat(FORMER.filter((t) => t.disbanded).map((t) =>
+  // What the Updates page and home panels list: transactions plus a "Disbanded" row per disbanded team
+  const FEED = UPDATES.concat(TEAMS.filter((t) => t.disbanded).map((t) =>
     ({ ...t.disbanded, type: "disband", team: t.name, t, i: Infinity }))).sort(byTime);
+  const disbandedTag = (t) => (t && t.disbanded ? ` <span class="pill pill-disbanded">Disbanded</span>` : "");
 
   const ROSTERS = {};
   UPDATES.forEach((u) => {
@@ -213,7 +212,7 @@
     }
   });
   // A disbanded team's players are free agents
-  FORMER.forEach((t) => delete ROSTERS[t.slug]);
+  TEAMS.filter((t) => t.disbanded).forEach((t) => delete ROSTERS[t.slug]);
 
   const confCount = LEAGUE.conferences.length;
   const divCount = LEAGUE.conferences.reduce((n, c) => n + c.divisions.length, 0);
@@ -404,7 +403,7 @@
             <a class="hx-row ${i >= 10 ? "hx-row--more" : ""}" href="#/teams/${t.slug}" style="${rowStyle(t)}">
               <span class="hx-rank">${ranked ? i + 1 : "&ndash;"}</span>
               ${teamLogo(t)}
-              <span class="hx-row-name">${t.name}</span>
+              <span class="hx-row-name">${t.name}${disbandedTag(t)}</span>
               <span class="hx-rec">${t.w}-${t.l}</span>
             </a>`).join("")}
         </div>
@@ -583,7 +582,7 @@
         ${list.length ? list.map((u) => {
           const type = UPDATE_TYPES[u.type] || { verb: "" };
           const what = u.type === "promotion" ? `promoted to ${esc(u.role || "staff")}` : type.verb;
-          const team = u.t && !u.t.former ? `<a href="#/teams/${u.t.slug}">${esc(u.t.code || u.team)}</a>` : esc(u.team);
+          const team = u.t ? `<a href="#/teams/${u.t.slug}">${esc(u.t.code || u.team)}</a>` : esc(u.team);
           return `
             <div class="hx-move">
               ${logoOr(u.t)}
@@ -631,12 +630,12 @@
                   <a class="card team-card" href="#/teams/${slug(t.name)}">
                     ${teamLogo(t, "lg")}
                     <div>
-                      <div class="team-name">${t.name}</div>
+                      <div class="team-name">${t.name}${disbandedTag(t)}</div>
                       <div class="muted small">${t.w}-${t.l}${(() => {
                         const r = ROSTERS[slug(t.name)];
                         return r && r.size ? ` &middot; ${r.size} player${r.size === 1 ? "" : "s"}` : "";
                       })()}</div>
-                      ${t.coach ? `<div class="muted small">HC ${t.coach}</div>` : ""}
+                      ${t.coach && !t.disbanded ? `<div class="muted small">HC ${t.coach}</div>` : ""}
                     </div>
                   </a>`).join("")}
               </div>`).join("")}
@@ -683,7 +682,7 @@
     const last = games[games.length - 1];
     const played = last && TEAMS.find((t) => t.name === last.g.teams[last.i]);
     const staff = UPDATES.filter((u) => u.type === "promotion" && u.t && aliasName(u.player).toLowerCase() === key).pop();
-    return played || TEAMS.find((t) => t.coach && t.coach.toLowerCase() === key) || (staff && !staff.t.former && staff.t) || null;
+    return played || TEAMS.find((t) => !t.disbanded && t.coach && t.coach.toLowerCase() === key) || (staff && !staff.t.disbanded && staff.t) || null;
   }
 
   const POS_ORDER = ["QB", "WR", "TE", "DE", "DB", "LB"];
@@ -738,9 +737,11 @@
         <div class="team-head">
           ${teamLogo(t, "xl")}
           <div>
-            <h1>${t.name}</h1>
-            <p class="muted">${short}${t.coach ? ` &middot; Head Coach ${playerLink(t.coach, "link-strong")}` : ""}</p>
-            ${staff.length ? `<p class="muted">${staff.map((u) => `${u.role} ${playerLink(u.player, "link-strong")}`).join(" &middot; ")}</p>` : ""}
+            <h1>${t.name}${disbandedTag(t)}</h1>
+            ${t.disbanded
+              ? `<p class="muted">${short} &middot; Disbanded ${fmtDate(t.disbanded.date)}. Their players are now free agents.</p>`
+              : `<p class="muted">${short}${t.coach ? ` &middot; Head Coach ${playerLink(t.coach, "link-strong")}` : ""}</p>
+            ${staff.length ? `<p class="muted">${staff.map((u) => `${u.role} ${playerLink(u.player, "link-strong")}`).join(" &middot; ")}</p>` : ""}`}
             <div class="stat-chips">
               <div class="card stat-chip"><span class="eyebrow">Record</span><span class="num">${t.w}-${t.l}</span></div>
               <div class="card stat-chip"><span class="eyebrow">Win %</span><span class="num">${pct(t)}</span></div>
@@ -755,6 +756,7 @@
               ? `<div class="card list-card">${[...roster.values()].map((p) => `
                   <div class="list-row">${playerLink(p)}<span class="muted small">${positionsFor(p).join(", ")}</span></div>`).join("")}
                 </div>`
+              : t.disbanded ? empty("Team disbanded", "Everyone on this roster is a free agent now.")
               : empty("Roster coming soon", "Players show up here once they sign.")}
           </section>
           <section>
@@ -1404,7 +1406,7 @@
   function updateRow(u, extra = "") {
     const t = u.t || TEAMS.find((x) => x.name === u.team);
     const type = UPDATE_TYPES[u.type] || { label: u.type, verb: "&middot;" };
-    const team = t && !t.former ? `<a class="link-strong" href="#/teams/${t.slug}">${u.team}</a>` : u.team;
+    const team = t ? `<a class="link-strong" href="#/teams/${t.slug}">${u.team}</a>` : u.team;
     if (u.type === "disband") return `
       <div class="card update-row">
         ${teamLogo(t, "md")}
@@ -1468,7 +1470,7 @@
                         <tr>
                           <td class="rank">${i + 1}</td>
                           <td class="team-col">
-                            <a href="#/teams/${slug(t.name)}" class="team-cell">${teamLogo(t)}<span>${t.name}</span></a>
+                            <a href="#/teams/${slug(t.name)}" class="team-cell">${teamLogo(t)}<span>${t.name}</span>${disbandedTag(t)}</a>
                           </td>
                           <td>${t.w}</td><td>${t.l}</td><td>${pct(t)}</td>
                           <td>${t.pf}</td><td>${t.pa}</td><td>${diff(t)}</td><td>${t.streak}</td>
@@ -2683,7 +2685,7 @@
   // A bracket box filled with the team's color, its text in the team's secondary color (both in data.js);
   // teams without a secondary color get dark or white text, whichever reads better
   function teamTint(name) {
-    const t = name && (TEAMS.find((x) => x.name === name) || FORMER.find((x) => x.name === name));
+    const t = name && TEAMS.find((x) => x.name === name);
     if (!name) return { cls: "tbd", style: "" };
     if (!t || !/^#[0-9a-f]{6}$/i.test(t.color || "")) return { cls: "", style: "" };
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(t.color.slice(i, i + 2), 16));
