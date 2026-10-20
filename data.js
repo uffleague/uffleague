@@ -181,6 +181,7 @@ const LEAGUE = {
     "affused": "lord 9", "2687affused982673260": "lord 9", "touchdenim": "denim", "shazamzq": "shazam", "xv89r12azk74m3a4": "stunaaaaaaaaaaaaa", "nskx": "curfaw", "GalanBlox2": "Galan101dragon20",
     "rip": "ripburied", "ripb_ried": "ripburied", "iluvphenom": "mr_devy1122", ".coaserh": "coaserh", "LighttExe": "Vljla6i", "LightExe": "Vljla6i", "i56gwe": "rekid",
     "sk8star": "1021juice", "slazery": "Conaments", "UFF_HighRANK": "dictator 10", "JpingRandySanchez": "dictator 10",
+    "sec2v": "sec", "f84d": "CountTo5", "goodnoob9870": "Sigma",
     // Head coaches' usernames (from the Season 7 coaches list) -> the name they go by
     "Aloneinnewyorkcity": "2 trey", "marmersie": "msuede", "loverloverlover": "248", "jumpbaI": "splndd"
   },
@@ -283,7 +284,11 @@ const LEAGUE = {
     { date: "2026-10-18", time: "15:38", type: "sign", player: "mr_devy1122", team: "Columbus Colts" },
     { date: "2026-10-18", time: "15:38", type: "sign", player: "ripburied", team: "Columbus Colts" },
     { date: "2026-10-18", time: "15:57", type: "sign", player: "lord 9", team: "Columbus Colts" },
-    { date: "2026-10-18", time: "16:03", type: "promotion", player: "denim", team: "Columbus Colts", role: "Assistant Coach" }
+    { date: "2026-10-18", time: "16:03", type: "promotion", player: "denim", team: "Columbus Colts", role: "Assistant Coach" },
+    { date: "2026-10-19", time: "23:59", type: "sign", player: "sec", team: "Toronto Maples", by: "zlssei" },
+    { date: "2026-10-19", time: "23:59", type: "promotion", player: "sec", team: "Toronto Maples", role: "Assistant Head Coach", by: "zlssei" },
+    { date: "2026-10-19", time: "23:59", type: "sign", player: "lebrun", team: "Toronto Maples", by: "zlssei" },
+    { date: "2026-10-19", time: "23:59", type: "sign", player: "phentric", team: "Toronto Maples", by: "zlssei" }
   ],
   // Schedule. Each game lists its two teams (names must match the teams below).
   // Optional: time: "Sat 8 PM EST" once it's set, score: [21, 14] once it's final (same order as teams).
