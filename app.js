@@ -106,9 +106,13 @@
       if (t.code) teamLookup.set(t.code.toLowerCase(), t.name);
     })));
     SAVED.updates.forEach((u) => {
-      if (u.source !== "bot") { if (/<@/.test(u.player)) u.player = mentionName(String(u.player)); return; }
+      if (u.source !== "bot") {
+        if (/<@/.test(u.player)) u.player = mentionName(String(u.player));
+        if (/\(@[^)]*$/.test(u.by || "")) u.by = mentionName(String(u.by));
+        return;
+      }
       u.player = aliasName(mentionName(String(u.player)));
-      if (u.by) u.by = aliasName(String(u.by).replace(/^@/, "").trim());
+      if (u.by) u.by = aliasName(mentionName(String(u.by)));
       const team = String(u.team).replace(/:[^:\s]+:/g, "").replace(/@/g, "").trim();
       u.team = teamLookup.get(team.toLowerCase()) || team;
     });
@@ -2247,7 +2251,8 @@
   // "@2 trey (@Aloneinnewyorkcity)®" -> "2 trey", "@desiredsantana®" -> "desiredsantana"
   function mentionName(s) {
     // "<@816767631222505538> xxlopzj" -> "xxlopzj" (keep the raw tag only if there's no name after it)
-    s = s.replace(/<@[!&]?\d+>\s*(?=\S)/g, "").trim().replace(/^@/, "");
+    // and a cut-off handle at the end ("Vljla6i (@") goes too
+    s = s.replace(/<@[!&]?\d+>\s*(?=\S)/g, "").replace(/(\S)\s*\(@[^)]*$/, "$1").trim().replace(/^@/, "");
     const m = s.match(/^(.+?)\s*(?:\(@[^)]*\))?\s*®/);
     return (m ? m[1] : s.replace(/[®!.]+$/, "")).trim();
   }
