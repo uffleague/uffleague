@@ -3319,7 +3319,7 @@
   // Hand-set ratings that replace the formula's number for a player (keyed by lowercase league name)
   const BT_RATING_OVERRIDES = { shazam: { TE: 99 } };
   const BT_GAMES = 9;
-  const BT_RESPINS = 3;
+  const BT_RESPINS = 1;
   const BT_BEST_KEY = "uffBuildBestOff9"; // offense-only, 9-game version (older formats' bests don't carry over)
 
   // Every Legacy player's 60-99 rating at each position group, worked out once
