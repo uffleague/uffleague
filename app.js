@@ -3346,7 +3346,9 @@
   };
   const BT_GAMES = 9;
   const BT_RESPINS = 1;
-  const BT_BEST_KEY = "uffBuildBestOff9"; // offense-only, 9-game version (older formats' bests don't carry over)
+  // Change the name to reset everyone's "Your best" (older bests don't carry over); the old ones are cleared off each device
+  const BT_BEST_KEY = "uffBuildBest2";
+  try { ["uffBuildBestOff9"].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
 
   // Each BT_ROSTER player's 60-99 rating at each position group, worked out once
   let btLegends = null;
