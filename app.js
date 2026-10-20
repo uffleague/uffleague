@@ -107,12 +107,13 @@
     })));
     SAVED.updates.forEach((u) => {
       if (u.source !== "bot") {
-        if (/<@/.test(u.player)) u.player = mentionName(String(u.player));
+        // Names merged after a transaction was saved still match up (aliases in data.js)
+        u.player = rawAlias(/<@/.test(u.player) ? mentionName(String(u.player)) : u.player);
         if (/\(@[^)]*$/.test(u.by || "")) u.by = mentionName(String(u.by));
         return;
       }
-      u.player = aliasName(mentionName(String(u.player)));
-      if (u.by) u.by = aliasName(mentionName(String(u.by)));
+      u.player = rawAlias(mentionName(String(u.player)));
+      if (u.by) u.by = rawAlias(mentionName(String(u.by)));
       const team = String(u.team).replace(/:[^:\s]+:/g, "").replace(/@/g, "").trim();
       u.team = teamLookup.get(team.toLowerCase()) || team;
     });
