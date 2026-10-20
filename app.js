@@ -3304,7 +3304,7 @@
     });
   }
 
-  /* ---------- Build a Team: spin a season, draft legends into a 7v7 offense, play a 9-game season ---------- */
+  /* ---------- Build a Team: spin for legends, draft them into a 7v7 offense, play a 9-game season ---------- */
 
   const BT_SLOTS = [
     { id: "QB", label: "QB", side: "off", group: "QB", weight: 2 },
@@ -3318,13 +3318,37 @@
     WR: { cats: ["WR"], award: "WROTY", side: "off" },
     TE: { cats: ["TE"], award: "TEOTY", side: "off" }
   };
-  // Hand-set ratings that replace the formula's number for a player (keyed by lowercase league name)
-  const BT_RATING_OVERRIDES = { shazam: { TE: 99 } };
+  // Who's in Build a Team, with hand-set ratings (keyed by lowercase league name; old names work too).
+  // A position left out comes from the formula in legendRatings(), never above the player's hand-set best; {} = all formula.
+  const BT_ROSTER = {
+    // QB
+    "dictator 10": { QB: 99 }, breakxu: { QB: 96 }, jvkethings: { QB: 95 }, biggiecheese: { QB: 94 }, hellraiser: { QB: 92 },
+    exanious: { QB: 91 }, soto: { QB: 89 }, sk8erboy111: { QB: 87, WR: 82 }, wery: {}, discoversoul: {},
+    // WR
+    "lord 9": { WR: 99 }, n4w: { WR: 95 }, splndd: { WR: 93 }, kamil08: { WR: 92 }, coaserh: { WR: 90 }, "2kaiju": { WR: 89 },
+    curfaw: { WR: 89 }, hurdle: { WR: 88 }, "130kami": { WR: 88 }, mr_devy1122: { WR: 87 }, xjupp: { WR: 86 }, yavientt: { WR: 86 },
+    ast1: { WR: 86 }, fraeology: { WR: 85 }, kevskiiiiiii: { WR: 85 }, rosewood: { WR: 85 }, pravings: { WR: 85 },
+    vboppppppppppp: { WR: 85 }, rcbkailer: { WR: 84 }, synappseuser: { WR: 83 }, stunaaaaaaaaaaaaa: { WR: 83 }, fooge: { WR: 82 },
+    superkarbfulboy9999: { WR: 82 }, vampviolences: { WR: 80 }, gabe08130: { WR: 79 }, seaboy: { WR: 79 }, knql: { WR: 78 },
+    jadnlations: { WR: 76 }, goatnotgood: { WR: 72 }, ewikoro: { WR: 70 }, galan: { WR: 65 },
+    uufaailen: { WR: 64 }, lynnvxd: { WR: 64 }, descended: { WR: 64 }, "10": { WR: 64 }, "130": { WR: 64 }, bloodhill: { WR: 64 },
+    influx: { WR: 64 }, shyne6712: { WR: 64 }, mar: { WR: 64 }, offline9178393958402: { WR: 64 }, reapadread: { WR: 64 },
+    sinsession: { WR: 64 }, xoxo: { WR: 64 }, "シシシシシシシシシシシシシシシシ": { WR: 64 },
+    // TE
+    day: { TE: 99 }, elim: { TE: 98 }, shazam: { TE: 97 }, phentric: { TE: 90 }, ripburied: { TE: 88 }, liarliarliar: { WR: 64, TE: 87 },
+    knqq: { TE: 83 }
+  };
+  // Chance (%) a spin offers at least one legend rated this OVR or better; OVRs between rows are filled in
+  const BT_ODDS = {
+    99: 3, 98: 4, 97: 5, 96: 6, 95: 7, 94: 9, 93: 11, 92: 13, 91: 15, 90: 18, 89: 22, 88: 26, 87: 30, 86: 35, 85: 40,
+    84: 45, 83: 50, 82: 55, 81: 60, 80: 65, 79: 70, 78: 75, 77: 80, 76: 84, 75: 87, 72: 90, 71: 92, 70: 94, 66: 96,
+    65: 97, 64: 98, 63: 99, 62: 99.5
+  };
   const BT_GAMES = 9;
   const BT_RESPINS = 1;
   const BT_BEST_KEY = "uffBuildBestOff9"; // offense-only, 9-game version (older formats' bests don't carry over)
 
-  // Every Legacy player's 60-99 rating at each position group, worked out once
+  // Each BT_ROSTER player's 60-99 rating at each position group, worked out once
   let btLegends = null;
   function legendRatings() {
     if (btLegends) return btLegends;
@@ -3336,47 +3360,36 @@
       const rows = statRowsFor(allTimeCat(cat), "alltime").filter((r) => (r.fpts || 0) > 0).sort((a, b) => a.fpts - b.fpts);
       pct[cat] = new Map(rows.map((r, i) => [r.player.toLowerCase(), rows.length > 1 ? i / (rows.length - 1) : 1]));
     });
+    const legacyOf = new Map(legacy.map((p) => [aliasName(p.name).toLowerCase(), p]));
     btLegends = new Map();
-    legacy.forEach((p) => {
-      const key = aliasName(p.name).toLowerCase();
-      const honors = Object.fromEntries(playerHonors(p.name, p).map((h) => [h.code, h.n]));
-      const legacyPart = 10 * Math.sqrt(p.score / maxScore);
+    Object.entries(BT_ROSTER).forEach(([raw, set]) => {
+      const key = aliasName(raw).toLowerCase();
+      const p = legacyOf.get(key); // players who aren't on the Legacy list get no Legacy points
+      const name = p ? p.name : aliasName(raw);
+      const honors = Object.fromEntries(playerHonors(name, p).map((h) => [h.code, h.n]));
+      const legacyPart = p ? 10 * Math.sqrt(p.score / maxScore) : 0;
+      const top = Math.max(0, ...Object.values(set));
       const ratings = {};
       Object.entries(BT_GROUPS).forEach(([g, def]) => {
+        if (g in set) return (ratings[g] = set[g]);
         const statPart = 20 * Math.max(0, ...def.cats.map((c, i) => (pct[c].get(key) || 0) * (i ? 0.8 : 1)));
         const awardPart = 6 * Math.min(2, honors[def.award] || 0);
         const sidePart = Math.min(3, 1.5 * ((honors.MVP || 0) + (def.side === "off" ? honors.OPOTY || 0 : honors.DPOTY || 0)));
-        ratings[g] = Math.min(99, Math.round(60 + statPart + awardPart + legacyPart + sidePart));
+        ratings[g] = Math.min(top || 99, Math.round(60 + statPart + awardPart + legacyPart + sidePart));
       });
-      Object.assign(ratings, BT_RATING_OVERRIDES[key]);
-      btLegends.set(key, { name: p.name, hof: p.hof, tier: p.tier, ratings });
+      btLegends.set(key, { name, hof: p ? p.hof : false, tier: p && p.tier, ratings });
     });
     return btLegends;
   }
 
-  // Legends who won something in a season (that season's spin)
-  let btPools = null;
-  function seasonPools() {
-    if (btPools) return btPools;
-    const legends = legendRatings();
-    btPools = {};
-    Object.entries(LEAGUE.awardWinners || {}).forEach(([season, list]) => {
-      const names = new Set();
-      Object.values(list).forEach((v) => {
-        [].concat(typeof v === "string" ? [v] : Array.isArray(v) ? v : v && v.player ? [v.player] : []).forEach((n) => {
-          const k = aliasName(n).toLowerCase();
-          if (n !== "N/A" && legends.has(k)) names.add(k);
-        });
-      });
-      if (names.size) btPools[season] = [...names];
-    });
-    // Legends whose honors aren't tied to a season (UFB titles, All-Flag teams, crowns...) get their own "All-Time" spin
-    const covered = new Set(Object.values(btPools).flat());
-    const rest = [...legends.keys()].filter((k) => !covered.has(k));
-    if (rest.length) btPools.all = rest;
-    return btPools;
+  // BT_ODDS for any OVR, in between rows by straight line
+  function btOddsAtLeast(ovr) {
+    const rows = Object.keys(BT_ODDS).map(Number).sort((a, b) => a - b);
+    if (ovr <= rows[0]) return ovr < rows[0] ? 100 : BT_ODDS[rows[0]];
+    if (ovr >= rows[rows.length - 1]) return BT_ODDS[rows[rows.length - 1]];
+    const hi = rows.find((r) => r >= ovr), lo = rows[rows.indexOf(hi) - 1];
+    return hi === ovr ? BT_ODDS[hi] : BT_ODDS[lo] + ((BT_ODDS[hi] - BT_ODDS[lo]) * (ovr - lo)) / (hi - lo);
   }
-  const btPoolLabel = (key) => (key === "all" ? "All-Time" : `Season ${key}`);
 
   let bt = null; // the run in progress
   const btNew = () => ({ slots: {}, spin: null, choosing: null, respins: BT_RESPINS, result: null });
@@ -3387,15 +3400,36 @@
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
   const BT_OPTIONS = 6;
+  // A legend's OVR for the spin: their best rating at a spot still open
+  const btOfferOvr = (run, key) => Math.max(...btSpotsFor(run, key).map((s) => legendRatings().get(key).ratings[s.group]));
   function btSpin(run) {
-    const pools = seasonPools();
-    const open = Object.fromEntries(Object.entries(pools).map(([s, list]) => [s, list.filter((k) => btSpotsFor(run, k).length)]));
-    const seasons = Object.keys(open).filter((s) => open[s].length);
-    if (!seasons.length) return null;
-    // Bigger seasons come up more often, so every legend gets about the same chance to be offered
-    let roll = Math.random() * seasons.reduce((n, s) => n + open[s].length, 0);
-    const season = seasons.find((s) => (roll -= open[s].length) < 0) || seasons[seasons.length - 1];
-    run.spin = { season, options: shuffle(open[season].slice()).slice(0, BT_OPTIONS) };
+    const byOvr = new Map();
+    [...legendRatings().keys()].filter((k) => btSpotsFor(run, k).length).forEach((k) => {
+      const o = btOfferOvr(run, k);
+      byOvr.set(o, (byOvr.get(o) || []).concat(k));
+    });
+    const levels = [...byOvr.keys()].sort((a, b) => b - a);
+    if (!levels.length) return null;
+    // Each option rolls its own OVR, so a spin offers at least one that good at BT_ODDS's chance:
+    // one roll reaches OVR o with chance 1 - (1 - odds)^(1/6)
+    let reached = 0;
+    const chance = levels.map((o, i) => {
+      const atLeast = i === levels.length - 1 ? 1 : 1 - Math.pow(1 - btOddsAtLeast(o) / 100, 1 / BT_OPTIONS);
+      const c = Math.max(0, atLeast - reached);
+      reached = Math.max(reached, atLeast);
+      return c;
+    });
+    const left = levels.map((o) => shuffle(byOvr.get(o).slice()));
+    const options = [];
+    const want = Math.min(BT_OPTIONS, left.flat().length);
+    while (options.length < want) {
+      // An OVR whose legends are all on this spin already rolls again
+      const open = chance.map((c, i) => (left[i].length ? c : 0));
+      let roll = Math.random() * open.reduce((a, b) => a + b, 0);
+      const hit = open.findIndex((c) => c && (roll -= c) < 0);
+      options.push(left[hit >= 0 ? hit : left.findIndex((l) => l.length)].pop());
+    }
+    run.spin = { options };
     run.choosing = null;
     return run.spin;
   }
@@ -3428,7 +3462,7 @@
   }
 
   // Only used by offline tests (window.UFF_TEST is never set on the real site)
-  if (window.UFF_TEST) Object.assign(window.UFF_TEST, { legendRatings, seasonPools, btNew, btSpin, btSpotsFor, btOpen, btPlaySeason, BT_SLOTS });
+  if (window.UFF_TEST) Object.assign(window.UFF_TEST, { legendRatings, btOddsAtLeast, btOfferOvr, btNew, btSpin, btSpotsFor, btOpen, btPlaySeason, BT_SLOTS });
 
   const btGrade = (w) => (w === BT_GAMES ? "Perfect season. Undefeated." : w >= 7 ? "Title contender." : w >= 5 ? "Playoff bubble." : "Rebuild year.");
   const btRatingClass = (r) => (r >= 90 ? "elite" : r >= 80 ? "good" : r >= 70 ? "ok" : "low");
@@ -3483,14 +3517,14 @@
       panel = `
         <div class="card admin-card bt-spin-panel">
           <div class="bt-round">Pick ${filled + 1} of ${BT_SLOTS.length}</div>
-          <p class="muted">Spin to land on a season (or All-Time), then draft one of its legends.</p>
-          <button class="btn btn-primary bt-spin-btn" id="btSpin">Spin a season</button>
+          <p class="muted">Spin to get 6 legends, then draft one. The higher the rating, the rarer they are.</p>
+          <button class="btn btn-primary bt-spin-btn" id="btSpin">Spin</button>
         </div>`;
     } else {
       const choosing = bt.choosing && legends.get(bt.choosing);
       panel = `
         <div class="card admin-card bt-spin-panel">
-          <div class="bt-round">Pick ${filled + 1} of ${BT_SLOTS.length} &middot; <span class="bt-season">${btPoolLabel(bt.spin.season)}</span></div>
+          <div class="bt-round">Pick ${filled + 1} of ${BT_SLOTS.length}</div>
           <div class="bt-options">
             ${bt.spin.options.map((k) => {
               const l = legends.get(k);
@@ -3526,7 +3560,7 @@
         <div class="page-head page-head--row">
           <div>
             <h1>Build a Team</h1>
-            <p class="muted">Spin a season, draft its legends into your 7v7 offense (QB, 5 WR, TE), and see if they can go ${BT_GAMES}-0.</p>
+            <p class="muted">Spin for legends, draft them into your 7v7 offense (QB, 5 WR, TE), and see if they can go ${BT_GAMES}-0.</p>
           </div>
           ${best ? `<span class="pill">Your best: ${best.wins}-${BT_GAMES - best.wins} &middot; OVR ${best.ovr}</span>` : ""}
         </div>
