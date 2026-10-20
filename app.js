@@ -383,15 +383,16 @@
     </div>`;
 
   // Power rankings: the order in data.js (home.powerRankings) if there is one, otherwise by record
-  let rankAll = false;
-  function powerRankingsPanel() {
+  function powerRankingOrder() {
     const find = (n) => TEAMS.find((t) => [t.name, t.code].some((x) => x && x.toLowerCase() === String(n).toLowerCase()));
     const manual = [...new Set((HOME.powerRankings || []).map(find).filter(Boolean))];
-    const played = TEAMS.some((t) => t.w + t.l);
     const byRecord = [...TEAMS].sort((a, b) =>
       (b.w - b.l) - (a.w - a.l) || b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa) || a.name.localeCompare(b.name));
-    const list = [...manual, ...byRecord.filter((t) => !manual.includes(t))];
-    const ranked = manual.length || played;
+    return { list: [...manual, ...byRecord.filter((t) => !manual.includes(t))], ranked: manual.length || TEAMS.some((t) => t.w + t.l) };
+  }
+  let rankAll = false;
+  function powerRankingsPanel() {
+    const { list, ranked } = powerRankingOrder();
     const hex = (c, fallback) => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : fallback);
     // Hover fills the row with the team color, fading into the secondary color; light secondaries get dark text on that side
     const rowStyle = (t) => {
@@ -3405,16 +3406,18 @@
     return w ? slots.reduce((n, s) => n + legendRatings().get(run.slots[s.id]).ratings[s.group] * (s.weight || 1), 0) / w : 0;
   };
 
-  // A 9-game season against random UFF teams; better lineups win more often
+  // A 9-game season against random UFF teams; better lineups win more often, and higher-ranked teams are harder to beat
   function btPlaySeason(run) {
     const ovr = btUnitOvr(run, "off");
+    const order = powerRankingOrder().list;
     const opponents = shuffle(TEAMS.slice()).slice(0, BT_GAMES);
     const games = opponents.map((t) => {
-      // Tuned so a near-perfect draft (OVR ~93) goes 9-0 about 1 time in 5 and an average one wins ~4
-      const opp = 75.5 + Math.random() * 8;
+      // Power Rankings #1 plays like an 85, the last-ranked team like a 74 (plus or minus 1.5 for a good or bad day)
+      const rank = order.indexOf(t) + 1;
+      const opp = 85 - (11 * (rank - 1)) / Math.max(1, order.length - 1) + (Math.random() * 3 - 1.5);
       const win = Math.random() < 1 / (1 + Math.exp(-(ovr - opp) / 7));
       const hi = 21 + 7 * Math.floor(Math.random() * 5), lo = Math.max(0, hi - 7 * (1 + Math.floor(Math.random() * 3)) + (Math.random() < 0.3 ? 1 : 0));
-      return { team: t.name, win, us: win ? hi : lo, them: win ? lo : hi };
+      return { team: t.name, rank, win, us: win ? hi : lo, them: win ? lo : hi };
     });
     const wins = games.filter((g) => g.win).length;
     run.result = { ovr: Math.round(ovr), wins, losses: BT_GAMES - wins, games };
@@ -3470,7 +3473,7 @@
           <div class="bt-grade">${btGrade(r.wins)}</div>
           <div class="muted">Offense OVR <strong>${r.ovr}</strong></div>
           <div class="bt-games">${r.games.map((g) => `
-            <div class="bt-game ${g.win ? "win" : "loss"}"><span class="bt-wl">${g.win ? "W" : "L"}</span>${anyTeamLogo(g.team)}<span class="bt-opp">${esc(teamShort(g.team))}</span><span class="bt-score">${g.us}-${g.them}</span></div>`).join("")}</div>
+            <div class="bt-game ${g.win ? "win" : "loss"}"><span class="bt-wl">${g.win ? "W" : "L"}</span>${anyTeamLogo(g.team)}${g.rank ? `<span class="seed">#${g.rank}</span>` : ""}<span class="bt-opp">${esc(teamShort(g.team))}</span><span class="bt-score">${g.us}-${g.them}</span></div>`).join("")}</div>
           <div class="admin-actions">
             <button class="btn btn-primary" id="btAgain">Play again</button>
             <button class="btn btn-ghost" id="btCopy">Copy result</button>
