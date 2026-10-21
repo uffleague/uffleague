@@ -184,7 +184,7 @@ const LEAGUE = {
     "sec2v": "sec", "f84d": "CountTo5", "goodnoob9870": "Sigma", "jaylenyagami": "rosewood", "✴ 2223007": "n4w", "2223007": "n4w",
     "Nxstalgjc": "Yavientt", "Made Her Suffer.": "Yavientt", "Made Her Suffer": "Yavientt", "hey": "2kaiju", "romance": "galan", "Galan101dragon20": "galan",
     "Lance6i": "Shyne6712", "5kaiju": "bloodhill", "Dear Diary": "liarliarliar", "coldview": "hurdle", "1021juice": "sk8erboy111", "vBopYuYt": "vboppppppppppp",
-    "hellraiser000": "hellraiser", "Lobstirz": "rcbkailer",
+    "hellraiser000": "hellraiser", "Lobstirz": "rcbkailer", "bcra n6kj": "n6kj",
     // Head coaches' usernames (from the Season 7 coaches list) -> the name they go by
     "Aloneinnewyorkcity": "2 trey", "marmersie": "msuede", "loverloverlover": "248", "jumpbaI": "splndd"
   },
