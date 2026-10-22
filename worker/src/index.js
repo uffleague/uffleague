@@ -14,7 +14,7 @@ const STAT_FIELDS = {
   passing: ["comp", "att", "yds", "td", "int", "lng", "sacked"],
   rushing: ["att", "yds", "td", "fum", "lng", "pre"],
   receiving: ["tgt", "rec", "yds", "td", "drop", "lng"],
-  defense: ["tak", "tfl", "sck", "saf", "swat", "int", "pbu", "pre", "td"]
+  defense: ["tak", "tfl", "sck", "saf", "swat", "int", "pbu", "pre", "td", "yda", "tda"]
 };
 const IMAGE_MAX = 400 * 1024;
 const UPDATE_TYPES = ["sign", "demand", "release", "promotion"];
@@ -625,6 +625,36 @@ export default {
         log = `Edited Season stats for ${name}`;
       } else {
         log = `Reset ${name}'s stats to the box scores`;
+      }
+    } else if (body.action === "editGameLine") {
+      // One player's line in one game's box score: fix it (stats), take it out (stats: null), or add one (index -1)
+      const r = data.results.find((x) => x.id === body.id);
+      const side = Number(body.side);
+      const group = String(body.group || "");
+      if (!r || ![0, 1].includes(side) || !STAT_FIELDS[group]) return json({ error: "Couldn't find that game's box score. Reload and try again." }, 400);
+      if (!Array.isArray(r.box)) r.box = [{}, {}];
+      const box = (r.box[side] = r.box[side] || {});
+      const list = (box[group] = Array.isArray(box[group]) ? box[group] : []);
+      const clean = (src) => Object.fromEntries(STAT_FIELDS[group].map((f) => { const v = Number(src[f]); return [f, Number.isFinite(v) ? Math.round(v * 10) / 10 : 0]; }));
+      const index = Number(body.index);
+      if (index === -1) {
+        const player = str(body.player, 60);
+        if (!player || !body.stats) return json({ error: "Pick a player." }, 400);
+        list.push({ player, ...clean(body.stats) });
+        log = `Added a ${group} line for ${player} to ${r.id}`;
+      } else {
+        const line = Number.isInteger(index) ? list[index] : null;
+        if (!line) return json({ error: "That stat line changed since you loaded it. Reload and try again." }, 409);
+        if (!body.stats) {
+          list.splice(index, 1);
+          if (!list.length) delete box[group];
+          log = `Removed ${line.player}'s ${group} line from ${r.id}`;
+        } else {
+          Object.assign(line, clean(body.stats));
+          if (group === "passing") line.cmpPct = line.att ? ((line.comp / line.att) * 100).toFixed(1) : "0.0";
+          if (group === "rushing" && line.ypc != null) line.ypc = line.att ? (line.yds / line.att).toFixed(1) : "0.0";
+          log = `Edited ${line.player}'s ${group} line in ${r.id}`;
+        }
       }
     } else if (body.action === "addVod") {
       const title = str(body.title, 80);

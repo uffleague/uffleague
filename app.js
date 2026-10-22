@@ -21,7 +21,11 @@
     play: '<circle cx="12" cy="12" r="8.5"/><path d="m10 8.5 5.5 3.5-5.5 3.5Z"/>',
     dice: '<rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="9" cy="9" r="1.2"/><circle cx="15" cy="9" r="1.2"/><circle cx="9" cy="15" r="1.2"/><circle cx="15" cy="15" r="1.2"/>',
     star: '<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z"/>',
-    live: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>'
+    live: '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>',
+    football: '<path d="M4.5 19.5c-1.6-4.7.2-10.2 4.3-13.1 3.1-2.2 7-2.6 10.7-1.4 1.6 4.7-.2 10.2-4.3 13.1-3.1 2.2-7 2.6-10.7 1.4Z"/><path d="m9.5 14.5 5-5M10.5 11l2.5 2.5M12.5 9l2.5 2.5M8.5 13l2.5 2.5"/>',
+    swords: '<path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2"/><path d="M9.5 17.5 21 6V3h-3L6.5 14.5M11 19l-6-6M8 16l-4 4M5 21l-2-2"/>',
+    flame: '<path d="M12 21c-4 0-6.5-2.6-6.5-6.2 0-3.4 2.4-5.4 3.7-8.3.5 1.8 1.4 3 2.6 3.6C12 6.8 13.2 4.6 15.5 3c-.3 3 1 5.1 2.3 6.9.9 1.3 1.7 2.8 1.7 4.9 0 3.6-2.5 6.2-6.5 6.2Z"/><path d="M12 21c-1.7 0-2.8-1.1-2.8-2.7 0-1.9 1.6-2.8 2.3-4.6 1.3 1.1 3.3 2.4 3.3 4.6 0 1.6-1.1 2.7-2.8 2.7Z"/>',
+    shield: '<path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6L12 3Z"/><path d="m9 12 2.2 2.2L15.5 10"/>'
   };
   const icon = (name, cls = "") =>
     `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -911,9 +915,55 @@
       .flatMap((wk) => wk.games.filter((g) => g.teams.includes(t.name)).map((g) => ({ g, wk })));
   }
 
-  function team(s) {
+  // Standings order: win % first, then point differential (teams still tied keep their data.js order)
+  const winPct = (t) => (t.w + t.l ? t.w / (t.w + t.l) : 0);
+  const standingSort = (a, b) => winPct(b) - winPct(a) || (b.pf - b.pa) - (a.pf - a.pa);
+  const gamesBehind = (lead, t) => ((lead.w - t.w) + (t.l - lead.l)) / 2;
+
+  // "Baltimore Bluejays" -> ["Baltimore", "Bluejays"]; two-word nicknames stay together
+  function splitTeamName(name) {
+    const m = String(name).match(/^(.*?)\s+(Wolf Pack|Red Devils|Snow Hawks|\S+)$/i);
+    return m ? [m[1], m[2]] : ["", String(name)];
+  }
+  // The team color that reads on the dark page (a very dark main color falls back to the second one, then cream)
+  const hexLum = (c) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)); return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255; };
+  function teamGlow(t) {
+    return [t.color, t.color2].find((c) => /^#[0-9a-f]{6}$/i.test(c || "") && hexLum(c) > 0.22) || "#f4eacb";
+  }
+  const ago = (d, time) => {
+    const days = Math.floor((Date.now() - new Date(`${d}T${time || "12:00"}:00`)) / 864e5);
+    return days <= 0 ? "Today" : days === 1 ? "Yesterday" : days < 7 ? `${days} days ago` : days < 14 ? "1 week ago" : days < 60 ? `${Math.floor(days / 7)} weeks ago` : fmtDate(d);
+  };
+
+  // This team's stat lines added up from its own box scores: { passing: { key: totals }, ... }
+  function teamBoxTotals(t) {
+    const out = { passing: {}, rushing: {}, receiving: {}, defense: {} };
+    teamSchedule(t).forEach(({ g }) => {
+      if (!Array.isArray(g.score) || !g.box) return;
+      const side = g.box[g.teams.indexOf(t.name)];
+      Object.keys(out).forEach((k) => ((side && side[k]) || []).forEach((line) => {
+        const key = line.player.toLowerCase();
+        addLine((out[k][key] = out[k][key] || { player: line.player }), { ...line, gp: 1 });
+      }));
+    });
+    // Stats fixed by hand (Admin -> Player Stats) win for a player who last played for this team
+    Object.keys(out).forEach((k) => Object.keys(out[k]).forEach((key) => {
+      const all = BOX_TOTALS[k][key];
+      if (statEditFor(key) && all && all.team === t.name) out[k][key] = { ...all };
+    }));
+    return out;
+  }
+
+  const TEAM_TABS = [["overview", "Overview"], ["roster", "Roster"], ["schedule", "Schedule"], ["results", "Results"], ["standings", "Standings"], ["news", "News"]];
+  const TEAM_LEADERS = [
+    ["Pass YDS", "passing", "yds", "football"], ["Rec YDS", "receiving", "yds", "predict"], ["Pass TD", "passing", "td", "football"],
+    ["Tackles", "defense", "tak", "teams"], ["INTs", "defense", "int", "shield"]
+  ];
+
+  function team(s, tab) {
     const t = TEAMS.find((x) => x.slug === s);
     if (!t) return notFound();
+    tab = TEAM_TABS.some(([k]) => k === tab) ? tab : "overview";
 
     // Roster: signings from Updates, plus anyone whose latest box score was for this team
     const roster = new Map(ROSTERS[t.slug] || []);
@@ -923,68 +973,251 @@
         if (!roster.has(key) && r.team === t.name && currentTeam(r.player) === t) roster.set(key, r.player);
       })
     );
+    const players = [...roster.values()];
 
-    // The head coach already shows on the line above
-    const staff = teamStaff(t).filter((u) => !isHeadCoach(u.role));
     // Staff who are on the roster get a small tag there: FO, HC, AHC...
     const staffTag = (name) => {
-      const s = (STAFF[t.slug] || new Map()).get(name.toLowerCase());
-      if (!s) return "";
+      const st = (STAFF[t.slug] || new Map()).get(name.toLowerCase());
+      if (!st) return "";
       const tag = { "franchise owner": "FO", "co-owner": "CO", "general manager": "GM", "head coach": "HC", "assistant head coach": "AHC",
-        "offensive coordinator": "OC", "defensive coordinator": "DC", "assistant coach": "AC" }[String(s.role).toLowerCase()] || s.role;
-      return ` <span class="pill pill-navy pill-staff" title="${esc(s.role)}">${esc(tag)}</span>`;
+        "offensive coordinator": "OC", "defensive coordinator": "DC", "assistant coach": "AC" }[String(st.role).toLowerCase()] || st.role;
+      return ` <span class="pill pill-navy pill-staff" title="${esc(st.role)}">${esc(tag)}</span>`;
     };
+    const staffAll = teamStaff(t);
+    const owner = staffAll.find((u) => /owner/i.test(u.role) && !/co-?owner/i.test(u.role));
 
     const games = teamSchedule(t);
-    const short =`${t.conference.replace(/ Conference$/, "")} ${t.division.replace(/ Division$/, "")}`;
-    return `
-      <div class="wrap">
-        <a href="#/teams" class="link back">&larr; All Teams</a>
-        <div class="team-head">
-          ${teamLogo(t, "xl")}
-          <div>
-            <h1>${t.name}${disbandedTag(t)}</h1>
-            ${t.disbanded
-              ? `<p class="muted">${short} &middot; Disbanded ${fmtDate(t.disbanded.date)}. Their players are now free agents.</p>`
-              : `<p class="muted">${short}${t.coach ? ` &middot; Head Coach ${playerLink(t.coach, "link-strong")}` : ""}</p>
-            ${staff.length ? `<p class="muted">${staff.map((u) => `${u.role} ${playerLink(u.player, "link-strong")}`).join(" &middot; ")}</p>` : ""}`}
-            <div class="stat-chips">
-              <div class="card stat-chip"><span class="eyebrow">Record</span><span class="num">${t.w}-${t.l}</span></div>
-              <div class="card stat-chip"><span class="eyebrow">Win %</span><span class="num">${pct(t)}</span></div>
-              <div class="card stat-chip"><span class="eyebrow">PF / PA</span><span class="num">${t.pf} / ${t.pa}</span></div>
+    const finals = games.filter(({ g }) => Array.isArray(g.score));
+    const next = games.find(({ g }) => !Array.isArray(g.score));
+    const side = (g) => g.teams.indexOf(t.name);
+    const resultOf = (g) => { const i = side(g); return g.score[i] > g.score[1 - i] ? "W" : g.score[i] < g.score[1 - i] ? "L" : "T"; };
+    const totals = teamBoxTotals(t);
+    const news = FEED.filter((u) => u.team === t.name).reverse();
+    const division = TEAMS.filter((x) => x.conference === t.conference && x.division === t.division).sort(standingSort);
+    const conference = TEAMS.filter((x) => x.conference === t.conference).sort(standingSort);
+    const anyPlayed = conference.some((x) => x.w + x.l);
+    const [city, nick] = splitTeamName(t.name);
+    const short = `${t.conference.replace(/ Conference$/, "")} ${t.division.replace(/ Division$/, "")}`;
+    const glow = teamGlow(t);
+    // The active tab: the team color (the brighter one when it's very dark), with dark or white text to match
+    const tabFill = /^#[0-9a-f]{6}$/i.test(t.color || "") && hexLum(t.color) > 0.22 ? t.color : glow;
+    const tabStyle = `--team:${tabFill};--team-ink:${hexLum(tabFill) > 0.6 ? "#0b1020" : "#fff"}`;
+
+    const tiles = [
+      ["Record", `${t.w}-${t.l}`, "scores"], ["Win %", pct(t), "stats"], ["PF / PA", `${t.pf} / ${t.pa}`, "swords"],
+      ["Point Diff", diff(t), "trend"], ["Streak", t.streak && t.streak !== "-" ? t.streak : "&mdash;", "flame"],
+      ["Conf. Rank", anyPlayed ? `#${conference.indexOf(t) + 1}` : "&mdash;", "awards"]
+    ];
+    const posOf = (p) => positionsFor(p).join(" / ") || "&ndash;";
+    const oppLink = (name) => {
+      const o = TEAMS.find((x) => x.name === name);
+      return o ? `<a class="plink" href="#/teams/${o.slug}">${esc(o.name)}</a>` : esc(name);
+    };
+    const panel = (title, note, body, cls = "") => `
+      <div class="hx-panel tp-panel ${cls}">
+        <div class="hx-head"><h2>${title}</h2>${note ? `<span class="tp-note">${note}</span>` : ""}</div>
+        ${body}
+      </div>`;
+    const blank = (ic, title, text) => `<div class="tp-blank">${icon(ic)}${title ? `<strong>${title}</strong>` : ""}<span>${text}</span></div>`;
+
+    const rosterRows = (list) => list.length
+      ? `<div class="tp-rows">${list.map((p, i) => `
+          <div class="tp-row"><span class="tp-num">${i + 1}</span><span class="tp-name">${playerLink(p)}${staffTag(p)}</span><span class="tp-pos">${posOf(p)}</span></div>`).join("")}</div>`
+      : blank("teams", "", t.disbanded ? "Team disbanded. Everyone on this roster is a free agent now." : "Players show up here once they sign.");
+
+    const nextGame = () => {
+      if (!next) return blank("schedule", finals.length ? "Season complete" : "No games scheduled",
+        finals.length ? "Every game on this team's schedule is final." : "This team's games will show up here<br>once the schedule is released.");
+      const { g, wk } = next;
+      const i = side(g);
+      const opp = TEAMS.find((x) => x.name === g.teams[1 - i]) || { name: g.teams[1 - i] };
+      const type = matchupType(t, opp.slug && opp);
+      const block = (x) => `
+        <a class="tp-next-team" ${x.slug ? `href="#/teams/${x.slug}"` : ""}>
+          ${x.slug ? teamLogo(x, "xl") : anyTeamLogo(x.name, "xl")}
+          <span class="tp-next-name">${esc(x.name)}</span>
+          ${x.slug ? `<span class="muted small">${x.w}-${x.l}</span>` : ""}
+        </a>`;
+      return `
+        <div class="tp-next-match">
+          ${block(i === 0 ? t : opp)}<span class="tp-next-vs">vs</span>${block(i === 0 ? opp : t)}
+        </div>
+        <div class="tp-next-meta">${[`Week ${wk.week}`, esc(g.time || "Time TBD"), type.label].join(" &middot; ")}</div>`;
+    };
+
+    const resultRows = (list) => list.length
+      ? `<div class="tp-rows">${list.map(({ g, wk }) => {
+          const i = side(g);
+          const res = resultOf(g);
+          return `
+            <a class="tp-res" href="#/teams/${t.slug}/results">
+              <span class="tp-wl tp-wl--${res}">${res}</span>
+              <span class="tp-res-opp">${i === 0 ? "vs" : "@"} ${anyTeamLogo(g.teams[1 - i])}<span>${esc(shortName(g.teams[1 - i]))}</span></span>
+              <span class="tp-res-score">${g.score[i]}-${g.score[1 - i]}</span>
+              <span class="muted small">W${wk.week}</span>
+            </a>`;
+        }).join("")}</div>`
+      : blank("records", "", "No games played yet.<br>Results will appear here once the season begins.");
+
+    const leaderRows = TEAM_LEADERS.map(([label, g, f, ic]) => {
+      const best = Object.values(totals[g]).filter((r) => (r[f] || 0) > 0).sort((a, b) => b[f] - a[f] || a.player.localeCompare(b.player))[0];
+      return `
+        <div class="tp-lead">
+          <span class="tp-lead-ico">${icon(ic)}</span>
+          <span class="tp-lead-label">${label}${best ? `<span class="tp-lead-who">${playerLink(best.player)}</span>` : ""}</span>
+          ${best ? `<span class="tp-lead-val">${best[f].toLocaleString()}</span>` : `<span class="tp-lead-none"><b>&mdash;</b><span class="muted small">No data yet</span></span>`}
+        </div>`;
+    }).join("");
+
+    const standTable = (list, full) => `
+      <div class="table-scroll">
+        <table class="tp-table">
+          <thead><tr><th>#</th><th class="team-col">Team</th><th>W</th><th>L</th><th>PCT</th>${full ? "<th>PF</th><th>PA</th><th>DIFF</th><th>STRK</th>" : ""}<th>GB</th></tr></thead>
+          <tbody>${list.map((x, i) => `
+            <tr class="${x === t ? "me" : ""}">
+              <td>${i + 1}</td>
+              <td class="team-col"><a class="team-cell" href="#/teams/${x.slug}">${teamLogo(x)}<span>${esc(x.name)}</span></a></td>
+              <td>${x.w}</td><td>${x.l}</td><td>${pct(x)}</td>
+              ${full ? `<td>${x.pf}</td><td>${x.pa}</td><td>${diff(x)}</td><td>${x.streak && x.streak !== "-" ? x.streak : "&ndash;"}</td>` : ""}
+              <td>${i && gamesBehind(list[0], x) ? gamesBehind(list[0], x) : "&ndash;"}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>`;
+
+    const newsLabel = (u) => (u.type === "disband" ? "Disbanded" : (UPDATE_TYPES[u.type] || { label: u.type }).label);
+    const newsText = (u) => u.type === "disband" ? `The ${esc(t.name)} have disbanded`
+      : u.type === "promotion" ? `${esc(aliasName(u.player))} promoted to ${esc(u.role || "staff")}`
+      : `${esc(aliasName(u.player))} ${{ sign: "signs with", demand: "demands out of", release: "released by" }[u.type] || ""} the ${esc(nick)}`;
+    const newsRows = (list) => list.length
+      ? `<div class="tp-news">${list.map((u) => `
+          <a class="tp-news-item" href="${u.player ? `#/players/${encodeURIComponent(aliasName(u.player))}` : `#/teams/${t.slug}/news`}">
+            <span class="tp-news-thumb">${teamLogo(t)}</span>
+            <span class="tp-news-body">
+              <span class="tp-news-kicker tp-news-kicker--${u.type}">${newsLabel(u)}</span>
+              <span class="tp-news-title">${newsText(u)}</span>
+              <span class="muted small">${ago(u.date, u.time)}</span>
+            </span>
+          </a>`).join("")}</div>`
+      : blank("updates", "", "Signings and roster moves will show up here.");
+
+    // A player's line for this team this season, short: "12/15, 340 YDS, 4 TD · 3 TAK"
+    const seasonLine = (p) => {
+      const k = p.toLowerCase();
+      const pass = totals.passing[k], rec = totals.receiving[k], rush = totals.rushing[k], def = totals.defense[k];
+      return [
+        pass && `${pass.comp || 0}/${pass.att || 0}, ${pass.yds || 0} pass yds, ${pass.td || 0} TD`,
+        rec && `${rec.rec || 0} rec, ${rec.yds || 0} yds, ${rec.td || 0} TD`,
+        rush && `${rush.yds || 0} rush yds${rush.pre ? `, ${rush.pre} PRE` : ""}`,
+        def && [`${def.tak || 0} TAK`, def.sck && `${def.sck} SCK`, def.int && `${def.int} INT`, def.pbu && `${def.pbu} PBU`, def.yda != null && `${def.yda} YDA`].filter(Boolean).join(", ")
+      ].filter(Boolean).join(" &middot; ");
+    };
+    const gp = (p) => Math.max(0, ...Object.values(totals).map((g) => (g[p.toLowerCase()] || {}).gp || 0));
+
+    // Team totals for the Results tab
+    const sum = (g, f) => Object.values(totals[g]).reduce((n, r) => n + (r[f] || 0), 0);
+    const per = (n) => (finals.length ? (n / finals.length).toFixed(1) : "0.0");
+    const teamStats = [
+      ["Points / Game", per(finals.reduce((n, { g }) => n + g.score[side(g)], 0))],
+      ["Allowed / Game", per(finals.reduce((n, { g }) => n + g.score[1 - side(g)], 0))],
+      ["Pass YDS", sum("passing", "yds")], ["Pass TD", sum("passing", "td")], ["INT Thrown", sum("passing", "int")],
+      ["Tackles", sum("defense", "tak")], ["Sacks", sum("defense", "sck")], ["Def INT", sum("defense", "int")],
+      ["YDA", sum("defense", "yda")], ["TDA", sum("defense", "tda")]
+    ];
+
+    let body;
+    if (tab === "roster") {
+      body = `
+        <div class="tp-split">
+          ${panel("Roster", `${players.length} player${players.length === 1 ? "" : "s"}`, players.length ? `
+            <div class="table-scroll">
+              <table class="tp-table tp-table--roster">
+                <thead><tr><th>#</th><th class="team-col">Player</th><th>Pos</th><th>GP</th><th class="team-col">Season ${LEAGUE.season}</th></tr></thead>
+                <tbody>${players.map((p, i) => `
+                  <tr><td>${i + 1}</td><td class="team-col"><strong>${playerLink(p)}</strong>${staffTag(p)}</td><td>${posOf(p)}</td><td>${gp(p)}</td>
+                    <td class="team-col muted small">${seasonLine(p) || "&ndash;"}</td></tr>`).join("")}
+                </tbody>
+              </table>
+            </div>` : rosterRows([]))}
+          ${panel("Staff", "", staffAll.length || t.coach ? `<div class="tp-rows">${[
+            ...(t.coach && !staffAll.some((u) => u.player.toLowerCase() === t.coach.toLowerCase()) ? [{ role: "Head Coach", player: t.coach }] : []),
+            ...staffAll].map((u) => `
+              <div class="tp-row tp-row--staff"><span class="tp-name">${playerLink(u.player)}</span><span class="tp-pos">${esc(u.role)}</span></div>`).join("")}</div>`
+            : blank("teams", "", "No staff listed yet."), "tp-panel--side")}
+        </div>`;
+    } else if (tab === "schedule") {
+      body = panel("Schedule", `${games.length} game${games.length === 1 ? "" : "s"}`, games.length
+        ? `<div class="tp-rows">${games.map(({ g, wk }) => {
+            const i = side(g);
+            const final = Array.isArray(g.score);
+            const res = final ? resultOf(g) : "";
+            return `
+              <div class="list-row sched-row ${res ? `sched-row--${res}` : ""}">
+                <span class="sched-res sched-res--${res || "none"}">${res || "&ndash;"}</span>
+                <span class="sched-wk">W${wk.week}</span>
+                <span class="sched-opp">${i === 0 ? "vs" : "@"} ${anyTeamLogo(g.teams[1 - i])} ${oppLink(g.teams[1 - i])}</span>
+                <span class="sched-score">${final ? `${g.score[i]}-${g.score[1 - i]}` : `<span class="muted small">${esc(g.time || "Not played")}</span>`}</span>
+              </div>`;
+          }).join("")}</div>`
+        : blank("schedule", "No games scheduled", "This team's games will show up here once the schedule is released."));
+    } else if (tab === "results") {
+      body = `
+        ${panel("Team Stats", `Season ${LEAGUE.season}`, `<div class="tp-teamstats">${teamStats.map(([l, v]) => `<div><span class="eyebrow">${l}</span><span class="num">${typeof v === "number" ? v.toLocaleString() : v}</span></div>`).join("")}</div>`)}
+        ${finals.length
+          ? `<div class="game-grid tp-games">${finals.slice().reverse().map(({ g }) => gameCard(g)).join("")}</div>`
+          : `<div class="tp-gap">${panel("Results", "", blank("records", "No games played yet", "Results will appear here once the season begins."))}</div>`}`;
+    } else if (tab === "standings") {
+      body = `
+        <div class="tp-split tp-split--even">
+          ${panel(esc(short), "Division", standTable(division, true))}
+          ${panel(esc(t.conference), "Conference", standTable(conference, false))}
+        </div>`;
+    } else if (tab === "news") {
+      body = panel("Team News", `${news.length} update${news.length === 1 ? "" : "s"}`, news.length
+        ? `<div class="update-list tp-pad">${news.map((u) => updateRow(u)).join("")}</div>`
+        : blank("updates", "", "Signings and roster moves will show up here."));
+    } else {
+      body = `
+        <div class="tp-grid">
+          <div class="tp-area-roster">${panel("Roster", `${players.length} player${players.length === 1 ? "" : "s"}`, rosterRows(players))}</div>
+          <div class="tp-area-next">${panel("Next Game", next ? (finals.length ? `Week ${next.wk.week}` : "Season opener") : "", nextGame(), "tp-next")}</div>
+          <div class="tp-area-res">${panel("Recent Results", "Last 5 games", resultRows(finals.slice(-5).reverse()))}</div>
+          <div class="tp-area-lead">${panel("Team Leaders", "Season", `<div class="tp-rows">${leaderRows}</div>`)}</div>
+          <div class="tp-area-stand">${panel("Standings", esc(short), standTable(division, false))}</div>
+          <div class="tp-area-news">
+            <div class="hx-panel tp-panel">
+              ${panelHead("Team News", news.length > 3 ? `#/teams/${t.slug}/news` : "", "View All")}
+              ${newsRows(news.slice(0, 3))}
             </div>
           </div>
+        </div>`;
+    }
+
+    return `
+      <div class="wrap team-page" style="--glow:${glow};${tabStyle}">
+        <a href="#/teams" class="link back">&larr; All Teams</a>
+        <div class="tp-hero">
+          ${t.logo ? `<img class="tp-ghost" src="${t.logo}${LEAGUE.logoVersion ? `?v=${LEAGUE.logoVersion}` : ""}" alt="">` : ""}
+          <div class="tp-hero-main">
+            ${teamLogo(t, "tp-logo")}
+            <div class="tp-hero-text">
+              ${city ? `<div class="tp-city">${esc(city)}</div>` : ""}
+              <h1 class="tp-title">${city ? `${esc(city)} ` : ""}<span>${esc(nick)}</span>${disbandedTag(t)}</h1>
+              <p class="tp-sub">${esc(short)}</p>
+              ${t.disbanded
+                ? `<p class="tp-staff">Disbanded ${fmtDate(t.disbanded.date)}. Their players are now free agents.</p>`
+                : `<p class="tp-staff">${[owner && `Franchise Owner ${playerLink(owner.player, "link-strong")}`, t.coach && `Head Coach ${playerLink(t.coach, "link-strong")}`].filter(Boolean).join(" &middot; ")}</p>`}
+            </div>
+          </div>
+          <div class="tp-tiles">
+            ${tiles.map(([label, v, ic]) => `
+              <div class="tp-tile"><span class="tp-tile-ico">${icon(ic)}</span><span><span class="tp-tile-label">${label}</span><span class="tp-tile-num">${v}</span></span></div>`).join("")}
+          </div>
         </div>
-        <div class="team-cols">
-          <section>
-            <div class="section-head"><h2>Roster</h2><span class="muted small">${roster.size} player${roster.size === 1 ? "" : "s"}</span></div>
-            ${roster.size
-              ? `<div class="card list-card">${[...roster.values()].map((p) => `
-                  <div class="list-row"><span>${playerLink(p)}${staffTag(p)}</span><span class="muted small">${positionsFor(p).join(", ")}</span></div>`).join("")}
-                </div>`
-              : t.disbanded ? empty("Team disbanded", "Everyone on this roster is a free agent now.")
-              : empty("Roster coming soon", "Players show up here once they sign.")}
-          </section>
-          <section>
-            <div class="section-head"><h2>Schedule</h2><span class="muted small">${games.length} game${games.length === 1 ? "" : "s"}</span></div>
-            ${games.length
-              ? `<div class="card list-card">${games.map(({ g, wk }) => {
-                  const i = g.teams.indexOf(t.name);
-                  const opp = g.teams[1 - i];
-                  const oppT = TEAMS.find((x) => x.name === opp);
-                  const final = Array.isArray(g.score);
-                  const res = final ? (g.score[i] > g.score[1 - i] ? "W" : g.score[i] < g.score[1 - i] ? "L" : "T") : "";
-                  return `
-                    <div class="list-row sched-row ${res ? `sched-row--${res}` : ""}">
-                      <span class="sched-res sched-res--${res || "none"}">${res || "&ndash;"}</span>
-                      <span class="sched-wk">W${wk.week}</span>
-                      <span class="sched-opp">${i === 0 ? "vs" : "@"} ${oppT ? `<a class="plink" href="#/teams/${oppT.slug}">${opp}</a>` : opp}</span>
-                      <span class="sched-score">${final ? `${g.score[i]}-${g.score[1 - i]}` : `<span class="muted small">${g.time || "Not played"}</span>`}</span>
-                    </div>`;
-                }).join("")}</div>`
-              : empty("No games scheduled", "This team's games will show up here.")}
-          </section>
-        </div>
+        <nav class="tp-tabs" aria-label="${esc(t.name)}">
+          ${TEAM_TABS.map(([k, label]) => `<a class="tp-tab ${k === tab ? "on" : ""}" href="#/teams/${t.slug}${k === "overview" ? "" : `/${k}`}" ${k === tab ? 'aria-current="page"' : ""}>${label}</a>`).join("")}
+        </nav>
+        ${body}
       </div>`;
   }
 
@@ -992,7 +1225,7 @@
     ["passing", "Passing", [["GP", "gp"], ["CMP", "comp"], ["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["INT", "int"]]],
     ["rushing", "Rushing", [["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["FUM", "fum"], ["PRE", "pre"]]],
     ["receiving", "Receiving", [["TGT", "tgt"], ["REC", "rec"], ["YDS", "yds"], ["TD", "td"], ["DROP", "drop"]]],
-    ["defense", "Defense", [["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["INT", "int"], ["PBU", "pbu"], ["SWAT", "swat"], ["TD", "td"]]]
+    ["defense", "Defense", [["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["INT", "int"], ["PBU", "pbu"], ["SWAT", "swat"], ["TD", "td"], ["YDA", "yda"], ["TDA", "tda"]]]
   ];
 
   // Where a player ranks in each All-Time stat tab (same order as the Stats page), best ranks first
@@ -1213,6 +1446,7 @@
   );
 
   // Stats edited by hand (Admin -> Player Stats) replace that player's box score totals
+  const statSeasonEdited = (name) => !!statEditFor(name);
   const statEditFor = (name) => {
     const edits = SAVED.statEdits || {};
     const k = Object.keys(edits).find((n) => n.toLowerCase() === String(name).toLowerCase());
@@ -1677,7 +1911,7 @@
                       </tr>
                     </thead>
                     <tbody>
-                      ${[...d.teams].sort((a, b) => (b.pf - b.pa) - (a.pf - a.pa)).map((t, i) => `
+                      ${[...d.teams].sort(standingSort).map((t, i) => `
                         <tr>
                           <td class="rank">${i + 1}</td>
                           <td class="team-col">
@@ -1949,7 +2183,7 @@
     passing: { label: "Passing", cols: [["C/ATT", (r) => `${r.comp}/${r.att}`], ["YDS", "yds"], ["TD", "td"], ["INT", "int"], ["RTG", "rtg"], ["CMP%", "cmpPct"], ["AVG", "avg"], ["LNG", "lng"], ["SCKD", "sacked"]] },
     rushing: { label: "Rushing", cols: [["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["YPC", "ypc"], ["FUM", "fum"], ["20+", "plus20"], ["LNG", "lng"], ["PRE", "pre"]] },
     receiving: { label: "Receiving", cols: [["TGT", "tgt"], ["REC", "rec"], ["YDS", "yds"], ["TD", "td"], ["DROP", "drop"], ["LNG", "lng"]] },
-    defense: { label: "Defense", cols: [["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["SWAT", "swat"], ["INT", "int"], ["PBU", "pbu"], ["PRE", "pre"], ["TD", "td"]] }
+    defense: { label: "Defense", cols: [["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["SWAT", "swat"], ["INT", "int"], ["PBU", "pbu"], ["PRE", "pre"], ["TD", "td"], ["YDA", "yda"], ["TDA", "tda"]] }
   };
 
   function boxScore(g, teams, open) {
@@ -2422,7 +2656,7 @@
     passing: { YDS: "yds", TD: "td", INT: "int", RTG: "rtg", CMP: "cmpPct", AVG: "avg", LNG: "lng", SCKED: "sacked", SCKD: "sacked", SACKED: "sacked" },
     rushing: { ATT: "att", YDS: "yds", TD: "td", YPC: "ypc", FUM: "fum", "20+": "plus20", LNG: "lng", PRE: "pre", PRS: "pre", PRESSURE: "pre", PRESSURES: "pre" },
     receiving: { TGT: "tgt", REC: "rec", YDS: "yds", TD: "td", DROP: "drop", LNG: "lng" },
-    defense: { TAK: "tak", TFL: "tfl", SCK: "sck", SAF: "saf", SWAT: "swat", INT: "int", PBU: "pbu", PRE: "pre", TD: "td" }
+    defense: { TAK: "tak", TKL: "tak", TFL: "tfl", SCK: "sck", SAF: "saf", SFTY: "saf", SWAT: "swat", INT: "int", PBU: "pbu", PRE: "pre", TD: "td", YDA: "yda", TDA: "tda" }
   };
   // Kept as text so they aren't added up across games
   const TEXT_FIELDS = new Set(["rtg", "cmpPct", "avg", "ypc"]);
@@ -2887,7 +3121,10 @@
 
   // Results change standings, stats and awards everywhere, so reload to rebuild it all
   function reloadWithFlash(msg) {
-    try { sessionStorage.setItem("uffAdminFlash", msg); } catch (e) {}
+    try {
+      sessionStorage.setItem("uffAdminFlash", msg);
+      if (statsEditName && adminTab === "playerstats") sessionStorage.setItem("uffStatsEdit", statsEditName);
+    } catch (e) {}
     location.reload();
   }
   try {
@@ -3419,9 +3656,60 @@
     passing: [["comp", "CMP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["int", "INT"], ["lng", "LNG"], ["sacked", "SCKD"]],
     rushing: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["fum", "FUM"], ["lng", "LNG"], ["pre", "PRE"]],
     receiving: [["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"], ["lng", "LNG"]],
-    defense: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"]]
+    defense: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"], ["yda", "YDA"], ["tda", "TDA"]]
   };
+  // The player loaded on Admin -> Player Stats stays loaded after a save reloads the page
   let statsEditName = "";
+  try { statsEditName = sessionStorage.getItem("uffStatsEdit") || ""; sessionStorage.removeItem("uffStatsEdit"); } catch (e) {}
+
+  // Every box score line this player has in a final game, with where it's saved so one line can be fixed
+  function playerGameLines(name) {
+    const out = [];
+    playerGames(name).forEach(({ g, wk, i, lines }) => {
+      const saved = SAVED.results.find((r) => r.id === g.id && r.box === g.box);
+      Object.entries(lines).forEach(([group, line]) => {
+        const list = saved && saved.box[i] && saved.box[i][group];
+        out.push({ g, wk, i, group, line, index: list ? list.indexOf(line) : -1 });
+      });
+    });
+    return out;
+  }
+
+  function gameLinesSection(name) {
+    const lines = playerGameLines(name);
+    const games = SAVED.results.filter((r) => Array.isArray(r.score) && Array.isArray(r.box))
+      .map((r) => allGames().find(({ g }) => g.id === r.id)).filter(Boolean);
+    return `
+      <div class="card admin-card admin-list">
+        <div class="admin-subhead">Game by Game<span class="muted small">${lines.length} stat line${lines.length === 1 ? "" : "s"}</span></div>
+        <p class="muted small admin-note">Fix one game's box score line (the season totals, leaders and records add up from these).${statSeasonEdited(name) ? " <strong>This player's season totals are edited by hand above, so those still win until you undo them.</strong>" : ""}</p>
+        ${lines.length ? lines.map(({ g, wk, i, group, line, index }) => `
+          <form class="game-line-form" data-game="${esc(g.id)}" data-side="${i}" data-group="${group}" data-index="${index}" autocomplete="off">
+            <div class="admin-subhead admin-subhead--small">Week ${wk.week} &middot; ${i === 0 ? "vs" : "@"} ${esc(g.teams[1 - i])} &middot; ${BOX[group].label}<span class="muted small">${esc(g.id)} &middot; ${g.score[i]}-${g.score[1 - i]}</span></div>
+            <div class="stat-edit-group">
+              ${STAT_EDIT[group].map(([f, h]) => `<label class="field"><span>${h}</span><input name="${f}" value="${line[f] || 0}" inputmode="decimal" ${index < 0 ? "disabled" : ""}></label>`).join("")}
+            </div>
+            ${index < 0 ? `<p class="muted small">This game's stats are in data.js, so change them there.</p>` : `
+              <div class="admin-actions">
+                <button class="btn btn-primary btn-sm" type="submit">Save line</button>
+                <button class="btn btn-ghost btn-sm" type="button" data-del-line>Remove line</button>
+              </div>`}
+          </form>`).join("") : `<p class="muted small">No box score lines for ${esc(name)} yet.</p>`}
+        ${games.length ? `
+          <form id="gameLineAdd" class="admin-fields game-line-add" autocomplete="off">
+            <label class="field admin-grow"><span>Missing from a game? Add a line</span>
+              <select name="spot" class="select" required>
+                <option value="">Pick the game and team...</option>
+                ${games.map(({ g, wk }) => g.teams.map((n, s) => `<option value="${esc(g.id)}|${s}">Week ${wk.week} &middot; ${esc(n)} (${s === 0 ? "vs" : "@"} ${esc(g.teams[1 - s])})</option>`).join("")).join("")}
+              </select>
+            </label>
+            <label class="field"><span>Stats</span>
+              <select name="group" class="select">${Object.keys(STAT_EDIT).map((k) => `<option value="${k}">${BOX[k].label}</option>`).join("")}</select>
+            </label>
+            <button class="btn btn-ghost" type="submit">Add line</button>
+          </form>` : ""}
+      </div>`;
+  }
 
   function playerStatsAdminSection() {
     const name = statsEditName;
@@ -3456,7 +3744,8 @@
               <button class="btn btn-primary" type="submit">Save stats</button>
               ${edit ? `<button type="button" class="btn btn-ghost" id="statReset">Undo &mdash; use the box scores</button>` : ""}
             </div>
-          </form>` : ""}
+          </form>
+          ${gameLinesSection(name)}` : ""}
         ${editedNames.length ? `
           <div class="card admin-card admin-list">
             <div class="admin-subhead admin-subhead--small">Edited by hand (${editedNames.length})</div>
@@ -3668,7 +3957,7 @@
   const ACTIVITY_LABELS = {
     saveResult: "Results", deleteResult: "Results", saveUpdates: "Transactions", deleteUpdate: "Transactions",
     setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule", renamePlayers: "Player names", syncRosters: "Rosters", editPlayer: "Players", undoPlayerEdit: "Players", giveAward: "Honors", giveRecord: "Honors", undoHonor: "Honors",
-    saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", addVod: "VODs", removeVod: "VODs"
+    saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", editGameLine: "Player stats", addVod: "VODs", removeVod: "VODs"
   };
   function activitySection(limit = 100) {
     return `
@@ -3759,8 +4048,8 @@
   const BT_GAMES = 9;
   const BT_RESPINS = 1;
   // Change the name to reset everyone's "Your best" (older bests don't carry over); the old ones are cleared off each device
-  const BT_BEST_KEY = "uffBuildBest2";
-  try { ["uffBuildBestOff9"].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
+  const BT_BEST_KEY = "uffBuildBest3";
+  try { ["uffBuildBestOff9", "uffBuildBest2"].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
 
   // Each BT_ROSTER player's 60-99 rating at each position group, worked out once
   let btLegends = null;
@@ -3854,39 +4143,264 @@
     return w ? slots.reduce((n, s) => n + legendRatings().get(run.slots[s.id]).ratings[s.group] * (s.weight || 1), 0) / w : 0;
   };
 
-  // A 9-game season against random UFF teams; better lineups win more often, and higher-ranked teams are harder to beat
+  // The season: 9 games against random UFF teams (better lineups win more often, higher-ranked teams are harder to beat),
+  // then the top 14 records make a bracket like the UFB: Sweet 14, Elite 8, Final 4 and the United Flag Bowl
+  const BT_PLAYOFF_TEAMS = 14;
+  const BT_ROUNDS = ["Sweet 14", "Elite 8", "Final 4", "United Flag Bowl"];
+  // 1 v 16, 8 v 9, 5 v 12... so the top seeds meet as late as possible; each half is one side of the bracket.
+  // With 14 teams there's no 15 or 16, so seeds 1 and 2 get a first-round bye.
+  const BT_SEEDING = [1, 16, 8, 9, 5, 12, 4, 13, 6, 11, 3, 14, 7, 10, 2, 15];
+  const BT_YOU = "Your Team";
+  const BT_FINISH = ["Missed the playoffs", "Lost in the Sweet 14", "Lost in the Elite 8", "Lost in the Final 4", "Lost the United Flag Bowl", "United Flag Bowl Champions"];
+  const BT_FINISH_SHORT = ["Missed playoffs", "Sweet 14", "Elite 8", "Final 4", "Runner-up", "Champion"];
+
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const poisson = (mean) => { let k = 0, p = Math.exp(-mean), s = p; const u = Math.random(); while (u > s && k < 20) { k++; p *= mean / k; s += p; } return k; };
+  // n picks from a list without repeats, more likely the higher their weight
+  const weightedPick = (list, n, weight) => list.map((x) => ({ x, k: Math.pow(Math.random(), 1 / Math.max(1e-6, weight(x))) }))
+    .sort((a, b) => b.k - a.k).slice(0, n).map((o) => o.x);
+
+  // Power Rankings #1 plays like an 85, the last-ranked team like a 74; a good or bad day is worth 1.5 either way
+  const btLeague = () => {
+    const order = powerRankingOrder().list.filter((t) => !t.disbanded);
+    return order.map((t, i) => ({ name: t.name, rank: i + 1, rating: 85 - (11 * i) / Math.max(1, order.length - 1) }));
+  };
+  const btDay = () => rnd(-1.5, 1.5);
+  const btWinChance = (a, b) => 1 / (1 + Math.exp(-(a - b) / 7));
+  // Scores go up by touchdowns (7, or 6 when the extra point is missed)
+  const btScore = () => {
+    const hi = 21 + 7 * Math.floor(Math.random() * 5);
+    const lo = Math.max(0, hi - 7 * (1 + Math.floor(Math.random() * 3)) - (Math.random() < 0.25 ? 1 : 0));
+    return [hi, lo];
+  };
+
+  // One game's box score for your lineup. It's a 7v7 passing offense, so every touchdown is a passing TD;
+  // the numbers follow real UFF games (about 100 passing yards per TD, roughly 30 yards a catch, 1-2 picks)
+  function btGameStats(run, pts, win) {
+    const L = legendRatings();
+    const qb = L.get(run.slots.QB);
+    const qbr = qb.ratings.QB;
+    const catchers = BT_SLOTS.filter((s) => s.id !== "QB").map((s) => {
+      const l = L.get(run.slots[s.id]);
+      return { player: l.name, pos: s.label, r: l.ratings[s.group], tgt: 0, rec: 0, yds: 0, td: 0, drop: 0, lng: 0 };
+    });
+    const td = Math.ceil(pts / 7);
+    const yds = Math.max(td * 20, Math.round(td * rnd(85, 120) + rnd(40, 160) * (0.8 + (qbr - 60) / 100)));
+    const comp = Math.max(td, Math.round(yds / rnd(25, 33)), 1);
+    const att = Math.max(comp, Math.round(comp / Math.min(0.92, 0.6 + (qbr - 60) * 0.005 + rnd(-0.06, 0.06))));
+    const int = Math.min(att - comp, poisson(0.45 + Math.max(0, 95 - qbr) * 0.04 + (win ? 0 : 0.5)));
+
+    // Who gets thrown to: better receivers see more of the ball (the TE a little less)
+    const targets = [];
+    for (let i = 0; i < att; i++) {
+      let roll = Math.random() * catchers.reduce((n, c) => n + Math.exp((c.r - 80) / 10) * (c.pos === "TE" ? 0.8 : 1), 0);
+      targets.push(catchers.find((c) => (roll -= Math.exp((c.r - 80) / 10) * (c.pos === "TE" ? 0.8 : 1)) < 0) || catchers[0]);
+    }
+    targets.forEach((c) => c.tgt++);
+    const slots = targets.map((c, i) => ({ c, i }));
+    const caught = weightedPick(slots, comp, (s) => 0.5 + (s.c.r - 60) / 60);
+    const caughtSet = new Set(caught.map((s) => s.i));
+    // Yards: each catch gets a share, then they're scaled to the game total
+    const shares = caught.map((s) => rnd(0.25, 1.75) * (0.8 + (s.c.r - 60) / 100));
+    const total = shares.reduce((a, b) => a + b, 0);
+    let left = yds;
+    const gains = shares.map((sh, i) => {
+      const g = i === shares.length - 1 ? left : Math.max(1, Math.round((yds * sh) / total));
+      left -= g;
+      return g;
+    });
+    if (gains.length && gains[gains.length - 1] < 1) { gains[gains.indexOf(Math.max(...gains))] += gains[gains.length - 1] - 1; gains[gains.length - 1] = 1; }
+    caught.forEach((s, i) => { s.yds = gains[i]; s.c.rec++; s.c.yds += gains[i]; s.c.lng = Math.max(s.c.lng, gains[i]); });
+    // Touchdowns go to catches, the long ones more often
+    weightedPick(caught, td, (s) => s.yds).forEach((s) => s.c.td++);
+    // Some of the incompletions are drops (fewer for better hands)
+    slots.filter((s) => !caughtSet.has(s.i)).forEach((s) => { if (Math.random() < Math.min(0.25, Math.max(0.03, 0.25 - (s.c.r - 60) * 0.005))) s.c.drop++; });
+
+    return {
+      passing: { player: qb.name, comp, att, yds, td, int, lng: Math.max(0, ...gains) },
+      receiving: catchers.filter((c) => c.tgt).map(({ r, ...line }) => line)
+    };
+  }
+
+  // One of your games against a team rated `opp.rating`
+  function btGame(run, ovr, opp) {
+    const win = Math.random() < btWinChance(ovr, opp.rating + btDay());
+    const [hi, lo] = btScore();
+    const us = win ? hi : lo, them = win ? lo : hi;
+    return { team: opp.name, rank: opp.rank, seed: opp.seed, win, us, them, box: btGameStats(run, us, win) };
+  }
+
   function btPlaySeason(run) {
     const ovr = btUnitOvr(run, "off");
-    const order = powerRankingOrder().list;
-    const opponents = shuffle(TEAMS.slice()).slice(0, BT_GAMES);
-    const games = opponents.map((t) => {
-      // Power Rankings #1 plays like an 85, the last-ranked team like a 74 (plus or minus 1.5 for a good or bad day)
-      const rank = order.indexOf(t) + 1;
-      const opp = 85 - (11 * (rank - 1)) / Math.max(1, order.length - 1) + (Math.random() * 3 - 1.5);
-      const win = Math.random() < 1 / (1 + Math.exp(-(ovr - opp) / 7));
-      const hi = 21 + 7 * Math.floor(Math.random() * 5), lo = Math.max(0, hi - 7 * (1 + Math.floor(Math.random() * 3)) + (Math.random() < 0.3 ? 1 : 0));
-      return { team: t.name, rank, win, us: win ? hi : lo, them: win ? lo : hi };
-    });
+    const league = btLeague();
+    const games = shuffle(league.slice()).slice(0, BT_GAMES).map((o) => btGame(run, ovr, o));
     const wins = games.filter((g) => g.win).length;
-    run.result = { ovr: Math.round(ovr), wins, losses: BT_GAMES - wins, games };
+
+    // Everyone else's season (their game against you counts as it went), so there are standings to seed from
+    const vsYou = new Map(games.map((g) => [g.team, g.win ? 0 : 1]));
+    const table = league.map((t) => {
+      let w = vsYou.has(t.name) ? vsYou.get(t.name) : 0;
+      const others = league.filter((o) => o !== t);
+      for (let i = vsYou.has(t.name) ? 1 : 0; i < BT_GAMES; i++) {
+        const o = others[Math.floor(Math.random() * others.length)];
+        if (Math.random() < btWinChance(t.rating + btDay(), o.rating + btDay())) w++;
+      }
+      return { ...t, w, l: BT_GAMES - w, tb: t.rating + rnd(0, 4) };
+    });
+    const you = { name: BT_YOU, you: true, rating: ovr, w: wins, l: BT_GAMES - wins, tb: ovr + rnd(0, 4) };
+    const standings = [...table, you].sort((a, b) => b.w - a.w || b.tb - a.tb);
+    standings.forEach((t, i) => { t.seed = i + 1; });
+
+    run.result = { ovr: Math.round(ovr), wins, losses: BT_GAMES - wins, games, standings, seed: you.seed, rounds: null, path: [], stage: 0 };
+    run.reveal = 0;
+    run.statTab = "reg";
+    if (you.seed > BT_PLAYOFF_TEAMS) return btSaveBest(run);
+
+    // The bracket: your games are played out with stats, the rest by team rating
+    let alive = BT_SEEDING.map((s) => (s <= BT_PLAYOFF_TEAMS ? standings[s - 1] : null));
+    const rounds = BT_ROUNDS.map((name, r) => {
+      const round = { name, games: [] };
+      const next = [];
+      for (let k = 0; k < alive.length; k += 2) {
+        const [a, b] = [alive[k], alive[k + 1]];
+        let aWins, sa, sb;
+        if (!b) {
+          // A bye: straight into the next round
+          round.games.push({ a: a.name, b: "", seedA: a.seed, seedB: "", sa: "", sb: "", bye: true });
+          next.push(a);
+          continue;
+        }
+        if (a.you || b.you) {
+          const opp = a.you ? b : a;
+          const g = btGame(run, ovr, opp);
+          run.result.path.push({ ...g, round: name, r });
+          aWins = a.you === g.win;
+          [sa, sb] = a.you ? [g.us, g.them] : [g.them, g.us];
+        } else {
+          aWins = Math.random() < btWinChance(a.rating + btDay(), b.rating + btDay());
+          const [hi, lo] = btScore();
+          [sa, sb] = aWins ? [hi, lo] : [lo, hi];
+        }
+        round.games.push({ a: a.name, b: b.name, seedA: a.seed, seedB: b.seed, sa, sb });
+        next.push(aWins ? a : b);
+      }
+      alive = next;
+      return round;
+    });
+    const last = run.result.path[run.result.path.length - 1];
+    run.result.rounds = rounds;
+    run.result.champion = alive[0].name;
+    run.result.stage = last.win ? 5 : last.r + 1;
+  }
+
+  // Your best run on this device: deepest playoff finish, then most wins, then OVR (saved once the run is fully shown)
+  function btSaveBest(run) {
+    const r = run.result;
     try {
       const best = JSON.parse(localStorage.getItem(BT_BEST_KEY));
-      if (!best || wins > best.wins || (wins === best.wins && ovr > best.ovr)) localStorage.setItem(BT_BEST_KEY, JSON.stringify({ wins, ovr: Math.round(ovr) }));
+      const better = !best || r.stage > best.stage || (r.stage === best.stage && (r.wins > best.wins || (r.wins === best.wins && r.ovr > best.ovr)));
+      if (better) localStorage.setItem(BT_BEST_KEY, JSON.stringify({ stage: r.stage, wins: r.wins, ovr: r.ovr }));
     } catch (e) {}
+  }
+  // How many bracket rounds are shown; everything is shown once it reaches the end (or you missed the playoffs)
+  const btDone = (run) => !run.result.rounds || run.reveal >= BT_ROUNDS.length;
+  // Playoff games of yours shown so far
+  const btShownPath = (run) => run.result.path.filter((g) => g.r < run.reveal);
+
+  // Season totals from a list of your games: { passing: [...], receiving: [...] }
+  function btTotals(list) {
+    const pass = new Map(), rec = new Map();
+    list.forEach((g) => {
+      const p = g.box.passing;
+      addLine(pass.get(p.player) || pass.set(p.player, { player: p.player }).get(p.player), { ...p, gp: 1 });
+      g.box.receiving.forEach((l) => addLine(rec.get(l.player) || rec.set(l.player, { player: l.player, pos: l.pos }).get(l.player), { ...l, gp: 1 }));
+    });
+    return { passing: [...pass.values()], receiving: [...rec.values()].sort((a, b) => b.yds - a.yds) };
+  }
+  // Season MVP: the most fantasy points over every game (same scoring as Award Candidates)
+  function btMvp(run) {
+    const all = btTotals(run.result.games.concat(run.result.path));
+    const pts = [...all.passing.map((r) => ({ ...r, pos: "QB", pts: fantasyPoints("passing", r) })), ...all.receiving.map((r) => ({ ...r, pts: fantasyPoints("receiving", r) }))];
+    return pts.sort((a, b) => b.pts - a.pts)[0];
   }
 
   // Only used by offline tests (window.UFF_TEST is never set on the real site)
-  if (window.UFF_TEST) Object.assign(window.UFF_TEST, { legendRatings, btOddsAtLeast, btOfferOvr, btNew, btSpin, btSpotsFor, btOpen, btPlaySeason, BT_SLOTS });
+  if (window.UFF_TEST) Object.assign(window.UFF_TEST, { legendRatings, btOddsAtLeast, btOfferOvr, btNew, btSpin, btSpotsFor, btOpen, btPlaySeason, btGameStats, btTotals, BT_SLOTS });
 
-  const btGrade = (w) => (w === BT_GAMES ? "Perfect season. Undefeated." : w >= 7 ? "Title contender." : w >= 5 ? "Playoff bubble." : "Rebuild year.");
   const btRatingClass = (r) => (r >= 90 ? "elite" : r >= 80 ? "good" : r >= 70 ? "ok" : "low");
 
   function btResultText(run) {
     const r = run.result;
     const line = (s) => `${s.label} ${legendRatings().get(run.slots[s.id]).name} (${legendRatings().get(run.slots[s.id]).ratings[s.group]})`;
-    return [`UFF Build a Team: ${r.wins}-${r.losses} | OVR ${r.ovr}`,
+    const po = r.rounds ? ` · #${r.seed} seed · ${BT_FINISH[r.stage]}` : ` · ${BT_FINISH[0]}`;
+    return [`UFF Build a Team: ${r.wins}-${r.losses}${po} | OVR ${r.ovr}`,
       BT_SLOTS.map(line).join(", "),
       "uffleague.github.io/#/build"].join("\n");
+  }
+
+  // The bracket as far as it's been played: rounds not reached yet show TBD
+  function btBracket(run) {
+    const r = run.result;
+    const match = (g, ri) => {
+      const known = ri <= run.reveal, played = ri < run.reveal;
+      const win = played ? (g.bye || g.sa > g.sb ? "a" : "b") : "";
+      const row = (s) => {
+        if (g.bye && s === "b") return `<div class="match-team bt-bye"><span class="team-cell muted">Bye</span></div>`;
+        const name = known ? g[s] : "";
+        const seed = known ? (s === "a" ? g.seedA : g.seedB) : "";
+        const you = name === BT_YOU;
+        const tint = you ? { cls: "bt-you", style: "" } : teamTint(name);
+        return `
+          <div class="match-team ${tint.cls} ${win === s ? "win" : win ? "lose" : ""}" style="${tint.style}">
+            ${you ? `<span class="team-cell"><img class="team-logo" src="${LEAGUE.brandLogo}" alt=""><span class="seed">${seed}</span><span>YOU</span></span>` : bracketTeam(name, seed)}
+            <span class="match-score">${played ? (s === "a" ? g.sa : g.sb) : ""}</span>
+          </div>`;
+      };
+      return `<div class="card match">${row("a")}${row("b")}</div>`;
+    };
+    const champ = `
+      <div class="card bracket-champ ${btDone(run) && r.stage === 5 ? "bt-champ-you" : ""}">
+        <span class="eyebrow">Champion</span>
+        ${!btDone(run) ? `<span class="muted">To be decided</span>`
+          : r.champion === BT_YOU ? `<span class="team-cell"><img class="team-logo" src="${LEAGUE.brandLogo}" alt=""><span>YOU</span></span>` : bracketTeam(r.champion)}
+      </div>`;
+    const po = { logo: (LEAGUE.bowlLogos || {})[LEAGUE.season] || "" };
+    return bracketBoard(po, r.rounds, match, champ);
+  }
+
+  function btStatsSection(run) {
+    const r = run.result;
+    const shown = btShownPath(run);
+    const tab = run.statTab === "po" && shown.length ? "po" : "reg";
+    const t = btTotals(tab === "po" ? shown : r.games);
+    const num = (v) => (v || 0).toLocaleString();
+    return `
+      <section class="card admin-card bt-stats">
+        <div class="bt-stats-head">
+          <span class="admin-subhead">Season Stats</span>
+          <div class="hx-scope bt-scope" role="group" aria-label="Which games">
+            <button type="button" class="${tab === "reg" ? "on" : ""}" data-bt-stats="reg" aria-pressed="${tab === "reg"}">Regular Season</button>
+            <button type="button" class="${tab === "po" ? "on" : ""}" data-bt-stats="po" aria-pressed="${tab === "po"}" ${shown.length ? "" : "disabled"}>Playoffs${shown.length ? ` (${shown.length})` : ""}</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="tp-table">
+            <thead><tr><th class="team-col">Passing</th><th>GP</th><th>CMP/ATT</th><th>YDS</th><th>TD</th><th>INT</th><th>CMP%</th><th>LNG</th></tr></thead>
+            <tbody>${t.passing.map((p) => `
+              <tr><td class="team-col"><strong>${esc(p.player)}</strong> <span class="muted small">QB</span></td><td>${p.gp}</td><td>${p.comp}/${p.att}</td><td>${num(p.yds)}</td><td>${p.td}</td><td>${p.int}</td>
+                <td>${p.att ? ((p.comp / p.att) * 100).toFixed(1) : "0.0"}</td><td>${p.lng}</td></tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+        <div class="table-scroll">
+          <table class="tp-table">
+            <thead><tr><th class="team-col">Receiving</th><th>GP</th><th>TGT</th><th>REC</th><th>YDS</th><th>TD</th><th>DROP</th><th>LNG</th></tr></thead>
+            <tbody>${t.receiving.map((p) => `
+              <tr><td class="team-col"><strong>${esc(p.player)}</strong> <span class="muted small">${p.pos}</span></td><td>${p.gp}</td><td>${p.tgt}</td><td>${p.rec}</td><td>${num(p.yds)}</td><td>${p.td}</td><td>${p.drop}</td><td>${p.lng}</td></tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </section>`;
   }
 
   function buildPage() {
@@ -3910,23 +4424,49 @@
         <div class="admin-subhead admin-subhead--small">${title}${btUnitOvr(bt, side) ? `<span class="muted small">OVR ${Math.round(btUnitOvr(bt, side))}</span>` : ""}</div>
         ${BT_SLOTS.filter((s) => s.side === side).map(slotRow).join("")}
       </div>`;
+    const gameRow = (g, label) => `
+      <div class="bt-game ${g.win ? "win" : "loss"}" title="${esc(`${g.box.passing.player}: ${g.box.passing.comp}/${g.box.passing.att}, ${g.box.passing.yds} YDS, ${g.box.passing.td} TD, ${g.box.passing.int} INT`)}">
+        <span class="bt-wl">${g.win ? "W" : "L"}</span>${anyTeamLogo(g.team)}${label}<span class="bt-opp">${esc(teamShort(g.team))}</span><span class="bt-score">${g.us}-${g.them}</span>
+      </div>`;
 
-    let panel;
+    let panel, extra = "";
     if (bt.result) {
       const r = bt.result;
+      const done = btDone(bt);
+      const shown = btShownPath(bt);
+      const lastShown = shown[shown.length - 1];
+      const out = lastShown && !lastShown.win; // your loss has been shown
+      // Your next round to play (a bye round counts: it moves you on without a game)
+      const lastGame = r.path[r.path.length - 1];
+      const nextRound = !out && lastGame && bt.reveal <= lastGame.r ? BT_ROUNDS[bt.reveal] : null;
+      const bye = r.rounds && r.seed <= 2;
+      const mvp = done && btMvp(bt);
       panel = `
         <div class="card admin-card bt-result">
           <span class="eyebrow">Your season</span>
           <div class="bt-record">${r.wins}-${r.losses}</div>
-          <div class="bt-grade">${btGrade(r.wins)}</div>
+          <div class="bt-grade">${r.rounds ? `#${r.seed} seed &middot; ${bye ? "First-round bye" : r.seed <= 4 ? "Title contender" : r.seed <= 8 ? "In the field" : "Snuck in"}` : `#${r.seed} of ${r.standings.length} in the standings &middot; top ${BT_PLAYOFF_TEAMS} make it`}</div>
           <div class="muted">Offense OVR <strong>${r.ovr}</strong></div>
-          <div class="bt-games">${r.games.map((g) => `
-            <div class="bt-game ${g.win ? "win" : "loss"}"><span class="bt-wl">${g.win ? "W" : "L"}</span>${anyTeamLogo(g.team)}${g.rank ? `<span class="seed">#${g.rank}</span>` : ""}<span class="bt-opp">${esc(teamShort(g.team))}</span><span class="bt-score">${g.us}-${g.them}</span></div>`).join("")}</div>
+          ${done || out ? `<div class="bt-finish bt-finish--${r.stage === 5 ? "champ" : r.stage ? "out" : "miss"}">${r.stage === 5 ? icon("scores") : ""}${BT_FINISH[r.stage]}</div>` : ""}
+          ${mvp ? `<div class="bt-mvp">Season MVP <strong>${esc(mvp.player)}</strong> <span class="muted small">${mvp.pos} &middot; ${fmtPts(mvp.pts)} fpts</span></div>` : ""}
+          <div class="admin-subhead admin-subhead--small bt-sub">Regular Season</div>
+          <div class="bt-games">${r.games.map((g) => gameRow(g, g.rank ? `<span class="seed">#${g.rank}</span>` : "")).join("")}</div>
+          ${shown.length || (bye && bt.reveal) ? `
+            <div class="admin-subhead admin-subhead--small bt-sub">Playoffs</div>
+            <div class="bt-games bt-games--po">${bye ? `<div class="bt-po"><span class="bt-po-round">${BT_ROUNDS[0]}</span><div class="bt-game bt-game--bye"><span class="bt-wl">&ndash;</span><span class="bt-opp">First-round bye</span></div></div>` : ""}${shown.map((g) => `<div class="bt-po"><span class="bt-po-round">${g.round}</span>${gameRow(g, `<span class="seed">#${g.seed}</span>`)}</div>`).join("")}</div>` : ""}
           <div class="admin-actions">
-            <button class="btn btn-primary" id="btAgain">Play again</button>
-            <button class="btn btn-ghost" id="btCopy">Copy result</button>
+            ${nextRound ? `<button class="btn btn-primary" id="btNext">Play the ${nextRound}</button><button class="btn btn-ghost" id="btSimAll">Sim to the end</button>`
+              : !done ? `<button class="btn btn-primary" id="btSimAll">See who wins it all</button>`
+              : `<button class="btn btn-primary" id="btAgain">Play again</button><button class="btn btn-ghost" id="btCopy">Copy result</button>`}
           </div>
         </div>`;
+      extra = `
+        ${r.rounds ? `
+          <section class="bt-bracket">
+            <div class="section-head section-head--left"><h2>${icon("playoff", "accent")} Playoffs</h2><span class="muted small">Top ${BT_PLAYOFF_TEAMS} records &middot; ${BT_ROUNDS.join(", ")}</span></div>
+            ${btBracket(bt)}
+          </section>` : ""}
+        ${btStatsSection(bt)}`;
     } else if (!bt.spin) {
       panel = `
         <div class="card admin-card bt-spin-panel">
@@ -3970,13 +4510,13 @@
     }
 
     return `
-      <div class="wrap">
+      <div class="wrap bt-page">
         <div class="page-head page-head--row">
           <div>
             <h1>Build a Team</h1>
-            <p class="muted">Spin for legends, draft them into your 7v7 offense (QB, 5 WR, TE), and see if they can go ${BT_GAMES}-0.</p>
+            <p class="muted">Spin for legends, draft them into your 7v7 offense (QB, 5 WR, TE), play a ${BT_GAMES}-game season, then chase the United Flag Bowl through the Sweet 14, Elite 8 and Final 4.</p>
           </div>
-          ${best ? `<span class="pill">Your best: ${best.wins}-${BT_GAMES - best.wins} &middot; OVR ${best.ovr}</span>` : ""}
+          ${best && best.stage != null ? `<span class="pill">Your best: ${BT_FINISH_SHORT[best.stage]} &middot; ${best.wins}-${BT_GAMES - best.wins} &middot; OVR ${best.ovr}</span>` : ""}
         </div>
         <div class="bt-layout">
           <div>${panel}</div>
@@ -3985,6 +4525,7 @@
             ${filled && !bt.result ? `<button class="btn btn-ghost btn-sm" id="btReset">Start over</button>` : ""}
           </div>
         </div>
+        ${extra}
       </div>`;
   }
 
@@ -4037,6 +4578,7 @@
     (n) => `<a href="#/${n.path}" data-path="${n.path}">${icon(n.icon)}<span>${n.label}</span></a>`
   ).join("");
 
+  let lastTeamOpen = null;
   function render() {
     const parts = location.hash.replace(/^#\/?/, "").split("/");
     const [section, sub] = parts;
@@ -4062,7 +4604,7 @@
       if (tab !== adminTab) adminError = adminFlash = "";
       adminTab = tab;
     }
-    const page = section === "teams" && sub ? () => team(sub)
+    const page = section === "teams" && sub ? () => team(sub, parts[2])
       : section === "players" && sub ? () => player(sub)
       : ROUTES[section] || notFound;
     app.innerHTML = page();
@@ -4077,7 +4619,10 @@
     const label = NAV.find((n) => n.path === (section || ""));
     document.title = label && label.path ? `${label.label} | UFF` : "UFF | United Flag Football";
     closeMenu();
-    window.scrollTo(0, 0);
+    // Switching tabs on a team page keeps your place
+    const teamOpen = section === "teams" && sub ? sub : null;
+    if (!teamOpen || teamOpen !== lastTeamOpen) window.scrollTo(0, 0);
+    lastTeamOpen = teamOpen;
     if (section === "admin" && getAdmin()) loadActivity();
     if (section === "admin" && adminTab === "honors") recordPicked();
   }
@@ -4152,6 +4697,24 @@
 
   app.addEventListener("submit", async (e) => {
     const id = e.target.id;
+    // Admin -> Player Stats: one game's stat line, or a new line for a game
+    if (e.target.classList.contains("game-line-form") || id === "gameLineAdd") {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const d = e.target.dataset;
+      let body;
+      if (id === "gameLineAdd") {
+        const [gameId, side] = String(form.get("spot") || "").split("|");
+        const group = String(form.get("group"));
+        body = { action: "editGameLine", id: gameId, side: Number(side), group, index: -1, player: statsEditName,
+          stats: Object.fromEntries(STAT_EDIT[group].map(([f]) => [f, 0])) };
+      } else {
+        body = { action: "editGameLine", id: d.game, side: Number(d.side), group: d.group, index: Number(d.index),
+          stats: Object.fromEntries(STAT_EDIT[d.group].map(([f]) => [f, Number(form.get(f)) || 0])) };
+      }
+      return adminSave(e.target.querySelector("button[type=submit]"), body, () =>
+        reloadWithFlash(id === "gameLineAdd" ? `Added a stat line for ${statsEditName}. Fill it in below.` : `Saved ${statsEditName}'s line for ${d.game}. Everyone sees it now.`));
+    }
     if (!["posForm", "adminLogin", "streamForm", "teamForm", "statPick", "statForm", "vodForm", "playerForm", "awardForm", "recordForm"].includes(id)) return;
     e.preventDefault();
     const form = new FormData(e.target);
@@ -4300,6 +4863,12 @@
       bt = btNew();
       return renderKeepScroll();
     }
+    if (t.id === "btNext" || t.id === "btSimAll") {
+      bt.reveal = t.id === "btSimAll" ? BT_ROUNDS.length : bt.reveal + 1;
+      if (btDone(bt)) btSaveBest(bt);
+      return renderKeepScroll();
+    }
+    if (t.dataset.btStats) { bt.statTab = t.dataset.btStats; return renderKeepScroll(); }
     if (t.id === "btCopy") {
       const done = () => { t.textContent = "Copied!"; };
       if (navigator.clipboard) navigator.clipboard.writeText(btResultText(bt)).then(done, () => prompt("Copy your result:", btResultText(bt)));
@@ -4319,6 +4888,12 @@
       if (!confirm(isAdded ? `Remove ${current.name} from the league?` : `Undo all your changes to ${current.name}?`)) return;
       return adminSave(t, { action: "removeTeam", key: teamEditKey }, () =>
         reloadWithFlash(isAdded ? `Removed ${current.name}.` : `${current.name} is back to its original details.`));
+    }
+    if (t.dataset && "delLine" in t.dataset) {
+      const d = t.closest(".game-line-form").dataset;
+      if (!confirm(`Remove ${statsEditName}'s ${BOX[d.group].label.toLowerCase()} line from ${d.game}?`)) return;
+      return adminSave(t, { action: "editGameLine", id: d.game, side: Number(d.side), group: d.group, index: Number(d.index), stats: null }, () =>
+        reloadWithFlash(`Removed ${statsEditName}'s line from ${d.game}.`));
     }
     if (t.dataset.statLoad) { statsEditName = t.dataset.statLoad; return renderKeepScroll(); }
     if (t.id === "statReset") {

@@ -134,6 +134,7 @@ const LEAGUE = {
   // `from` = which box score section feeds the tab; `pos` = only players at that position.
   // You can also add rows by hand under season or allTime (same keys as the columns).
   stats: {
+    // Defense lines also have YDA (yards allowed in coverage) and TDA (touchdowns allowed); lower is better.
     // Rushing lines always go to DE. Receivers count as WR and defenders as DB unless listed here,
     // e.g. "sk8erboy111": "TE", "i56gwe": "LB".
     // A player who plays both sides can have two: "breakxu": ["TE", "LB"].
@@ -154,10 +155,10 @@ const LEAGUE = {
       // PRE (pressures) counts from the DE's rushing lines plus any defense lines they have
       { key: "DE", from: "rushing", sort: "yds", addFrom: { pre: "defense" }, columns: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["ypc", "YPC"], ["fum", "FUM"], ["plus20", "20+"], ["lng", "LNG"], ["pre", "PRE"]],
         allTime: { from: "defense", addFrom: null, sort: "fpts", fpts: { sck: 1, saf: 2 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["sck", "SCK"], ["saf", "SAF"]] } },
-      { key: "DB", from: "defense", pos: "DB", sort: "int", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"]],
+      { key: "DB", from: "defense", pos: "DB", sort: "int", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"], ["yda", "YDA"], ["tda", "TDA"]],
         allTime: { sort: "fpts", fpts: { int: 1, pbu: 0.5 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["int", "INT"], ["pbu", "PBU"]] } },
       // The old LB sheet's FPTS used stats it didn't show, so this season's LB points are a best guess
-      { key: "LB", from: "defense", pos: "LB", sort: "tak", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"]],
+      { key: "LB", from: "defense", pos: "LB", sort: "tak", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"], ["yda", "YDA"], ["tda", "TDA"]],
         allTime: { sort: "fpts", fpts: { tak: 1, tfl: 2, sck: 1, saf: 2, int: 1, pbu: 0.5 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["int", "INT"]] } }
     ],
     season: { QB: [], RB: [], WR: [], TE: [], Tackles: [], DE: [], DB: [], LB: [] },
