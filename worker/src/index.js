@@ -6,7 +6,7 @@
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
-  renames: [], people: [], rosterSyncs: [], rosterMoves: [], activity: [] };
+  renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], activity: [] };
 const RENAMES_MAX = 3000;
 const PEOPLE_MAX = 3000;
 const SYNCS_MAX = 200;
@@ -666,6 +666,38 @@ export default {
       }
       if (!done.length) return json({ error: "That's already their name." }, 400);
       log = done.join(" and ").replace(/^./, (c) => c.toUpperCase());
+    } else if (body.action === "giveAward") {
+      // Admin -> Honors: an award for a season (Awards page, the player's honors and Legacy)
+      const season = Math.round(Number(body.season));
+      const code = String(body.code || "").toUpperCase();
+      const player = str(body.player, 60);
+      if (!(season >= 1 && season <= 99)) return json({ error: "Pick the season." }, 400);
+      if (!/^[A-Z0-9_]{2,20}$/.test(code)) return json({ error: "Pick the award." }, 400);
+      if (!player) return json({ error: "Pick a player." }, 400);
+      data.awardGrants = [...data.awardGrants, { id: crypto.randomUUID(), season, code, player, at: Date.now() }].slice(-500);
+      log = `Gave ${player} ${str(body.label, 60) || code} (Season ${season})`;
+    } else if (body.action === "giveRecord") {
+      // Admin -> Honors: who holds a record and its value. An existing record (by its label) is set to this and no longer
+      // updates from stats; a new one goes in the group and section given.
+      const label = str(body.label, 80);
+      const holders = [].concat(body.holders || []).map((h) => str(h, 60)).filter(Boolean).slice(0, 10);
+      const value = str(String(body.value ?? ""), 30);
+      const season = Math.round(Number(body.season));
+      if (!label) return json({ error: "Pick a record or name the new one." }, 400);
+      if (!holders.length) return json({ error: "Add who holds it." }, 400);
+      if (!value) return json({ error: "Add the record's value." }, 400);
+      data.recordGrants = [...data.recordGrants, {
+        id: crypto.randomUUID(), label, holders, value, season: season >= 1 && season <= 99 ? season : undefined,
+        group: str(body.group, 60), section: str(body.section, 40), at: Date.now()
+      }].slice(-300);
+      log = `Set the record "${label}" to ${holders.join(" & ")} (${value}${season >= 1 ? `, Season ${season}` : ""})`;
+    } else if (body.action === "undoHonor") {
+      const award = data.awardGrants.find((g) => g.id === body.id);
+      const record = data.recordGrants.find((g) => g.id === body.id);
+      if (!award && !record) return json({ error: "That's already gone." }, 400);
+      data.awardGrants = data.awardGrants.filter((g) => g !== award);
+      data.recordGrants = data.recordGrants.filter((g) => g !== record);
+      log = award ? `Took back ${award.player}'s ${award.code} (Season ${award.season})` : `Undid the record change "${record.label}"`;
     } else if (body.action === "undoPlayerEdit") {
       const rename = data.renames.find((r) => r.admin && r.id === body.id);
       const move = data.rosterMoves.find((m) => m.id === body.id);

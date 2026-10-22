@@ -226,6 +226,39 @@
       // An unverified player comes as their Discord name, decorations and all ("zlssei®")
       ...s, team: rn(botTeam(s.team)), players: (s.players || []).map((p) => ({ ...p, name: rawAlias(mentionName(String(p.name))) }))
     }));
+    // Awards given on Admin -> Honors: on the Awards page, the player's honors and their Legacy count
+    const legacyCode = { EOTY: "EXEOTY" }; // same award, different code in the legacy list
+    (SAVED.awardGrants || []).forEach(({ season, code, player }) => {
+      const list = (LEAGUE.awardWinners[season] = LEAGUE.awardWinners[season] || {});
+      const cur = list[code];
+      const names = Array.isArray(cur) ? cur : typeof cur === "string" && cur !== "N/A" ? [cur] : cur && cur.player ? [cur.player] : [];
+      list[code] = names.length ? [...names, player] : player;
+      const c = legacyCode[code] || code;
+      let leg = LEAGUE.legacy.players.find((p) => rawAlias(p.name).toLowerCase() === rawAlias(player).toLowerCase());
+      if (!leg) LEAGUE.legacy.players.push((leg = { name: player, honors: {} }));
+      leg.honors = { ...leg.honors, [c]: (leg.honors[c] || 0) + 1 };
+    });
+    // Records set on Admin -> Honors (the latest change to each one counts). A record set by hand stays as set
+    // instead of updating from stats; a new one goes in its group and section.
+    const recordSet = new Map();
+    (SAVED.recordGrants || []).forEach((g) => recordSet.set(g.label.toLowerCase(), g));
+    recordSet.forEach((g) => {
+      let item = null;
+      LEAGUE.records.forEach((grp) => grp.sections.forEach((s) => s.items.forEach((it) => { if (it.label.toLowerCase() === g.label.toLowerCase()) item = it; })));
+      if (!item) {
+        const groupName = g.group || "Other Records";
+        let grp = LEAGUE.records.find((x) => x.group.toLowerCase() === groupName.toLowerCase());
+        if (!grp) LEAGUE.records.push((grp = { group: groupName, sections: [] }));
+        const sectionName = g.section || "Records";
+        let sec = grp.sections.find((s) => s.name.toLowerCase() === sectionName.toLowerCase());
+        if (!sec) grp.sections.push((sec = { name: sectionName, items: [] }));
+        sec.items.push((item = { label: g.label }));
+      }
+      Object.assign(item, { holders: g.holders, value: g.value, season: g.season });
+      delete item.stat;
+      delete item.career;
+    });
+
     // Team changes made on Admin -> Players ("team": null = free agent)
     LEAGUE.rosterMoves = (SAVED.rosterMoves || []).map((m) => ({ ...m, player: rawAlias(m.player), team: m.team ? rn(botTeam(m.team)) : null }));
     // A VOD's two teams from the bot (names or codes)
@@ -2214,6 +2247,122 @@
       </section>`;
   }
 
+  // ---- Admin -> Honors: give a player an award, or set who holds a record ----
+
+  // Awards that can be given: the Awards page's, plus the Legacy honors that aren't on it (All-Flag teams have their own tab)
+  function honorAwards() {
+    const out = new Map(LEAGUE.awards.filter((a) => a.code !== "TOTY").map((a) => [a.code, a.name]));
+    LEAGUE.legacy.points.flatMap((g) => g.codes)
+      .filter((c) => !out.has(c) && !["FIRST_TEAM", "SECOND_TEAM", "EXEOTY"].includes(c))
+      .forEach((c) => out.set(c, LEAGUE.legacy.labels[c] || c.replace(/_/g, " ")));
+    return [...out];
+  }
+  const recordItems = () => LEAGUE.records.flatMap((g) => g.sections.flatMap((s) => s.items.map((item) => ({ g, s, item }))));
+  const recordNow = (item) => (item.career ? careerRecord(item) : item.stat ? seasonRecord(item) : item);
+
+  function honorsAdminSection() {
+    const awardName = new Map(honorAwards());
+    const awards = [...(SAVED.awardGrants || [])].sort((a, b) => b.at - a.at);
+    const recs = [...(SAVED.recordGrants || [])].sort((a, b) => b.at - a.at);
+    const groups = LEAGUE.records.map((g) => g.group);
+    const sections = [...new Set(LEAGUE.records.flatMap((g) => g.sections.map((s) => s.name)))];
+    const undo = (id) => `<button type="button" class="btn btn-ghost btn-sm" data-undo-honor="${esc(id)}">Undo</button>`;
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Give an Award</h2></div>
+        <form class="card admin-card" id="awardForm" autocomplete="off">
+          <p class="muted small admin-note">The award shows on the Awards page for that season and on the player's page, and it adds to their Legacy score.</p>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Player</span><input name="player" list="playerNames" required></label>
+            <label class="field admin-grow"><span>Award</span><select name="code" class="select">
+              ${honorAwards().map(([code, name]) => `<option value="${esc(code)}">${esc(name)}</option>`).join("")}
+            </select></label>
+            <label class="field"><span>Season</span><input name="season" type="number" min="1" max="99" value="${LEAGUE.season}" required></label>
+            <button class="btn btn-primary" type="submit">Give award</button>
+          </div>
+          <div class="admin-subhead admin-subhead--small">Awards given here (${awards.length})</div>
+          ${awards.length ? awards.map((a) => `
+            <div class="list-row">
+              <div>${playerLink(a.player)} &middot; <strong>${esc(awardName.get(a.code) || a.code)}</strong><div class="muted small">Season ${a.season}</div></div>
+              ${undo(a.id)}
+            </div>`).join("") : `<p class="muted small">None yet.</p>`}
+        </form>
+
+        <div class="section-head section-head--left"><h2>Give a Record</h2></div>
+        <form class="card admin-card" id="recordForm" autocomplete="off">
+          <p class="muted small admin-note">Pick a record to set who holds it, or make a new one. A record set here stays as you set it instead of updating from stats. Separate several holders with commas.</p>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Record</span><select name="record" id="recordPick" class="select">
+              ${LEAGUE.records.map((g) => `<optgroup label="${esc(g.group)}">${g.sections.map((s) => s.items.map((item) =>
+                `<option value="${esc(item.label)}">${esc(s.name)} &middot; ${esc(item.label)}</option>`).join("")).join("")}</optgroup>`).join("")}
+              <option value="__new">+ New record…</option>
+            </select></label>
+          </div>
+          <div class="admin-fields" id="recordNew" hidden>
+            <label class="field admin-grow"><span>New record's name</span><input name="label" maxlength="80" placeholder="Most Kick Return TDs"></label>
+            <label class="field admin-grow"><span>Group</span><input name="group" list="recordGroups" placeholder="${esc(groups[0] || "Single-Season Records")}"></label>
+            <label class="field admin-grow"><span>Section</span><input name="section" list="recordSections" placeholder="Passing"></label>
+            <datalist id="recordGroups">${groups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist>
+            <datalist id="recordSections">${sections.map((s) => `<option value="${esc(s)}">`).join("")}</datalist>
+          </div>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Held by</span><input name="holders" id="recordHolders" list="playerNames" required></label>
+            <label class="field"><span>Value</span><input name="value" id="recordValue" maxlength="30" placeholder="5,190" required></label>
+            <label class="field"><span>Season (optional)</span><input name="season" id="recordSeason" type="number" min="1" max="99"></label>
+            <button class="btn btn-primary" type="submit">Save record</button>
+          </div>
+          <datalist id="playerNames">${knownPlayers().map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
+          <div class="admin-subhead admin-subhead--small">Record changes made here (${recs.length})</div>
+          ${recs.length ? recs.map((r) => `
+            <div class="list-row">
+              <div><strong>${esc(r.label)}</strong> &middot; ${r.holders.map((h) => playerLink(h)).join(" &amp; ")} &middot; ${esc(r.value)}<div class="muted small">${[r.season && `Season ${r.season}`, fmtDate(new Date(r.at).toLocaleDateString("en-CA"))].filter(Boolean).join(" &middot; ")}</div></div>
+              ${undo(r.id)}
+            </div>`).join("") : `<p class="muted small">None yet.</p>`}
+        </form>
+      </section>`;
+  }
+
+  // Picking a record fills in who holds it now; "+ New record" shows the name / group / section boxes
+  function recordPicked() {
+    const pick = document.getElementById("recordPick");
+    if (!pick) return;
+    const isNew = pick.value === "__new";
+    document.getElementById("recordNew").hidden = !isNew;
+    const found = !isNew && recordItems().find(({ item }) => item.label === pick.value);
+    const r = found ? recordNow(found.item) : null;
+    document.getElementById("recordHolders").value = r ? (r.holders || []).map(aliasName).join(", ") : "";
+    document.getElementById("recordValue").value = r ? r.value || "" : "";
+    document.getElementById("recordSeason").value = r && r.season ? r.season : "";
+  }
+
+  async function saveAward(form) {
+    const typed = String(form.get("player") || "").trim();
+    const player = knownPlayers().find((n) => n.toLowerCase() === aliasName(typed).toLowerCase()) || aliasName(typed);
+    const code = String(form.get("code") || "");
+    const label = new Map(honorAwards()).get(code) || code;
+    const season = Number(form.get("season"));
+    await adminCall({ action: "giveAward", player, code, label, season });
+    reloadWithFlash(`Gave ${player} ${label} for Season ${season}. Everyone sees it now.`);
+  }
+
+  async function saveRecord(form) {
+    const pick = String(form.get("record") || "");
+    const isNew = pick === "__new";
+    const label = isNew ? String(form.get("label") || "").trim() : pick;
+    if (!label) throw new Error("Name the new record.");
+    const holders = String(form.get("holders") || "").split(",").map((h) => h.trim()).filter(Boolean)
+      .map((h) => {
+        // A player, or a team for team records
+        const team = TEAMS.find((t) => t.name.toLowerCase() === h.toLowerCase());
+        return knownPlayers().find((n) => n.toLowerCase() === aliasName(h).toLowerCase()) || (team ? team.name : aliasName(h));
+      });
+    await adminCall({
+      action: "giveRecord", label, holders, value: String(form.get("value") || "").trim(), season: form.get("season") || "",
+      group: isNew ? String(form.get("group") || "").trim() : "", section: isNew ? String(form.get("section") || "").trim() : ""
+    });
+    reloadWithFlash(`Saved the record "${label}". Everyone sees it now.`);
+  }
+
   // The team the player typed in the Players form is on now
   function editPlayerHint() {
     const input = document.getElementById("editPlayer");
@@ -2737,6 +2886,7 @@
     ["playerstats", "Player Stats", "trend", () => playerStatsAdminSection()],
     ["transactions", "Transactions", "updates", () => transactionsSection()],
     ["players", "Players", "legacy", () => playersAdminSection()],
+    ["honors", "Honors", "awards", () => honorsAdminSection()],
     ["teams", "Teams", "teams", () => teamsAdminSection()],
     ["streams", "Live Streams", "live", () => streamsAdminSection()],
     ["vods", "VODs", "play", () => vodsAdminSection()],
@@ -3502,7 +3652,7 @@
 
   const ACTIVITY_LABELS = {
     saveResult: "Results", deleteResult: "Results", saveUpdates: "Transactions", deleteUpdate: "Transactions",
-    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule", renamePlayers: "Player names", syncRosters: "Rosters", editPlayer: "Players", undoPlayerEdit: "Players",
+    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule", renamePlayers: "Player names", syncRosters: "Rosters", editPlayer: "Players", undoPlayerEdit: "Players", giveAward: "Honors", giveRecord: "Honors", undoHonor: "Honors",
     saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", addVod: "VODs", removeVod: "VODs"
   };
   function activitySection(limit = 100) {
@@ -3914,6 +4064,7 @@
     closeMenu();
     window.scrollTo(0, 0);
     if (section === "admin" && getAdmin()) loadActivity();
+    if (section === "admin" && adminTab === "honors") recordPicked();
   }
 
   function closeMenu() {
@@ -3986,7 +4137,7 @@
 
   app.addEventListener("submit", async (e) => {
     const id = e.target.id;
-    if (!["posForm", "adminLogin", "streamForm", "teamForm", "statPick", "statForm", "vodForm", "playerForm"].includes(id)) return;
+    if (!["posForm", "adminLogin", "streamForm", "teamForm", "statPick", "statForm", "vodForm", "playerForm", "awardForm", "recordForm"].includes(id)) return;
     e.preventDefault();
     const form = new FormData(e.target);
     const btn = e.target.querySelector("button[type=submit]");
@@ -3995,6 +4146,8 @@
     try {
       if (id === "posForm") await savePosition(form);
       else if (id === "playerForm") return await savePlayerEdit(form);
+      else if (id === "awardForm") return await saveAward(form);
+      else if (id === "recordForm") return await saveRecord(form);
       else if (id === "statPick") {
         const typed = String(form.get("player") || "").trim();
         statsEditName = knownPlayers().find((n) => n.toLowerCase() === aliasName(typed).toLowerCase()) || aliasName(typed);
@@ -4157,6 +4310,12 @@
       if (!confirm(`Undo the hand edits for ${statsEditName} and use the box scores again?`)) return;
       return adminSave(t, { action: "setStats", name: statsEditName, stats: null }, () =>
         reloadWithFlash(`${statsEditName}'s stats come from the box scores again.`));
+    }
+    if (t.dataset.undoHonor) {
+      t.disabled = true;
+      return adminCall({ action: "undoHonor", id: t.dataset.undoHonor })
+        .then(() => reloadWithFlash("Undone. Everyone sees it now."))
+        .catch((err) => { adminError = err.message; render(); });
     }
     if (t.dataset.undoPlayerEdit) {
       t.disabled = true;
@@ -4375,6 +4534,7 @@
 
   app.addEventListener("change", async (e) => {
     const el = e.target;
+    if (el.id === "recordPick") return recordPicked();
     if (el.dataset.seedConf) {
       const state = loadPred();
       const list = (state.seeds[el.dataset.seedConf] = (state.seeds[el.dataset.seedConf] || []).slice());
