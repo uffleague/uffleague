@@ -6,7 +6,7 @@
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
-  renames: [], people: [], rosterSyncs: [], activity: [] };
+  renames: [], people: [], rosterSyncs: [], rosterMoves: [], activity: [] };
 const RENAMES_MAX = 3000;
 const PEOPLE_MAX = 3000;
 const SYNCS_MAX = 200;
@@ -645,6 +645,34 @@ export default {
       });
       data.bowls = bowls;
       log = "Saved United Flag Bowl history";
+    } else if (body.action === "editPlayer") {
+      // Admin -> Players: a new name (the old one still counts as them; the site applies admin renames after the
+      // bot's, so they win) and/or the team they're on from now on ("" = free agent), without making a transaction
+      const player = str(body.player, 60);
+      const name = str(body.name, 60);
+      const moving = typeof body.team === "string";
+      const team = moving ? str(body.team, 60) || null : undefined;
+      if (!player) return json({ error: "Pick a player." }, 400);
+      if (!name && !moving) return json({ error: "Type a new name or pick a team." }, 400);
+      const done = [];
+      if (name && name !== player) {
+        data.renames = [...data.renames, { id: crypto.randomUUID(), from: player, to: name, at: Date.now(), admin: true }].slice(-RENAMES_MAX);
+        done.push(`renamed ${player} to ${name}`);
+      }
+      if (moving) {
+        const when = leagueDateTime(Date.now(), env.LEAGUE_TZ || "America/New_York");
+        data.rosterMoves = [...data.rosterMoves, { id: crypto.randomUUID(), player: name || player, team, date: when.date, time: when.time, at: Date.now() }].slice(-SYNCS_MAX);
+        done.push(team ? `put ${name || player} on the ${team}` : `made ${name || player} a free agent`);
+      }
+      if (!done.length) return json({ error: "That's already their name." }, 400);
+      log = done.join(" and ").replace(/^./, (c) => c.toUpperCase());
+    } else if (body.action === "undoPlayerEdit") {
+      const rename = data.renames.find((r) => r.admin && r.id === body.id);
+      const move = data.rosterMoves.find((m) => m.id === body.id);
+      if (!rename && !move) return json({ error: "That change is already gone." }, 400);
+      data.renames = data.renames.filter((r) => r !== rename);
+      data.rosterMoves = data.rosterMoves.filter((m) => m !== move);
+      log = rename ? `Undid renaming ${rename.from} to ${rename.to}` : `Undid ${move.team ? `putting ${move.player} on the ${move.team}` : `making ${move.player} a free agent`}`;
     } else {
       return json({ error: "Unknown action" }, 400);
     }

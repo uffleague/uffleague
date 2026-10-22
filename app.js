@@ -103,15 +103,17 @@
     // Roblox usernames the bot knows, with that person's Discord names
     const discordOf = new Map((SAVED.people || []).filter((p) => p.name)
       .map((p) => [p.name.toLowerCase(), discordNames(p.discord || "").map((n) => n.toLowerCase())]));
-    (SAVED.renames || []).forEach(({ from: sent, to, id }) => {
+    // Renames made on Admin -> Players come last, so they win over the bot's
+    const renames = SAVED.renames || [];
+    renames.filter((r) => !r.admin).concat(renames.filter((r) => r.admin)).forEach(({ from: sent, to, id, admin }) => {
       if (!sent || !to) return;
-      discordNames(sent).forEach((from) => {
+      (admin ? [String(sent)] : discordNames(sent)).forEach((from) => {
         const was = rawAlias(from);
         // Someone else's Roblox username isn't taken over just because it matches this person's Discord name
-        // (a match by id is always the same person)
+        // (a match by id, or an admin's rename, is always the same person)
         const theirs = discordOf.get(was.toLowerCase());
         const other = theirs && !theirs.includes(from.toLowerCase());
-        if (!id && other && was.toLowerCase() !== to.toLowerCase()) return;
+        if (!id && !admin && other && was.toLowerCase() !== to.toLowerCase()) return;
         ALIASES.delete(to.toLowerCase()); // the new name is somebody's current name, not an old one
         ALIASES.set(from.toLowerCase(), to);
         if (was.toLowerCase() !== to.toLowerCase()) ALIASES.set(was.toLowerCase(), to);
@@ -224,6 +226,8 @@
       // An unverified player comes as their Discord name, decorations and all ("zlssei®")
       ...s, team: rn(botTeam(s.team)), players: (s.players || []).map((p) => ({ ...p, name: rawAlias(mentionName(String(p.name))) }))
     }));
+    // Team changes made on Admin -> Players ("team": null = free agent)
+    LEAGUE.rosterMoves = (SAVED.rosterMoves || []).map((m) => ({ ...m, player: rawAlias(m.player), team: m.team ? rn(botTeam(m.team)) : null }));
     // A VOD's two teams from the bot (names or codes)
     (SAVED.vods || []).forEach((v) => { if (Array.isArray(v.teams)) v.teams = v.teams.map((t) => rn(botTeam(t))); });
   })();
@@ -283,12 +287,15 @@
 
   // Roster syncs from the Discord bot: that team's players and staff at that moment (not shown on Updates)
   const syncs = (LEAGUE.rosterSyncs || []).map((s) => ({ ...s, type: "sync", t: TEAMS.find((x) => x.name === s.team), i: Infinity })).filter((s) => s.t);
+  // Admin -> Players team changes: that player is on that team (or a free agent) from then on
+  const moves = (LEAGUE.rosterMoves || []).map((m) => ({ ...m, type: "move", t: m.team ? TEAMS.find((x) => x.name === m.team) : null, i: Infinity }))
+    .filter((m) => m.t || !m.team);
 
   // A disbanded team that signs, promotes or syncs someone afterwards is back (the Disbanded row stays on Updates)
   const disbands = TEAMS.filter((t) => t.disbanded).map((t) => ({ ...t.disbanded, type: "disband", t, i: Infinity }));
   disbands.forEach((d) => {
     const back = (u) => u.t === d.t && (u.type === "sign" || u.type === "promotion" || (u.type === "sync" && u.players.length)) && byTime(u, d) > 0;
-    if (UPDATES.some(back) || syncs.some(back)) delete d.t.disbanded;
+    if (UPDATES.some(back) || syncs.some(back) || moves.some((m) => m.t === d.t && byTime(m, d) > 0)) delete d.t.disbanded;
   });
 
   // Rosters and staff, played back in time order. ROSTERS[slug]: player key -> name;
@@ -299,7 +306,13 @@
   const staffOf = (t) => (STAFF[t.slug] = STAFF[t.slug] || new Map());
   // Takes someone off every other team's roster and/or staff
   const leaveOthers = (key, slugKeep, maps) => maps.forEach((m) => Object.entries(m).forEach(([s, r]) => { if (s !== slugKeep) r.delete(key); }));
-  UPDATES.concat(disbands, syncs).sort(byTime).forEach((u) => {
+  UPDATES.concat(disbands, syncs, moves).sort(byTime).forEach((u) => {
+    if (u.type === "move") {
+      const key = u.player.toLowerCase();
+      leaveOthers(key, u.t ? u.t.slug : null, [ROSTERS, STAFF]);
+      if (u.t) rosterOf(u.t).set(key, u.player);
+      return;
+    }
     if (!u.t) return;
     const s = u.t.slug;
     // Disbanding frees everyone; a team that comes back starts with a fresh roster and staff
@@ -704,10 +717,9 @@
       <div class="hx-panel">
         ${panelHead("Featured Media", "#/vods", "View All")}
         ${list.length ? `<div class="hx-media-grid">${list.map((v) => {
-          const yt = ytId(v.url);
           return `
             <a class="hx-media" href="${esc(v.url)}" target="_blank" rel="noopener">
-              <span class="hx-media-thumb">${yt ? `<img src="https://img.youtube.com/vi/${yt}/hqdefault.jpg" alt="" loading="lazy">` : ""}<span class="hx-media-play">&#9654;</span></span>
+              ${vodThumb(v)}
               <span class="hx-media-title">${esc(v.title)}</span>
               <span class="hx-media-date">${v.at ? shortDate(new Date(v.at).toLocaleDateString("en-CA")) : esc(v.note || "")}</span>
             </a>`;
@@ -2167,6 +2179,66 @@
       </section>`;
   }
 
+  // ---- Admin -> Players: how a player's name shows, and the team they're on ----
+
+  function playersAdminSection() {
+    const edits = [
+      ...(SAVED.renames || []).filter((r) => r.admin).map((r) => ({ id: r.id, at: r.at, text: `Renamed <strong>${esc(r.from)}</strong> to ${playerLink(r.to)}` })),
+      ...(SAVED.rosterMoves || []).map((m) => ({ id: m.id, at: m.at,
+        text: `${playerLink(m.player)} ${m.team ? `put on the <strong>${esc(m.team)}</strong>` : "made a <strong>free agent</strong>"}` }))
+    ].sort((a, b) => b.at - a.at);
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Players</h2></div>
+        <form class="card admin-card" id="playerForm" autocomplete="off">
+          <p class="muted small admin-note">Change how a player's name shows on the site, or the team they're on. Their old name still counts as them, so their stats, honors and transactions stay with them. Renaming someone to a name another player already has merges the two into one player. A team change doesn't add a transaction, and a later roster sync or signing from the Discord bot still counts.</p>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Player</span><input name="player" id="editPlayer" list="playerNames" required></label>
+            <label class="field admin-grow"><span>New name (optional)</span><input name="name" maxlength="60" placeholder="Leave blank to keep it"></label>
+            <label class="field admin-grow"><span>Team</span><select name="team" class="select">
+              <option value="__keep">Don't change</option>
+              <option value="__fa">Free agent</option>
+              ${TEAMS.map((t) => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join("")}
+            </select></label>
+            <button class="btn btn-primary" type="submit">Save</button>
+          </div>
+          <p class="muted small" id="editPlayerNow"></p>
+          <datalist id="playerNames">${knownPlayers().map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
+          <div class="admin-subhead admin-subhead--small">Changes made here (${edits.length})</div>
+          ${edits.length ? edits.map((e) => `
+            <div class="list-row">
+              <div>${e.text}<div class="muted small">${fmtDate(new Date(e.at).toLocaleDateString("en-CA"))}</div></div>
+              <button type="button" class="btn btn-ghost btn-sm" data-undo-player-edit="${esc(e.id)}">Undo</button>
+            </div>`).join("") : `<p class="muted small">No changes yet.</p>`}
+        </form>
+      </section>`;
+  }
+
+  // The team the player typed in the Players form is on now
+  function editPlayerHint() {
+    const input = document.getElementById("editPlayer");
+    const out = document.getElementById("editPlayerNow");
+    if (!input || !out) return;
+    const typed = input.value.trim();
+    const name = typed && (knownPlayers().find((n) => n.toLowerCase() === aliasName(typed).toLowerCase()) || "");
+    const t = name && currentTeam(name);
+    out.innerHTML = !typed ? "" : !name ? "Not a player the site knows yet." : `${esc(name)} is ${t ? `on the <strong>${esc(t.name)}</strong>` : "a <strong>free agent</strong>"} now.`;
+  }
+
+  async function savePlayerEdit(form) {
+    const typed = String(form.get("player") || "").trim();
+    const player = knownPlayers().find((n) => n.toLowerCase() === aliasName(typed).toLowerCase()) || aliasName(typed);
+    const name = String(form.get("name") || "").trim();
+    const pick = String(form.get("team") || "__keep");
+    const body = { action: "editPlayer", player };
+    if (name && name !== player) body.name = name;
+    if (pick !== "__keep") body.team = pick === "__fa" ? "" : pick;
+    if (!body.name && body.team === undefined) throw new Error("Type a new name or pick a team.");
+    await adminCall(body);
+    const done = [body.name && `${player} is now ${body.name}`, body.team !== undefined && `${body.name || player} is ${body.team ? `on the ${body.team}` : "a free agent"}`];
+    reloadWithFlash(`Saved: ${done.filter(Boolean).join(", and ")}. Everyone sees it now.`);
+  }
+
   async function savePosition(form) {
     const typed = String(form.get("player") || "").trim();
     if (!typed) return;
@@ -2664,6 +2736,7 @@
     ["stats", "Stat Adder", "scores", () => resultsSection()],
     ["playerstats", "Player Stats", "trend", () => playerStatsAdminSection()],
     ["transactions", "Transactions", "updates", () => transactionsSection()],
+    ["players", "Players", "legacy", () => playersAdminSection()],
     ["teams", "Teams", "teams", () => teamsAdminSection()],
     ["streams", "Live Streams", "live", () => streamsAdminSection()],
     ["vods", "VODs", "play", () => vodsAdminSection()],
@@ -3271,29 +3344,44 @@
       </section>`;
   }
 
+  // A VOD's game and two teams: the teams the bot sent with it, otherwise its game's
+  function vodMatchup(v) {
+    const game = (v.gameId && allGames().find(({ g }) => g.id === v.gameId)) || null;
+    const names = Array.isArray(v.teams) && v.teams.length === 2 ? v.teams : game ? game.g.teams : null;
+    return { game, teams: names ? names.map((n) => TEAMS.find((t) => t.name === n) || { name: n }) : null };
+  }
+
+  // A VOD's thumbnail, the same on the VODs page and the home page's Featured Media: a game's replay shows both
+  // teams' logos facing each other over their colors; anything else its YouTube picture, or the league logo
+  function vodThumb(v) {
+    const { teams } = vodMatchup(v);
+    if (teams) {
+      const [a, b] = teams;
+      const color = (t, fallback) => (/^#[0-9a-f]{6}$/i.test(t.color || "") ? t.color : fallback);
+      return `<div class="vod-thumb vod-thumb--match" style="--team-a:${color(a, "#2f3f96")};--team-b:${color(b, "#1f2547")}">
+          <span class="vod-match">${teamLogo(a, "lg")}<span class="vod-vs">vs</span>${teamLogo(b, "lg")}</span>
+          <span class="vod-play">&#9654;</span>
+        </div>`;
+    }
+    const yt = ytId(v.url);
+    return `<div class="vod-thumb ${yt ? "" : "vod-thumb--league"}">${yt
+      ? `<img src="https://img.youtube.com/vi/${yt}/hqdefault.jpg" alt="" loading="lazy">`
+      : `<img class="vod-league-logo" src="${LEAGUE.brandLogo}" alt="">`}<span class="vod-play">&#9654;</span></div>`;
+  }
+
   function vodsPage() {
     const list = SAVED.vods || [];
     return `
       <div class="wrap">
         ${pageHead("VODs", "Game replays and highlights, newest first.")}
         ${list.length ? `<div class="vod-grid">${list.map((v) => {
-          const yt = ytId(v.url);
-          const game = v.gameId && allGames().find(({ g }) => g.id === v.gameId);
-          // A game's replay: the two teams' logos facing each other over their colors, in place of the thumbnail
-          const names = Array.isArray(v.teams) && v.teams.length === 2 ? v.teams : game ? game.g.teams : null;
-          const [a, b] = names ? names.map((n) => TEAMS.find((t) => t.name === n) || { name: n }) : [];
-          const color = (t, fallback) => (/^#[0-9a-f]{6}$/i.test(t.color || "") ? t.color : fallback);
+          const { game, teams } = vodMatchup(v);
           return `
             <a class="card vod-card" href="${esc(v.url)}" target="_blank" rel="noopener">
-              ${names
-                ? `<div class="vod-thumb vod-thumb--match" style="--team-a:${color(a, "#2f3f96")};--team-b:${color(b, "#1f2547")}">
-                    <span class="vod-match">${teamLogo(a, "lg")}<span class="vod-vs">vs</span>${teamLogo(b, "lg")}</span>
-                    <span class="vod-play">&#9654;</span>
-                  </div>`
-                : `<div class="vod-thumb">${yt ? `<img src="https://img.youtube.com/vi/${yt}/hqdefault.jpg" alt="" loading="lazy">` : ""}<span class="vod-play">&#9654;</span></div>`}
+              ${vodThumb(v)}
               <div class="vod-body">
-                <div class="vod-title">${names ? `${esc(a.name)} vs ${esc(b.name)}` : esc(v.title)}</div>
-                <div class="muted small">${[game ? `Week ${game.wk.week}` : !names && v.gameId && gameLabel(v.gameId), esc(v.note || ""), v.at && fmtDate(new Date(v.at).toLocaleDateString("en-CA"))].filter(Boolean).join(" &middot; ")}</div>
+                <div class="vod-title">${teams ? `${esc(teams[0].name)} vs ${esc(teams[1].name)}` : esc(v.title)}</div>
+                <div class="muted small">${[game ? `Week ${game.wk.week}` : !teams && v.gameId && gameLabel(v.gameId), esc(v.note || ""), v.at && fmtDate(new Date(v.at).toLocaleDateString("en-CA"))].filter(Boolean).join(" &middot; ")}</div>
               </div>
             </a>`;
         }).join("")}</div>` : empty("No VODs yet", "Game replays and highlights will show up here.")}
@@ -3414,7 +3502,7 @@
 
   const ACTIVITY_LABELS = {
     saveResult: "Results", deleteResult: "Results", saveUpdates: "Transactions", deleteUpdate: "Transactions",
-    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule", renamePlayers: "Player names", syncRosters: "Rosters",
+    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule", renamePlayers: "Player names", syncRosters: "Rosters", editPlayer: "Players", undoPlayerEdit: "Players",
     saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", addVod: "VODs", removeVod: "VODs"
   };
   function activitySection(limit = 100) {
@@ -3871,7 +3959,10 @@
     e.target.select();
     comboFill(e.target);
   });
-  app.addEventListener("input", (e) => { if (e.target.classList.contains("combo-input")) comboFill(e.target); });
+  app.addEventListener("input", (e) => {
+    if (e.target.classList.contains("combo-input")) comboFill(e.target);
+    if (e.target.id === "editPlayer") editPlayerHint();
+  });
   app.addEventListener("keydown", (e) => {
     if (!e.target.classList.contains("combo-input")) return;
     const box = e.target.closest(".combo");
@@ -3895,7 +3986,7 @@
 
   app.addEventListener("submit", async (e) => {
     const id = e.target.id;
-    if (!["posForm", "adminLogin", "streamForm", "teamForm", "statPick", "statForm", "vodForm"].includes(id)) return;
+    if (!["posForm", "adminLogin", "streamForm", "teamForm", "statPick", "statForm", "vodForm", "playerForm"].includes(id)) return;
     e.preventDefault();
     const form = new FormData(e.target);
     const btn = e.target.querySelector("button[type=submit]");
@@ -3903,6 +3994,7 @@
     adminError = adminFlash = "";
     try {
       if (id === "posForm") await savePosition(form);
+      else if (id === "playerForm") return await savePlayerEdit(form);
       else if (id === "statPick") {
         const typed = String(form.get("player") || "").trim();
         statsEditName = knownPlayers().find((n) => n.toLowerCase() === aliasName(typed).toLowerCase()) || aliasName(typed);
@@ -4065,6 +4157,12 @@
       if (!confirm(`Undo the hand edits for ${statsEditName} and use the box scores again?`)) return;
       return adminSave(t, { action: "setStats", name: statsEditName, stats: null }, () =>
         reloadWithFlash(`${statsEditName}'s stats come from the box scores again.`));
+    }
+    if (t.dataset.undoPlayerEdit) {
+      t.disabled = true;
+      return adminCall({ action: "undoPlayerEdit", id: t.dataset.undoPlayerEdit })
+        .then(() => reloadWithFlash("Undone. Everyone sees it now."))
+        .catch((err) => { adminError = err.message; render(); });
     }
     if (t.dataset.delVod) {
       return adminSave(t, { action: "removeVod", id: t.dataset.delVod }, (res) => {
