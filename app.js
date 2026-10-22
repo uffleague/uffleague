@@ -208,6 +208,8 @@
     LEAGUE.rosterSyncs = (SAVED.rosterSyncs || []).map((s) => ({
       ...s, team: rn(botTeam(s.team)), players: (s.players || []).map((p) => ({ ...p, name: rawAlias(p.name) }))
     }));
+    // A VOD's two teams from the bot (names or codes)
+    (SAVED.vods || []).forEach((v) => { if (Array.isArray(v.teams)) v.teams = v.teams.map((t) => rn(botTeam(t))); });
   })();
 
   // Add final scores from the schedule onto each team's record (on top of the numbers in data.js)
@@ -3253,12 +3255,22 @@
         ${pageHead("VODs", "Game replays and highlights, newest first.")}
         ${list.length ? `<div class="vod-grid">${list.map((v) => {
           const yt = ytId(v.url);
+          const game = v.gameId && allGames().find(({ g }) => g.id === v.gameId);
+          // A game's replay: the two teams' logos facing each other over their colors, in place of the thumbnail
+          const names = Array.isArray(v.teams) && v.teams.length === 2 ? v.teams : game ? game.g.teams : null;
+          const [a, b] = names ? names.map((n) => TEAMS.find((t) => t.name === n) || { name: n }) : [];
+          const color = (t, fallback) => (/^#[0-9a-f]{6}$/i.test(t.color || "") ? t.color : fallback);
           return `
             <a class="card vod-card" href="${esc(v.url)}" target="_blank" rel="noopener">
-              <div class="vod-thumb">${yt ? `<img src="https://img.youtube.com/vi/${yt}/hqdefault.jpg" alt="" loading="lazy">` : ""}<span class="vod-play">&#9654;</span></div>
+              ${names
+                ? `<div class="vod-thumb vod-thumb--match" style="--team-a:${color(a, "#2f3f96")};--team-b:${color(b, "#1f2547")}">
+                    <span class="vod-match">${teamLogo(a, "lg")}<span class="vod-vs">vs</span>${teamLogo(b, "lg")}</span>
+                    <span class="vod-play">&#9654;</span>
+                  </div>`
+                : `<div class="vod-thumb">${yt ? `<img src="https://img.youtube.com/vi/${yt}/hqdefault.jpg" alt="" loading="lazy">` : ""}<span class="vod-play">&#9654;</span></div>`}
               <div class="vod-body">
-                <div class="vod-title">${esc(v.title)}</div>
-                <div class="muted small">${[v.gameId && gameLabel(v.gameId), esc(v.note || ""), v.at && fmtDate(new Date(v.at).toLocaleDateString("en-CA"))].filter(Boolean).join(" &middot; ")}</div>
+                <div class="vod-title">${names ? `${esc(a.name)} vs ${esc(b.name)}` : esc(v.title)}</div>
+                <div class="muted small">${[game ? `Week ${game.wk.week}` : !names && v.gameId && gameLabel(v.gameId), esc(v.note || ""), v.at && fmtDate(new Date(v.at).toLocaleDateString("en-CA"))].filter(Boolean).join(" &middot; ")}</div>
               </div>
             </a>`;
         }).join("")}</div>` : empty("No VODs yet", "Game replays and highlights will show up here.")}

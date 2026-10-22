@@ -280,7 +280,15 @@ async function botSchedule(env, sched) {
 
   const data = await load(env);
   const sent = new Set(weeks.map((w) => w.week));
+  const matchups = () => new Map(data.schedule.flatMap((w) => w.games).map((g) => [g.id, g.teams.map(botTeamKey).sort().join("|")]));
+  const before = matchups();
   data.schedule = [...(sched.replace ? [] : data.schedule.filter((w) => !sent.has(w.week))), ...weeks].sort((a, b) => a.week - b.week);
+  // A game id that's now a different matchup (or gone) drops the old game's score, stats, stream and replay link
+  const after = matchups();
+  const changed = (id) => before.has(id) && after.get(id) !== before.get(id);
+  data.results = data.results.filter((r) => !changed(r.id));
+  data.streams = data.streams.filter((x) => !changed(x.gameId));
+  data.vods.forEach((v) => { if (changed(v.gameId)) delete v.gameId; });
   const games = weeks.reduce((n, w) => n + w.games.length, 0);
   data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveSchedule",
     text: weeks.length ? `${sched.replace ? "Replaced the schedule with" : "Updated"} week${weeks.length === 1 ? "" : "s"} ${weeks.map((w) => w.week).join(", ")} (${games} game${games === 1 ? "" : "s"})` : "Cleared the schedule" }, ...data.activity].slice(0, ACTIVITY_MAX);
@@ -353,10 +361,13 @@ async function botVods(env, list) {
       return;
     }
     const game = findBotGame(data, v);
-    const title = str(v.title, 80) || [str(v.by, 40), game ? game.teams.join(" vs ") : ""].filter(Boolean).join(" · ") || "UFF VOD";
+    // The two teams, as the bot sent them (or from the game); the site shows their logos on the VOD card
+    const sentTeams = [].concat(v.teams || []).map((t) => str(t, 60));
+    const teams = sentTeams.length === 2 && sentTeams.every(Boolean) ? sentTeams : game ? game.teams : undefined;
+    const title = str(v.title, 80) || (teams ? teams.join(" vs ") : "") || str(v.by, 40) || "UFF VOD";
     // The same link again updates it; a real replay replaces the live channel link kept for that game
     data.vods = data.vods.filter((x) => link(x.url) !== link(url) && !(game && x.gameId === game.id && channelOnly(x.url)));
-    const vod = { id: crypto.randomUUID(), title, url, gameId: game ? game.id : undefined, note: str(v.note, 80) || "", at: Date.now(), source: "bot" };
+    const vod = { id: crypto.randomUUID(), title, url, gameId: game ? game.id : undefined, teams, note: str(v.note, 80) || "", at: Date.now(), source: "bot" };
     data.vods = [vod, ...data.vods];
     saved.push(vod);
   });
