@@ -89,21 +89,29 @@
   // (Discord name -> Roblox username), in the order they came in. rawAlias() follows these.
   const ALIASES = new Map(Object.entries(LEAGUE.aliases || {}).map(([k, v]) => [k.toLowerCase(), v]));
   (function applyRenames() {
-    // Roblox usernames the bot knows, with that person's Discord name
-    const discordOf = new Map((SAVED.people || []).filter((p) => p.name).map((p) => [p.name.toLowerCase(), (p.discord || "").toLowerCase()]));
+    // The bot's Discord name has decorations the site drops when it stores a name: "Yacht (@hitaIicc)®" is
+    // display name "Yacht" and handle "hitaIicc", and the site may have stored the player under either one
+    const discordNames = (s) => {
+      const handle = (String(s).match(/\(@([^)\s]+)\)/) || [])[1];
+      const display = mentionName(String(s)).replace(/\s*\(@[^)]*\)\s*$/, "").trim();
+      return [...new Set([display, handle].filter(Boolean))];
+    };
+    // Roblox usernames the bot knows, with that person's Discord names
+    const discordOf = new Map((SAVED.people || []).filter((p) => p.name)
+      .map((p) => [p.name.toLowerCase(), discordNames(p.discord || "").map((n) => n.toLowerCase())]));
     (SAVED.renames || []).forEach(({ from: sent, to, id }) => {
       if (!sent || !to) return;
-      // The bot's Discord name has the decorations the site drops when it stores a name ("Yacht (@hitaIicc)®" -> "Yacht")
-      const from = mentionName(String(sent));
-      if (!from) return;
-      const was = rawAlias(from);
-      // Someone else's Roblox username isn't taken over just because it matches this person's Discord name
-      // (a match by id is always the same person)
-      const other = discordOf.has(was.toLowerCase()) && discordOf.get(was.toLowerCase()) !== from.toLowerCase();
-      if (!id && other && was.toLowerCase() !== to.toLowerCase()) return;
-      ALIASES.delete(to.toLowerCase()); // the new name is somebody's current name, not an old one
-      ALIASES.set(from.toLowerCase(), to);
-      if (was.toLowerCase() !== to.toLowerCase()) ALIASES.set(was.toLowerCase(), to);
+      discordNames(sent).forEach((from) => {
+        const was = rawAlias(from);
+        // Someone else's Roblox username isn't taken over just because it matches this person's Discord name
+        // (a match by id is always the same person)
+        const theirs = discordOf.get(was.toLowerCase());
+        const other = theirs && !theirs.includes(from.toLowerCase());
+        if (!id && other && was.toLowerCase() !== to.toLowerCase()) return;
+        ALIASES.delete(to.toLowerCase()); // the new name is somebody's current name, not an old one
+        ALIASES.set(from.toLowerCase(), to);
+        if (was.toLowerCase() !== to.toLowerCase()) ALIASES.set(was.toLowerCase(), to);
+      });
     });
   })();
 

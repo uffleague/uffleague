@@ -164,29 +164,37 @@ const LEAGUE = {
     allTime: {} // filled from stats-alltime-*.js
   },
   // Old Discord nicknames -> the name used on the site. Applied when pasting stats or transactions.
+  // A player's site name is the Roblox account on their Bloxlink (from the ZevoraV2 bot) where the bot has one.
   aliases: {
-    "IIIIIIIIIIII": "lord 9", "IlIIIllIllIIllIlI": "lord 9", "✷": "n4w", "✴": "n4w",
-    "ella": "breakxu", "jmr": "jvkethings", "sla": "splndd", "PrincessKitty5897": "xjupp",
-    "DoobyDoo": "fooge", "sky": "youngvtee", "big phil": "seaboy", "vmp": "vampviolences",
-    "raskal": "phentric", "User171718": "goatnotgood", "kamill08": "Kamil08", "kamil08": "Kamil08",
-    "biglester1": "BIGGIECHEESE",
+    "IIIIIIIIIIII": "IlIIIllIllIIllIlI", "✷": "n4w", "✴": "n4w",
+    "ella": "breakxu", "jmr": "JvkeThingz", "sla": "jumpbaI", "PrincessKitty5897": "xJupp",
+    "DoobyDoo": "fooge", "sky": "zqju1", "big phil": "seaboy", "vmp": "vampviolences",
+    "raskal": "sIicur", "User171718": "perkialtacc", "kamil08": "kamill08",
     // Same players under different names on the old all-time stat sheets
-    "Drivxon": "breakxu", "JvkeThingz": "jvkethings", "soto1s": "soto", "Kevskiiiiiiii": "Kevskiiiiiii",
+    "Drivxon": "breakxu", "soto1s": "dreamfolds",
     "coIdview": "hurdle", "3va8dkq1zafjmxtn": "3vo8dkq1zafjmxtn", "hello78alt3": "helloo78alt3",
     "gamerpony4182": "gamerpony4132", "settIe": "settle", "Iaddmcconkey": "seaboy", "laddmcconkey": "seaboy", "laddmconkey": "seaboy",
-    "loverIoverlover": "248","influencethekilI": "influencethekill", "depthqcfler": "depthacfler",
-    "t1memanagement": "tlmemanagement", "maIikvrt": "maiikvrt", "nichelarpers": "day", "cooks423": "cooks", "t8l": "dictator 10",
+    "influencethekilI": "influencethekill", "depthqcfler": "depthacfler",
+    "t1memanagement": "tlmemanagement", "maIikvrt": "maiikvrt", "nichelarpers": "vcoostwash", "cooks423": "cooks", "t8l": "SparkyFaceIsPunched",
     // Award winners listed under a shorter or misspelled name
-    "biglester": "BIGGIECHEESE", "kevski": "Kevskiiiiiii", "VampViolence": "vampviolences", "yavient": "Yavientt",
-    "affused": "lord 9", "2687affused982673260": "lord 9", "touchdenim": "denim", "shazamzq": "shazam", "xv89r12azk74m3a4": "stunaaaaaaaaaaaaa", "nskx": "curfaw", "GalanBlox2": "galan",
-    "rip": "ripburied", "ripb_ried": "ripburied", "iluvphenom": "mr_devy1122", ".coaserh": "coaserh", "LighttExe": "Vljla6i", "LightExe": "Vljla6i", "i56gwe": "rekid",
-    "sk8star": "sk8erboy111", "slazery": "Conaments", "UFF_HighRANK": "dictator 10", "JpingRandySanchez": "dictator 10",
-    "sec2v": "sec", "f84d": "CountTo5", "goodnoob9870": "Sigma", "jaylenyagami": "rosewood", "✴ 2223007": "n4w", "2223007": "n4w",
-    "Nxstalgjc": "Yavientt", "Made Her Suffer.": "Yavientt", "Made Her Suffer": "Yavientt", "hey": "2kaiju", "romance": "galan", "Galan101dragon20": "galan",
-    "Lance6i": "Shyne6712", "5kaiju": "bloodhill", "Dear Diary": "liarliarliar", "coldview": "hurdle", "1021juice": "sk8erboy111", "vBopYuYt": "vboppppppppppp",
-    "hellraiser000": "hellraiser", "Lobstirz": "rcbkailer", "bcra n6kj": "n6kj",
-    // Head coaches' usernames (from the Season 7 coaches list) -> the name they go by
-    "Aloneinnewyorkcity": "2 trey", "marmersie": "msuede", "loverloverlover": "248", "jumpbaI": "splndd"
+    "biglester": "biglester1", "kevski": "Kevskiiiiiiii", "VampViolence": "vampviolences", "yavient": "PPspecialist",
+    "affused": "IlIIIllIllIIllIlI", "2687affused982673260": "IlIIIllIllIIllIlI", "touchdenim": "denim", "xv89r12azk74m3a4": "stunaaaaaaaaaaaaa", "nskx": "curfaw", "GalanBlox2": "galan",
+    "rip": "KrxticalLag", "ripb_ried": "KrxticalLag", "iluvphenom": "mr_devy1122", ".coaserh": "coaserh", "LightExe": "LighttExe", "i56gwe": "bloodhownd",
+    "sk8star": "sk8erboy111", "slazery": "Conaments", "UFF_HighRANK": "SparkyFaceIsPunched", "JpingRandySanchez": "SparkyFaceIsPunched",
+    "jaylenyagami": "rosewood", "✴ 2223007": "n4w", "2223007": "n4w",
+    "Nxstalgjc": "PPspecialist", "Made Her Suffer.": "PPspecialist", "Made Her Suffer": "PPspecialist", "hey": "2kaiju", "romance": "galan", "Galan101dragon20": "galan",
+    "Lance6i": "Shyne6712", "5kaiju": "freebloodhill", "Dear Diary": "130liar", "coldview": "hurdle", "1021juice": "sk8erboy111", "vBopYuYt": "roblox_user_2363107116",
+    "Lobstirz": "Marauderpress", "bcra n6kj": "n6kj",
+    // Head coaches' usernames (from the Season 7 coaches list)
+    "loverloverlover": "loverIoverlover",
+    // Names the site used before -> the Roblox account on their Bloxlink
+    "2 trey": "Aloneinnewyorkcity", "248": "loverIoverlover", "BIGGIECHEESE": "biglester1", "bloodhill": "freebloodhill",
+    "CountTo5": "f84d", "day": "vcoostwash", "dictator 10": "SparkyFaceIsPunched", "goatnotgood": "perkialtacc",
+    "hellraiser": "Hellraiser000", "hellraiser000": "Hellraiser000", "jvkethings": "JvkeThingz", "Kevskiiiiiii": "Kevskiiiiiiii",
+    "liarliarliar": "130liar", "lord 9": "IlIIIllIllIIllIlI", "msuede": "marmersie", "phentric": "sIicur",
+    "rcbkailer": "Marauderpress", "rekid": "bloodhownd", "ripburied": "KrxticalLag", "sec": "sec2v", "shazam": "shazamzq",
+    "Sigma": "goodnoob9870", "soto": "dreamfolds", "splndd": "jumpbaI", "vboppppppppppp": "roblox_user_2363107116",
+    "Vljla6i": "LighttExe", "xjupp": "xJupp", "Yavientt": "PPspecialist", "youngvtee": "zqju1"
   },
   // Fantasy points per stat, used to rank Award Candidates. Change these to match your league.
   fantasy: {
