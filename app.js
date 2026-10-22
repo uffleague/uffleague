@@ -84,6 +84,26 @@
     const res = await fetch(API, { cache: "no-store" });
     if (res.ok) SAVED = { ...SAVED, ...(await res.json()) };
   } catch (e) {}
+
+  // Old name -> the name a player goes by now (lowercase keys): the aliases in data.js, then the Discord bot's renames
+  // (Discord name -> Roblox username), in the order they came in. rawAlias() follows these.
+  const ALIASES = new Map(Object.entries(LEAGUE.aliases || {}).map(([k, v]) => [k.toLowerCase(), v]));
+  (function applyRenames() {
+    // Roblox usernames the bot knows, with that person's Discord name
+    const discordOf = new Map((SAVED.people || []).filter((p) => p.name).map((p) => [p.name.toLowerCase(), (p.discord || "").toLowerCase()]));
+    (SAVED.renames || []).forEach(({ from, to, id }) => {
+      if (!from || !to) return;
+      const was = rawAlias(from);
+      // Someone else's Roblox username isn't taken over just because it matches this person's Discord name
+      // (a match by id is always the same person)
+      const other = discordOf.has(was.toLowerCase()) && discordOf.get(was.toLowerCase()) !== from.toLowerCase();
+      if (!id && other && was.toLowerCase() !== to.toLowerCase()) return;
+      ALIASES.delete(to.toLowerCase()); // the new name is somebody's current name, not an old one
+      ALIASES.set(from.toLowerCase(), to);
+      if (was.toLowerCase() !== to.toLowerCase()) ALIASES.set(was.toLowerCase(), to);
+    });
+  })();
+
   (function mergeSaved() {
     // Position changes replace whatever data.js lists for that player
     const posMap = (LEAGUE.stats.positions = LEAGUE.stats.positions || {});
@@ -165,6 +185,29 @@
     LEAGUE.updates.forEach((u) => { u.team = rn(u.team); });
     LEAGUE.schedule.forEach((wk) => wk.games.forEach((g) => { g.teams = g.teams.map(rn); }));
     [SAVED.playoffs, LEAGUE.playoffs].forEach((po) => po && po.rounds && po.rounds.forEach((r) => r.games.forEach((g) => { g.a = rn(g.a); g.b = rn(g.b); })));
+
+    // Everyone goes by their current name (old Discord names and nicknames -> Roblox username), so a renamed
+    // player keeps their transactions, box score lines, Player of the Game awards, position, stat edits and staff jobs
+    LEAGUE.updates.forEach((u) => { u.player = rawAlias(u.player); if (u.by) u.by = rawAlias(u.by); });
+    games.forEach((g) => {
+      if (g.potg) g.potg = rawAlias(g.potg);
+      (g.box || []).forEach((side) => Object.values(side || {}).forEach((rows) => [].concat(rows).forEach((r) => { if (r && r.player) r.player = rawAlias(r.player); })));
+    });
+    allDivs().forEach(({ d }) => d.teams.forEach((t) => { if (t.coach) t.coach = rawAlias(t.coach); }));
+    // An entry under an old name moves to the current one, unless the current name already has its own
+    const rekey = (map) => Object.keys(map).forEach((n) => {
+      const now = rawAlias(n);
+      if (now === n) return;
+      if (!Object.keys(map).some((k) => k.toLowerCase() === now.toLowerCase())) map[now] = map[n];
+      delete map[n];
+    });
+    rekey(posMap);
+    rekey(SAVED.statEdits || {});
+
+    // Rosters the bot syncs: each one sets that team's players (and staff) at that moment
+    LEAGUE.rosterSyncs = (SAVED.rosterSyncs || []).map((s) => ({
+      ...s, team: rn(botTeam(s.team)), players: (s.players || []).map((p) => ({ ...p, name: rawAlias(p.name) }))
+    }));
   })();
 
   // Add final scores from the schedule onto each team's record (on top of the numbers in data.js)
@@ -220,50 +263,63 @@
     ({ ...t.disbanded, type: "disband", team: t.name, t, i: Infinity }))).sort(byTime);
   const disbandedTag = (t) => (t && t.disbanded ? ` <span class="pill pill-disbanded">Disbanded</span>` : "");
 
-  // A disbanded team that signs or promotes someone afterwards is back (the Disbanded row stays on Updates)
+  // Roster syncs from the Discord bot: that team's players and staff at that moment (not shown on Updates)
+  const syncs = (LEAGUE.rosterSyncs || []).map((s) => ({ ...s, type: "sync", t: TEAMS.find((x) => x.name === s.team), i: Infinity })).filter((s) => s.t);
+
+  // A disbanded team that signs, promotes or syncs someone afterwards is back (the Disbanded row stays on Updates)
   const disbands = TEAMS.filter((t) => t.disbanded).map((t) => ({ ...t.disbanded, type: "disband", t, i: Infinity }));
   disbands.forEach((d) => {
-    if (UPDATES.some((u) => u.t === d.t && (u.type === "sign" || u.type === "promotion") && byTime(u, d) > 0)) {
-      d.t.revived = d;
-      delete d.t.disbanded;
-    }
+    const back = (u) => u.t === d.t && (u.type === "sign" || u.type === "promotion" || (u.type === "sync" && u.players.length)) && byTime(u, d) > 0;
+    if (UPDATES.some(back) || syncs.some(back)) delete d.t.disbanded;
   });
 
-  const ROSTERS = {};
-  UPDATES.concat(disbands).sort(byTime).forEach((u) => {
+  // Rosters and staff, played back in time order. ROSTERS[slug]: player key -> name;
+  // STAFF[slug]: player key -> { player, role, date, time } (the latest role each person has there)
+  const ROSTERS = {}, STAFF = {};
+  const synced = new Set(); // teams whose whole staff a roster sync has set
+  const rosterOf = (t) => (ROSTERS[t.slug] = ROSTERS[t.slug] || new Map());
+  const staffOf = (t) => (STAFF[t.slug] = STAFF[t.slug] || new Map());
+  // Takes someone off every other team's roster and/or staff
+  const leaveOthers = (key, slugKeep, maps) => maps.forEach((m) => Object.entries(m).forEach(([s, r]) => { if (s !== slugKeep) r.delete(key); }));
+  UPDATES.concat(disbands, syncs).sort(byTime).forEach((u) => {
     if (!u.t) return;
-    // Disbanding frees everyone signed before it
-    if (u.type === "disband") { delete ROSTERS[u.t.slug]; return; }
+    const s = u.t.slug;
+    // Disbanding frees everyone; a team that comes back starts with a fresh roster and staff
+    if (u.type === "disband") { delete ROSTERS[s]; delete STAFF[s]; return; }
+    if (u.type === "sync") {
+      if (u.replace) { ROSTERS[s] = new Map(); STAFF[s] = new Map(); synced.add(s); }
+      u.players.forEach((p) => {
+        const key = p.name.toLowerCase();
+        leaveOthers(key, s, [ROSTERS, STAFF]);
+        if (p.role) { staffOf(u.t).set(key, { player: p.name, role: p.role, date: u.date, time: u.time, i: u.i }); rosterOf(u.t).delete(key); }
+        else { rosterOf(u.t).set(key, p.name); staffOf(u.t).delete(key); }
+      });
+      return;
+    }
     const key = u.player.toLowerCase();
     if (u.type === "sign") {
-      Object.values(ROSTERS).forEach((r) => r.delete(key));
-      (ROSTERS[u.t.slug] = ROSTERS[u.t.slug] || new Map()).set(key, u.player);
-    } else if ((u.type === "demand" || u.type === "release") && ROSTERS[u.t.slug]) {
-      ROSTERS[u.t.slug].delete(key);
+      // Signing somewhere else also ends a staff job on another team
+      leaveOthers(key, s, [ROSTERS, STAFF]);
+      rosterOf(u.t).set(key, u.player);
+    } else if (u.type === "demand" || u.type === "release") {
+      if (ROSTERS[s]) ROSTERS[s].delete(key);
+      if (STAFF[s]) STAFF[s].delete(key);
     } else if (u.type === "promotion") {
-      // Joining another team's staff (owner, coach...) takes them off their old team's roster
-      Object.entries(ROSTERS).forEach(([s, r]) => { if (s !== u.t.slug) r.delete(key); });
+      // Joining another team's staff (owner, coach...) takes them off their old team's roster and staff
+      leaveOthers(key, s, [ROSTERS, STAFF]);
+      if (u.role) staffOf(u.t).set(key, u);
     }
   });
-  // A team's staff from promotions on the Updates page (latest role per person), owners first.
-  // Someone whose latest move is to another team (or off this one) isn't on this staff anymore.
+  // A team's staff, owners first
   const isHeadCoach = (role) => /^(head coach|hc)$/i.test(String(role || "").trim());
   const staffRank = (role) => [/owner/i, /general manager|^gm$/i, /^(head coach|hc)$/i].findIndex((re) => re.test(role)) + 1 || 9;
-  function teamStaff(t) {
-    const staffBy = new Map();
-    // A team that came back after disbanding starts with a fresh staff
-    UPDATES.filter((u) => u.type === "promotion" && u.t && u.t.slug === t.slug && u.role && !(t.revived && byTime(u, t.revived) < 0))
-      .forEach((u) => staffBy.set(rawAlias(u.player).toLowerCase(), u));
-    const lastMove = new Map(UPDATES.filter((u) => u.t).map((u) => [rawAlias(u.player).toLowerCase(), u]));
-    return [...staffBy.entries()]
-      .filter(([key]) => { const m = lastMove.get(key); return m && m.t.slug === t.slug && m.type !== "demand" && m.type !== "release"; })
-      .map(([, u]) => u)
-      .sort((a, b) => staffRank(a.role) - staffRank(b.role));
-  }
-  // Someone promoted to Head Coach (by the Discord bot or on Admin) takes over from the head coach in data.js
+  const teamStaff = (t) => [...(STAFF[t.slug] || new Map()).values()].sort((a, b) => staffRank(a.role) - staffRank(b.role));
+  // Someone promoted to Head Coach (by the Discord bot or on Admin) takes over from the head coach in data.js;
+  // after a roster sync with no head coach listed, the team has none
   TEAMS.forEach((t) => {
     const hc = teamStaff(t).filter((u) => isHeadCoach(u.role)).sort(byTime).pop();
     if (hc) t.coach = hc.player;
+    else if (synced.has(t.slug)) t.coach = "";
   });
   // The Teams list and standings read the teams in data.js, so they get the same head coach and comeback
   LEAGUE.conferences.forEach((c) => c.divisions.forEach((d) => d.teams.forEach((src) => {
@@ -752,8 +808,9 @@
     const games = playerGames(name);
     const last = games[games.length - 1];
     const played = last && TEAMS.find((t) => t.name === last.g.teams[last.i]);
-    const staff = UPDATES.filter((u) => u.type === "promotion" && u.t && aliasName(u.player).toLowerCase() === key).pop();
-    return played || TEAMS.find((t) => !t.disbanded && t.coach && t.coach.toLowerCase() === key) || (staff && !staff.t.disbanded && staff.t) || null;
+    const staffSlug = Object.keys(STAFF).find((s) => STAFF[s].has(key));
+    const staff = staffSlug && TEAMS.find((t) => t.slug === staffSlug && !t.disbanded);
+    return played || TEAMS.find((t) => !t.disbanded && t.coach && t.coach.toLowerCase() === key) || staff || null;
   }
 
   const POS_ORDER = ["QB", "WR", "TE", "DE", "DB", "LB"];
@@ -1177,12 +1234,17 @@
     return cards ? `<div class="leader-list">${cards}</div>` : "";
   }
 
-  // Old sheet names -> site names (aliases in data.js), so one player's rows add up together
+  // Old names -> the name the player goes by now (ALIASES: data.js aliases plus the bot's renames), following
+  // a rename of a rename, so one player's rows add up together
   function rawAlias(name) {
-    const aliases = LEAGUE.aliases || {};
-    if (name in aliases) return aliases[name];
-    const hit = Object.keys(aliases).find((k) => k.toLowerCase() === String(name).toLowerCase());
-    return hit ? aliases[hit] : name;
+    let cur = name;
+    for (let hops = 0; hops < 10; hops++) {
+      const next = ALIASES.get(String(cur).toLowerCase());
+      if (next === undefined) return cur;
+      if (next.toLowerCase() === String(cur).toLowerCase()) return next;
+      cur = next;
+    }
+    return cur;
   }
   // Capital letters never matter: "N4W" and "n4w" are one player. They're always shown with one spelling,
   // taken from (in order) the Legacy list, rosters, head coaches, then the All-Time stat sheets.
@@ -2107,9 +2169,7 @@
 
   // Stat sheet name -> site name: nicknames from data.js first, then the spelling the site already uses
   function siteName(raw, known) {
-    const aliases = LEAGUE.aliases || {};
-    const hit = raw in aliases ? raw : Object.keys(aliases).find((k) => k.toLowerCase() === raw.toLowerCase());
-    const name = hit ? aliases[hit] : raw;
+    const name = rawAlias(raw);
     return known.find((n) => n === name) || known.find((n) => n.toLowerCase() === name.toLowerCase()) || name;
   }
 
@@ -3315,7 +3375,7 @@
 
   const ACTIVITY_LABELS = {
     saveResult: "Results", deleteResult: "Results", saveUpdates: "Transactions", deleteUpdate: "Transactions",
-    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule",
+    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule", renamePlayers: "Player names", syncRosters: "Rosters",
     saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", addVod: "VODs", removeVod: "VODs"
   };
   function activitySection(limit = 100) {

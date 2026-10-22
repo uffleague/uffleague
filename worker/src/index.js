@@ -5,7 +5,11 @@
 //   POST / { action, token, ... }              -> the saved data ("activity" returns the log)
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
-const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [], activity: [] };
+const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
+  renames: [], people: [], rosterSyncs: [], activity: [] };
+const RENAMES_MAX = 3000;
+const PEOPLE_MAX = 3000;
+const SYNCS_MAX = 200;
 const STAT_FIELDS = {
   passing: ["comp", "att", "yds", "td", "int", "lng", "sacked"],
   rushing: ["att", "yds", "td", "fum", "lng", "pre"],
@@ -65,7 +69,8 @@ async function load(env) {
   const data = (await env.UFF.get(KEY, { type: "json" })) || {};
   return { ...EMPTY, ...data };
 }
-const publicData = ({ activity, ...rest }) => rest;
+// The site gets each known player's Roblox and Discord names, but not their ids
+const publicData = ({ activity, people, ...rest }) => ({ ...rest, people: (people || []).map((p) => ({ name: p.name, discord: p.discord })) });
 
 const STREAM_HOSTS = /^https:\/\/(www\.|m\.|clips\.)?(twitch\.tv|youtube\.com|youtu\.be)\//i;
 
@@ -271,21 +276,25 @@ async function botTransactions(req, env) {
   if (body.gameTime) return botGameTime(env, body.gameTime);
   if (body.score) return botScore(env, body.score);
   if (body.stream) return botStream(env, body.stream);
+  if (body.rosters) return botRosters(env, body.rosters);
   const list = [].concat(body.transactions || (body.type ? [body] : []));
   const data = await load(env);
   const keyOf = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
   const have = new Set(data.updates.map(keyOf));
   const ids = new Set(data.updates.map((u) => u.sourceId).filter(Boolean));
   const added = [], problems = [];
+  let renamed = 0;
   list.slice(0, 50).forEach((t, i) => {
     const type = String(t.type || "").toLowerCase() === "offer" ? "sign" : String(t.type || "").toLowerCase();
     const when = leagueDateTime(t.time || Date.now(), env.LEAGUE_TZ || "America/New_York");
     const u = {
       id: crypto.randomUUID(), date: when && when.date, time: when && when.time, type,
-      player: str(t.player), team: str(t.team), by: str(t.by), role: str(t.role), note: str(t.note, 120),
+      player: str(t.player), discord: str(t.discord), team: str(t.team), by: str(t.by), role: str(t.role), note: str(t.note, 120),
       sourceId: str(String(t.id ?? ""), 40), source: "bot"
     };
     if (!UPDATE_TYPES.includes(type) || !u.player || !u.team || !when) { problems.push(`#${i + 1}: needs type, player, team and a valid time`); return; }
+    // "player" is the Roblox username and "discord" the Discord name the site used to store
+    if (u.discord && addRename(data, u.discord, u.player)) renamed++;
     if ((u.sourceId && ids.has(u.sourceId)) || have.has(keyOf(u))) return; // already have it
     have.add(keyOf(u));
     if (u.sourceId) ids.add(u.sourceId);
@@ -295,9 +304,73 @@ async function botTransactions(req, env) {
     data.updates = [...data.updates, ...added];
     data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveUpdates",
       text: `Added ${added.length} transaction${added.length === 1 ? "" : "s"}: ${added.map((u) => `${u.player} (${u.type}, ${u.team})`).join(", ")}` }, ...data.activity].slice(0, ACTIVITY_MAX);
-    await env.UFF.put(KEY, JSON.stringify(data));
   }
-  return json({ added: added.length, skipped: list.length - added.length - problems.length, problems }, problems.length && !added.length ? 400 : 200);
+  if (renamed) data.activity = [{ at: Date.now(), by: "Discord bot", action: "renamePlayers", text: `Renamed ${renamed} player${renamed === 1 ? "" : "s"} to their Roblox username` }, ...data.activity].slice(0, ACTIVITY_MAX);
+  if (added.length || renamed) await env.UFF.put(KEY, JSON.stringify(data));
+  return json({ added: added.length, skipped: list.length - added.length - problems.length, renamed, problems }, problems.length && !added.length ? 400 : 200);
+}
+
+// Old name -> Roblox username, applied by the site in order on top of the aliases in data.js, so a renamed player
+// keeps their transactions, stats and positions. byId: matched by Roblox / Discord id, so it's surely the same person.
+function addRename(data, from, to, byId) {
+  from = str(from, 60);
+  to = str(to, 60);
+  if (!from || !to || from.toLowerCase() === to.toLowerCase()) return false;
+  const last = data.renames.filter((r) => r.from.toLowerCase() === from.toLowerCase()).pop();
+  if (last && last.to === to && (last.id || !byId)) return false; // already have it
+  data.renames = [...data.renames, { from, to, at: Date.now(), ...(byId ? { id: true } : {}) }].slice(-RENAMES_MAX);
+  return true;
+}
+
+// Every team's current roster from the bot (same URL and key):
+//   { "rosters": { "replace": true, "teams": [{ "team": "San Francisco Miners", "players": [
+//       { "name": "<Roblox username>", "discord": "<Discord name>", "discordId": "...", "robloxId": 123, "role": "Head Coach" }] }] } }
+// replace: each team sent gets exactly this roster and staff (otherwise the players are added). It's a correction,
+// so no transactions are made. Players are matched to who the site already has by Roblox id, Discord id, then Discord
+// name, and renamed to their Roblox username.
+async function botRosters(env, rs) {
+  const problems = [];
+  const data = await load(env);
+  const now = Date.now();
+  const when = leagueDateTime(now, env.LEAGUE_TZ || "America/New_York");
+  const replace = rs.replace === true;
+  const id = (v, re) => (re.test(String(v ?? "")) ? String(v) : undefined);
+  let renamed = 0, players = 0;
+  const saved = [];
+  [].concat(rs.teams || []).slice(0, 25).forEach((t, ti) => {
+    const team = str(t && t.team, 60);
+    if (!team) { problems.push(`team #${ti + 1}: needs a team name or code`); return; }
+    const list = [], seen = new Set();
+    [].concat((t && t.players) || []).slice(0, 60).forEach((p, pi) => {
+      const name = str(p && p.name, 60);
+      if (!name) { problems.push(`${team} player #${pi + 1}: needs a name`); return; }
+      if (seen.has(name.toLowerCase())) return;
+      seen.add(name.toLowerCase());
+      const discord = str(p.discord, 60);
+      const robloxId = id(p.robloxId, /^\d{1,20}$/);
+      const discordId = id(p.discordId, /^\d{5,25}$/);
+      const known = (robloxId && data.people.find((x) => x.robloxId === robloxId)) || (discordId && data.people.find((x) => x.discordId === discordId));
+      if (known && addRename(data, known.name, name, true)) renamed++;
+      if (discord && addRename(data, discord, name)) renamed++;
+      const person = { name, discord: discord || (known && known.discord), robloxId: robloxId || (known && known.robloxId), discordId: discordId || (known && known.discordId), at: now };
+      if (known) Object.assign(known, person);
+      else if (robloxId || discordId) data.people.push(person);
+      const role = str(p.role, 40);
+      list.push(role ? { name, role } : { name });
+    });
+    // A full roster replaces every earlier sync for that team
+    const key = team.toLowerCase();
+    if (replace) data.rosterSyncs = data.rosterSyncs.filter((s) => s.team.toLowerCase() !== key);
+    saved.push({ team, date: when.date, time: when.time, at: now, replace, players: list });
+    players += list.length;
+  });
+  if (!saved.length) return json({ error: "No teams to save.", problems }, 400);
+  data.rosterSyncs = [...data.rosterSyncs, ...saved].slice(-SYNCS_MAX);
+  data.people = data.people.slice(-PEOPLE_MAX);
+  data.activity = [{ at: now, by: "Discord bot", action: "syncRosters",
+    text: `Synced the roster${saved.length === 1 ? "" : "s"} of ${saved.map((s) => s.team).join(", ")} (${players} player${players === 1 ? "" : "s"}${renamed ? `, ${renamed} renamed` : ""})` }, ...data.activity].slice(0, ACTIVITY_MAX);
+  await env.UFF.put(KEY, JSON.stringify(data));
+  return json({ teams: saved.length, players, renamed, problems });
 }
 
 export default {
