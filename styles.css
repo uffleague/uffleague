@@ -494,7 +494,12 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .list-row + .list-row { border-top: 1px solid var(--line); }
 .sched-row { justify-content: flex-start; }
 .sched-res { width: 18px; font-family: var(--head); font-weight: 700; }
-.sched-res--W { color: var(--heading); }
+.sched-res--W { color: #4cc38a; }
+/* A win in green, a loss in red: the letter, the score and a light tint on the row */
+.sched-row--W { background: rgba(76, 195, 138, .1); }
+.sched-row--L { background: rgba(255, 107, 129, .1); }
+.sched-row--W .sched-score { color: #4cc38a; }
+.sched-row--L .sched-score { color: #ff6b81; }
 .sched-res--L { color: #ff6b81; }
 .sched-res--none { color: var(--muted); }
 .sched-wk { width: 34px; font-size: 13px; color: var(--muted); font-weight: 500; }

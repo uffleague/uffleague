@@ -833,7 +833,7 @@
                   const final = Array.isArray(g.score);
                   const res = final ? (g.score[i] > g.score[1 - i] ? "W" : g.score[i] < g.score[1 - i] ? "L" : "T") : "";
                   return `
-                    <div class="list-row sched-row">
+                    <div class="list-row sched-row ${res ? `sched-row--${res}` : ""}">
                       <span class="sched-res sched-res--${res || "none"}">${res || "&ndash;"}</span>
                       <span class="sched-wk">W${wk.week}</span>
                       <span class="sched-opp">${i === 0 ? "vs" : "@"} ${oppT ? `<a class="plink" href="#/teams/${oppT.slug}">${opp}</a>` : opp}</span>
