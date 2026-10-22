@@ -436,13 +436,24 @@
       ${link ? `<a class="hx-more" href="${link}">${linkText} ${icon("arrow", "sm")}</a>` : ""}
     </div>`;
 
-  // Power rankings: the order in data.js (home.powerRankings) if there is one, otherwise by record
+  // Power rankings: the order in data.js (home.powerRankings) if there is one, otherwise by record.
+  // Then every final, in schedule order: the winner jumps to #1 (everyone else moves down one), the loser drops to last.
   function powerRankingOrder() {
     const find = (n) => TEAMS.find((t) => [t.name, t.code].some((x) => x && x.toLowerCase() === String(n).toLowerCase()));
     const manual = [...new Set((HOME.powerRankings || []).map(find).filter(Boolean))];
     const byRecord = [...TEAMS].sort((a, b) =>
       (b.w - b.l) - (a.w - a.l) || b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa) || a.name.localeCompare(b.name));
-    return { list: [...manual, ...byRecord.filter((t) => !manual.includes(t))], ranked: manual.length || TEAMS.some((t) => t.w + t.l) };
+    const list = [...manual, ...byRecord.filter((t) => !manual.includes(t))];
+    [...LEAGUE.schedule].sort((a, b) => a.week - b.week).forEach((wk) => wk.games.forEach((g) => {
+      if (!Array.isArray(g.score) || g.score[0] === g.score[1]) return;
+      const [win, lose] = (g.score[0] > g.score[1] ? [0, 1] : [1, 0]).map((i) => list.find((t) => t.name === g.teams[i]));
+      if (!win || !lose) return;
+      list.splice(list.indexOf(win), 1);
+      list.unshift(win);
+      list.splice(list.indexOf(lose), 1);
+      list.push(lose);
+    }));
+    return { list, ranked: manual.length || TEAMS.some((t) => t.w + t.l) };
   }
   let rankAll = false;
   function powerRankingsPanel() {
