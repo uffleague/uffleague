@@ -98,9 +98,13 @@
       teamLookup.set(t.name.toLowerCase(), t.name);
       if (t.code) teamLookup.set(t.code.toLowerCase(), t.name);
     })));
+    // A nickname the bot has differently ("Baltimore Bluebirds") still matches by its city when only one team has it
+    const city = (n) => n.toLowerCase().split(/\s+/).slice(0, -1).join(" ");
     const botTeam = (name) => {
-      const team = String(name).replace(/:[^:\s]+:/g, "").replace(/@/g, "").trim();
-      return teamLookup.get(team.toLowerCase()) || team;
+      const team = String(name).replace(/:[^:\s]+:/g, "").replace(/@/g, "").replace(/\s+/g, " ").trim();
+      if (teamLookup.has(team.toLowerCase())) return teamLookup.get(team.toLowerCase());
+      const sameCity = city(team) ? [...new Set(teamLookup.values())].filter((n) => city(n) === city(team)) : [];
+      return sameCity.length === 1 ? sameCity[0] : team;
     };
 
     // The schedule the bot posts replaces the weeks with the same number in data.js

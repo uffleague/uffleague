@@ -121,18 +121,42 @@ function leagueDateTime(when, tz) {
 //   { "schedule": { "replace": false, "weeks": [{ "week": 1, "series": 1,
 //       "games": [{ "id": "W1-1", "teams": ["Team A", "Team B"], "time": "Sat 8 PM EST" | "<ISO time>" }] }] } }
 // Each week sent replaces that week; weeks not sent stay. "replace": true wipes the old schedule first.
+// An ISO time or timestamp becomes "Sat, Oct 25, 8:00 PM EDT"; anything else is shown as written
+function gameTimeText(v, tz) {
+  const s = String(v ?? "").trim();
+  if (!s) return undefined;
+  if (/^\d{10,13}$/.test(s) || /^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(/^\d+$/.test(s) ? Number(s.length === 10 ? s + "000" : s) : s);
+    if (!isNaN(d)) return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(d);
+  }
+  return str(s, 40);
+}
+
+// A game time set with /gametime or /hostgametime (same URL and key):
+//   { "gameTime": { "week": 1, "series": 1, "id": "W1-1", "teams": ["Team A", "Team B"], "time": "<ISO time>" } }
+// Only changes a game already on the site (by id, or by the two teams in that week); "time": "" clears it.
+async function botGameTime(env, gt) {
+  const team = (t) => String(t || "").replace(/:[^:\s]+:/g, "").replace(/@/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const week = Math.round(Number(gt && gt.week));
+  const series = Math.round(Number(gt && gt.series));
+  const id = str(String((gt && gt.id) ?? ""), 20);
+  const pair = [].concat((gt && gt.teams) || [gt && gt.team, gt && gt.opponent].filter(Boolean)).map(team).sort().join("|");
+  if (!(week >= 1) && !id) return json({ error: "Send the week (and the two teams) or the game id." }, 400);
+  const data = await load(env);
+  const weeks = data.schedule.filter((w) => (!(week >= 1) || w.week === week) && (!(series >= 1) || !w.series || w.series === series));
+  let game;
+  weeks.some((w) => (game = w.games.find((g) => (id && g.id === id) || (!id && g.teams.map(team).sort().join("|") === pair))));
+  if (!game) return json({ updated: 0, note: "That game isn't on the site's schedule, so nothing changed." });
+  game.time = gameTimeText(gt.time, env.LEAGUE_TZ || "America/New_York");
+  data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveSchedule",
+    text: `${game.time ? `Set the time for ${game.id} (${game.teams.join(" vs ")}) to ${game.time}` : `Cleared the time for ${game.id}`}` }, ...data.activity].slice(0, ACTIVITY_MAX);
+  await env.UFF.put(KEY, JSON.stringify(data));
+  return json({ updated: 1, id: game.id, time: game.time || "" });
+}
+
 async function botSchedule(env, sched) {
   const tz = env.LEAGUE_TZ || "America/New_York";
-  // An ISO time or timestamp becomes "Sat, Oct 25, 8:00 PM EDT"; anything else is shown as written
-  const gameTime = (v) => {
-    const s = String(v ?? "").trim();
-    if (!s) return undefined;
-    if (/^\d{10,13}$/.test(s) || /^\d{4}-\d{2}-\d{2}T/.test(s)) {
-      const d = new Date(/^\d+$/.test(s) ? Number(s.length === 10 ? s + "000" : s) : s);
-      if (!isNaN(d)) return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(d);
-    }
-    return str(s, 40);
-  };
+  const gameTime = (v) => gameTimeText(v, tz);
   const problems = [];
   const weeks = [].concat((sched && sched.weeks) || []).slice(0, 40).map((w, wi) => {
     const week = Math.round(Number(w && w.week));
@@ -164,6 +188,7 @@ async function botTransactions(req, env) {
   let body;
   try { body = await req.json(); } catch (e) { return json({ error: "Send JSON." }, 400); }
   if (body.schedule) return botSchedule(env, body.schedule);
+  if (body.gameTime) return botGameTime(env, body.gameTime);
   const list = [].concat(body.transactions || (body.type ? [body] : []));
   const data = await load(env);
   const keyOf = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
