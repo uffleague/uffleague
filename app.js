@@ -4290,6 +4290,9 @@
   };
   const btDay = () => rnd(-1.5, 1.5);
   const btWinChance = (a, b) => 1 / (1 + Math.exp(-(a - b) / 7));
+  // Games between two UFF teams follow the Power Rankings more closely, so the top-ranked teams usually get the top seeds
+  // (the #1 team is the #1 seed about 45% of the time and a top-4 seed about 85%)
+  const btCpuChance = (a, b) => 1 / (1 + Math.exp(-(a - b) / 3));
   // Scores go up by touchdowns (7, or 6 when the extra point is missed)
   const btScore = () => {
     const hi = 21 + 7 * Math.floor(Math.random() * 5);
@@ -4366,11 +4369,11 @@
       const others = league.filter((o) => o !== t);
       for (let i = vsYou.has(t.name) ? 1 : 0; i < BT_GAMES; i++) {
         const o = others[Math.floor(Math.random() * others.length)];
-        if (Math.random() < btWinChance(t.rating + btDay(), o.rating + btDay())) w++;
+        if (Math.random() < btCpuChance(t.rating + btDay(), o.rating + btDay())) w++;
       }
-      return { ...t, w, l: BT_GAMES - w, tb: t.rating + rnd(0, 4) };
+      return { ...t, w, l: BT_GAMES - w, tb: t.rating + rnd(0, 0.5) }; // same record: the higher-ranked team
     });
-    const you = { name: BT_YOU, you: true, rating: ovr, w: wins, l: BT_GAMES - wins, tb: ovr + rnd(0, 4) };
+    const you = { name: BT_YOU, you: true, rating: ovr, w: wins, l: BT_GAMES - wins, tb: ovr + rnd(0, 0.5) };
     const standings = [...table, you].sort((a, b) => b.w - a.w || b.tb - a.tb);
     standings.forEach((t, i) => { t.seed = i + 1; });
 
@@ -4400,7 +4403,7 @@
           aWins = a.you === g.win;
           [sa, sb] = a.you ? [g.us, g.them] : [g.them, g.us];
         } else {
-          aWins = Math.random() < btWinChance(a.rating + btDay(), b.rating + btDay());
+          aWins = Math.random() < btCpuChance(a.rating + btDay(), b.rating + btDay());
           const [hi, lo] = btScore();
           [sa, sb] = aWins ? [hi, lo] : [lo, hi];
         }
