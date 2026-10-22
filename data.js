@@ -34,9 +34,10 @@ const LEAGUE = {
   //     Optional text over the picture (leave it out if the text is in the graphic):
   //     kicker: "Road to the Bowl", title: "Sinaloa vs Salem", sub: "Toronto 2026", button: "View Bowl"
   //     No slides = the built-in league and bowl slides.
-  //   gfx: the GFX panel in the middle of the home page and the GFX page. The first one is the cover.
+  //   gfx: the GFX panel at the bottom right of the home page (in place of Latest Moves) and the GFX page. The first one is the cover.
   //     { image: "gfx/<file>.jpg", title: "..." }  Put a small copy (560px wide) in gfx/thumbs/ with the same name.
-  //   news: Latest News card, shown there only when there are no gfx. { title, sub, image, link, date: "2026-10-18", button: "Read More" }
+  //   news: Latest News card (the first one shows). { title, sub, image, link, date: "2026-10-18", button: "Read More" }
+  //     No news = the newest signing in that team's colors.
   //   powerRankings: team names (or codes) in order, 1-20 (top 10 show, "Show all" opens the rest). Empty = ranked by record.
   //   playoffCut: draws the predicted playoff cut line under that rank.
   //   social: links shown on the Latest Moves panel.

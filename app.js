@@ -640,7 +640,23 @@
           </div>
         </${tag}>`;
     }
-    return `<div class="hx-panel hx-news hx-news--empty"><span class="hx-label">Latest News</span><div class="hx-news-body"><h2 class="hx-news-title">Season ${LEAGUE.season} is coming</h2></div></div>`;
+    const u = FEED[FEED.length - 1];
+    if (!u) return `<div class="hx-panel hx-news hx-news--empty"><span class="hx-label">Latest News</span><div class="hx-news-body"><h2 class="hx-news-title">Season ${LEAGUE.season} is coming</h2></div></div>`;
+    const t = u.t;
+    const tint = t ? teamTint(t.name) : { style: "" };
+    const what = u.type === "disband" ? "Team disbanded"
+      : u.type === "promotion" ? `Promoted to ${esc(u.role || "staff")} of the ${esc(u.team)}`
+      : `${{ sign: "Signs with", demand: "Demands out of", release: "Released by" }[u.type] || ""} the ${esc(u.team)}`;
+    return `
+      <a class="hx-panel hx-news hx-news--move" href="#/updates" style="${tint.style}">
+        ${t ? `<img class="hx-news-logo" src="${gfxSrc(t.logo || "logo.png")}" alt="">` : ""}
+        <span class="hx-label">Latest Move &middot; ${shortDate(u.date)}</span>
+        <div class="hx-news-body">
+          <h2 class="hx-news-title">${esc(u.type === "disband" ? u.team : u.player)}</h2>
+          <p class="hx-news-sub">${what}</p>
+          <span class="btn hx-btn">All Updates</span>
+        </div>
+      </a>`;
   }
 
   // ---- GFX: league graphics (home.gfx in data.js), the first one is the cover ----
@@ -650,7 +666,7 @@
   const gfxThumb = (src) => gfxSrc(String(src).replace(/^gfx\//, "gfx/thumbs/"));
   let gfxAt = 0, gfxMoved = 0;
 
-  // The middle home panel: the graphics one after another, the whole picture always showing (a blurred copy fills behind it)
+  // The bottom-right home panel: the graphics one after another, the whole picture always showing (a blurred copy fills behind it)
   function gfxPanel() {
     gfxAt %= GFX.length;
     gfxMoved = Date.now();
@@ -918,13 +934,13 @@
           ${scoreTicker()}
           <div class="hx-grid hx-grid--top">
             <div class="hx-area-rank">${powerRankingsPanel()}</div>
-            <div class="hx-area-news">${GFX.length ? gfxPanel() : newsPanel()}</div>
+            <div class="hx-area-news">${newsPanel()}</div>
             <div class="hx-area-lead">${leadersPanel()}</div>
           </div>
           <div class="hx-grid hx-grid--bottom">
             <div class="hx-area-games">${gamesPanel()}</div>
             <div class="hx-area-media">${mediaPanel()}</div>
-            <div class="hx-area-moves">${movesPanel()}</div>
+            <div class="hx-area-moves">${GFX.length ? gfxPanel() : movesPanel()}</div>
           </div>
           ${cands ? candidatesSection() : ""}
         </div>

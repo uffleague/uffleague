@@ -1328,9 +1328,9 @@ a.tp-next-team:hover .team-logo { transform: scale(1.06); }
 .game-line-add { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); align-items: flex-end; }
 
 /* ---------- GFX: home panel, gallery page, full-size viewer ---------- */
-.hx-gfx { min-height: 440px; }
+.hx-gfx { min-height: 0; }
 .hx-gfx .hx-head { padding-bottom: 10px; }
-.hx-gfx-stage { position: relative; flex: 1; min-height: 300px; overflow: hidden; background: #070a14; border-top: 1px solid var(--hx-line); border-bottom: 1px solid var(--hx-line); }
+.hx-gfx-stage { position: relative; flex: 1 0 auto; aspect-ratio: 16 / 9; overflow: hidden; background: #070a14; border-top: 1px solid var(--hx-line); border-bottom: 1px solid var(--hx-line); }
 .hx-gfx-slide { position: absolute; inset: 0; padding: 0; border: 0; background: none; cursor: zoom-in; opacity: 0; visibility: hidden; transition: opacity .7s ease, visibility .7s; overflow: hidden; }
 .hx-gfx-slide.on { opacity: 1; visibility: visible; }
 /* The same picture, blurred, fills the space around the full graphic */
@@ -1349,8 +1349,9 @@ a.tp-next-team:hover .team-logo { transform: scale(1.06); }
 .hx-gfx-dots .hx-dot { width: 7px; height: 7px; }
 .hx-gfx-dots .hx-dot.on { width: 20px; }
 @media (prefers-reduced-motion: reduce) { .hx-gfx-slide, .hx-gfx-img { transition: none; } .hx-gfx-slide.on .hx-gfx-img { transform: none; } }
-@media (max-width: 1100px) { .hx-gfx { min-height: 360px; } }
-@media (max-width: 760px) { .hx-gfx-stage { min-height: 0; aspect-ratio: 16 / 9; flex: none; } .hx-gfx { min-height: 0; } .hx-gfx-dots { display: none; } .hx-gfx-arrow { opacity: 1; width: 36px; height: 36px; } }
+.hx-gfx-title { font-size: 17px; white-space: normal; }
+.hx-gfx-dots { display: none; }
+@media (max-width: 760px) { .hx-gfx-dots { display: none; } .hx-gfx-arrow { opacity: 1; width: 36px; height: 36px; } }
 
 .gfx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
 .gfx-card { display: flex; flex-direction: column; width: 100%; padding: 0; overflow: hidden; cursor: zoom-in; text-align: left; font: inherit; color: inherit; transition: transform .2s, border-color .2s; }
