@@ -319,7 +319,10 @@
   const disbandedTag = (t) => (t && t.disbanded ? ` <span class="pill pill-disbanded">Disbanded</span>` : "");
 
   // Roster syncs from the Discord bot: that team's players and staff at that moment (not shown on Updates)
-  const syncs = (LEAGUE.rosterSyncs || []).map((s) => ({ ...s, type: "sync", t: TEAMS.find((x) => x.name === s.team), i: Infinity })).filter((s) => s.t);
+  // Each sync is played back in two steps: every team's players first, then every team's staff, so in one sync
+  // (all teams at once) a Head Coach still listed as a player on his old team stays with the team he coaches
+  const syncs = (LEAGUE.rosterSyncs || []).map((s) => ({ ...s, t: TEAMS.find((x) => x.name === s.team) })).filter((s) => s.t)
+    .flatMap((s) => [{ ...s, type: "sync", i: 1e15 }, { ...s, type: "syncStaff", i: 2e15 }]);
   // Admin -> Players team changes: that player is on that team (or a free agent) from then on
   const moves = (LEAGUE.rosterMoves || []).map((m) => ({ ...m, type: "move", t: m.team ? TEAMS.find((x) => x.name === m.team) : null, i: Infinity }))
     .filter((m) => m.t || !m.team);
@@ -351,19 +354,23 @@
     // Disbanding frees everyone; a team that comes back starts with a fresh roster and staff
     if (u.type === "disband") { delete ROSTERS[s]; delete STAFF[s]; return; }
     if (u.type === "sync") {
+      // The sync is that team's whole roster and staff (replace), so older staff records don't carry over
       if (u.replace) { ROSTERS[s] = new Map(); STAFF[s] = new Map(); synced.add(s); }
-      // Someone listed both with a role and as a player is on the staff and the roster (a player-coach)
-      const listed = (key, staff) => u.players.some((p) => p.name.toLowerCase() === key && !!p.role === staff);
-      u.players.forEach((p) => {
+      u.players.filter((p) => !p.role).forEach((p) => {
         const key = p.name.toLowerCase();
         leaveOthers(key, s, [ROSTERS, STAFF]);
-        if (p.role) {
-          staffOf(u.t).set(key, { player: p.name, role: p.role, date: u.date, time: u.time, i: u.i });
-          if (!listed(key, false)) rosterOf(u.t).delete(key);
-        } else {
-          rosterOf(u.t).set(key, p.name);
-          if (!listed(key, true)) staffOf(u.t).delete(key);
-        }
+        rosterOf(u.t).set(key, p.name);
+        if (!u.players.some((x) => x.role && x.name.toLowerCase() === key)) staffOf(u.t).delete(key);
+      });
+      return;
+    }
+    if (u.type === "syncStaff") {
+      // Owners and coaches play too: they're on the roster as well as the staff
+      u.players.filter((p) => p.role).forEach((p) => {
+        const key = p.name.toLowerCase();
+        leaveOthers(key, s, [ROSTERS, STAFF]);
+        rosterOf(u.t).set(key, p.name);
+        staffOf(u.t).set(key, { player: p.name, role: p.role, date: u.date, time: u.time, i: u.i });
       });
       return;
     }
@@ -919,6 +926,14 @@
 
     // The head coach already shows on the line above
     const staff = teamStaff(t).filter((u) => !isHeadCoach(u.role));
+    // Staff who are on the roster get a small tag there: FO, HC, AHC...
+    const staffTag = (name) => {
+      const s = (STAFF[t.slug] || new Map()).get(name.toLowerCase());
+      if (!s) return "";
+      const tag = { "franchise owner": "FO", "co-owner": "CO", "general manager": "GM", "head coach": "HC", "assistant head coach": "AHC",
+        "offensive coordinator": "OC", "defensive coordinator": "DC", "assistant coach": "AC" }[String(s.role).toLowerCase()] || s.role;
+      return ` <span class="pill pill-navy pill-staff" title="${esc(s.role)}">${esc(tag)}</span>`;
+    };
 
     const games = teamSchedule(t);
     const short =`${t.conference.replace(/ Conference$/, "")} ${t.division.replace(/ Division$/, "")}`;
@@ -945,7 +960,7 @@
             <div class="section-head"><h2>Roster</h2><span class="muted small">${roster.size} player${roster.size === 1 ? "" : "s"}</span></div>
             ${roster.size
               ? `<div class="card list-card">${[...roster.values()].map((p) => `
-                  <div class="list-row">${playerLink(p)}<span class="muted small">${positionsFor(p).join(", ")}</span></div>`).join("")}
+                  <div class="list-row"><span>${playerLink(p)}${staffTag(p)}</span><span class="muted small">${positionsFor(p).join(", ")}</span></div>`).join("")}
                 </div>`
               : t.disbanded ? empty("Team disbanded", "Everyone on this roster is a free agent now.")
               : empty("Roster coming soon", "Players show up here once they sign.")}
