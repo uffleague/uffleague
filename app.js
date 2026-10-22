@@ -80,9 +80,13 @@
   const API = "https://uff-admin.uffleague.workers.dev";
   const updateKey = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
   let SAVED = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [] };
+  let savedText = ""; // what the server sent, to tell when something changes (see Live updates)
   try {
     const res = await fetch(API, { cache: "no-store" });
-    if (res.ok) SAVED = { ...SAVED, ...(await res.json()) };
+    if (res.ok) {
+      savedText = await res.text();
+      SAVED = { ...SAVED, ...JSON.parse(savedText) };
+    }
   } catch (e) {}
 
   // Old name -> the name a player goes by now (lowercase keys): the aliases in data.js, then the Discord bot's renames
@@ -4327,4 +4331,61 @@
 
   window.addEventListener("hashchange", render);
   render();
+
+  /* ---------- Live updates ---------- */
+
+  // While the page is open it checks the server every 30 seconds (and as soon as you come back to the tab).
+  // When a score, transaction, stream or anything else changed, the page reloads where you were. If that would
+  // interrupt you (typing, a video playing, Admin, a game of Build a Team), a "New updates" button shows instead.
+  const LIVE_EVERY = 30 * 1000;
+  const NO_RELOAD = ["admin", "build", "predictions", "compare"];
+  let liveBusy = false, updateWaiting = false;
+
+  const interrupts = () => {
+    const section = location.hash.replace(/^#\/?/, "").split("/")[0];
+    const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    const watching = [...document.querySelectorAll("iframe")].some((f) => f.getAttribute("src") && f.offsetParent !== null);
+    return NO_RELOAD.includes(section) || typing || watching;
+  };
+
+  function reloadInPlace() {
+    try { sessionStorage.setItem("uffScroll", JSON.stringify({ hash: location.hash, y: window.scrollY })); } catch (e) {}
+    location.reload();
+  }
+
+  function showUpdateButton() {
+    if (document.getElementById("liveUpdate")) return;
+    const btn = document.createElement("button");
+    btn.id = "liveUpdate";
+    btn.type = "button";
+    btn.className = "live-update";
+    btn.innerHTML = `<span class="live-dot"></span>New updates &middot; Refresh`;
+    btn.addEventListener("click", reloadInPlace);
+    document.body.appendChild(btn);
+  }
+
+  async function checkForUpdates() {
+    if (document.hidden || liveBusy) return;
+    if (updateWaiting) return interrupts() ? showUpdateButton() : reloadInPlace();
+    liveBusy = true;
+    try {
+      const res = await fetch(API, { cache: "no-store" });
+      const text = res.ok ? await res.text() : "";
+      if (text && savedText && text !== savedText) {
+        updateWaiting = true;
+        if (interrupts()) showUpdateButton();
+        else reloadInPlace();
+      }
+    } catch (e) {}
+    liveBusy = false;
+  }
+
+  setInterval(checkForUpdates, LIVE_EVERY);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdates(); });
+  // Back where you were after an update reload
+  try {
+    const at = JSON.parse(sessionStorage.getItem("uffScroll") || "null");
+    sessionStorage.removeItem("uffScroll");
+    if (at && at.hash === location.hash) requestAnimationFrame(() => window.scrollTo(0, at.y));
+  } catch (e) {}
 })();

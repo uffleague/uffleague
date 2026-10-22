@@ -72,6 +72,21 @@ async function load(env) {
 // The site gets each known player's Roblox and Discord names, but not their ids
 const publicData = ({ activity, people, ...rest }) => ({ ...rest, people: (people || []).map((p) => ({ name: p.name, discord: p.discord })) });
 
+// The site checks for updates every 30 seconds, so reads are kept for a few seconds in this copy of the worker
+// instead of hitting KV every time; a save here clears it right away
+const READ_CACHE_MS = 10 * 1000;
+let readCache = null; // { text, at }
+async function publicText(env) {
+  if (readCache && Date.now() - readCache.at < READ_CACHE_MS) return readCache.text;
+  const text = JSON.stringify(publicData(await load(env)));
+  readCache = { text, at: Date.now() };
+  return text;
+}
+async function save(env, data) {
+  await env.UFF.put(KEY, JSON.stringify(data));
+  readCache = null;
+}
+
 const STREAM_HOSTS = /^https:\/\/(www\.|m\.|clips\.)?(twitch\.tv|youtube\.com|youtu\.be)\//i;
 
 // Keep only the bracket fields the site uses
@@ -177,7 +192,7 @@ async function botGameTime(env, gt) {
   if (code) game.code = code;
   data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveSchedule",
     text: `${game.time ? `Set the time for ${game.id} (${game.teams.join(" vs ")}) to ${game.time}` : `Cleared the time for ${game.id}`}` }, ...data.activity].slice(0, ACTIVITY_MAX);
-  await env.UFF.put(KEY, JSON.stringify(data));
+  await save(env, data);
   return json({ updated: 1, id: game.id, time: game.time || "" });
 }
 
@@ -203,7 +218,7 @@ async function botScore(env, sc) {
   retireStreams(data, (x) => x.gameId === game.id);
   data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveResult",
     text: `Recorded ${game.id}: ${game.teams[0]} ${score[0]}-${score[1]} ${game.teams[1]}` }, ...data.activity].slice(0, ACTIVITY_MAX);
-  await env.UFF.put(KEY, JSON.stringify(data));
+  await save(env, data);
   return json({ updated: 1, id: game.id, score, teams: game.teams });
 }
 
@@ -223,7 +238,7 @@ async function botRemoveScore(env, sc) {
   if (rest.box || rest.potg) data.results.push(rest);
   data.activity = [{ at: Date.now(), by: "Discord bot", action: "deleteResult",
     text: `Removed the score for ${game.id}: ${game.teams[0]} ${score[0]}-${score[1]} ${game.teams[1]}${rest.box ? " (stats kept for the next score)" : ""}` }, ...data.activity].slice(0, ACTIVITY_MAX);
-  await env.UFF.put(KEY, JSON.stringify(data));
+  await save(env, data);
   return json({ removed: 1, id: game.id });
 }
 
@@ -255,7 +270,7 @@ async function botStream(env, st) {
     log = `Added live stream "${title}"${game ? ` for ${game.id}` : ""}`;
   }
   if (log) data.activity = [{ at: Date.now(), by: "Discord bot", action: "addStream", text: log }, ...data.activity].slice(0, ACTIVITY_MAX);
-  await env.UFF.put(KEY, JSON.stringify(data));
+  await save(env, data);
   const s = data.streams.find(sameUrl);
   return json({ live: !!s, gameId: (s && s.gameId) || null, title: (s && s.title) || null });
 }
@@ -292,7 +307,7 @@ async function botSchedule(env, sched) {
   const games = weeks.reduce((n, w) => n + w.games.length, 0);
   data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveSchedule",
     text: weeks.length ? `${sched.replace ? "Replaced the schedule with" : "Updated"} week${weeks.length === 1 ? "" : "s"} ${weeks.map((w) => w.week).join(", ")} (${games} game${games === 1 ? "" : "s"})` : "Cleared the schedule" }, ...data.activity].slice(0, ACTIVITY_MAX);
-  await env.UFF.put(KEY, JSON.stringify(data));
+  await save(env, data);
   return json({ weeks: weeks.length, games, problems });
 }
 
@@ -336,7 +351,7 @@ async function botTransactions(req, env) {
       text: `Added ${added.length} transaction${added.length === 1 ? "" : "s"}: ${added.map((u) => `${u.player} (${u.type}, ${u.team})`).join(", ")}` }, ...data.activity].slice(0, ACTIVITY_MAX);
   }
   if (renamed) data.activity = [{ at: Date.now(), by: "Discord bot", action: "renamePlayers", text: `Renamed ${renamed} player${renamed === 1 ? "" : "s"} to their Roblox username` }, ...data.activity].slice(0, ACTIVITY_MAX);
-  if (added.length || renamed) await env.UFF.put(KEY, JSON.stringify(data));
+  if (added.length || renamed) await save(env, data);
   return json({ added: added.length, skipped: list.length - added.length - problems.length, renamed, problems }, problems.length && !added.length ? 400 : 200);
 }
 
@@ -375,7 +390,7 @@ async function botVods(env, list) {
     data.activity = [{ at: Date.now(), by: "Discord bot", action: "addVod",
       text: [saved.length && `Added VOD${saved.length === 1 ? "" : "s"} ${saved.map((v) => `"${v.title}"${v.gameId ? ` for ${v.gameId}` : ""}`).join(", ")}`,
         removed && `Removed ${removed} VOD${removed === 1 ? "" : "s"}`].filter(Boolean).join("; ") }, ...data.activity].slice(0, ACTIVITY_MAX);
-    await env.UFF.put(KEY, JSON.stringify(data));
+    await save(env, data);
   }
   return json({ added: saved.length, removed, vods: saved.map((v) => ({ title: v.title, gameId: v.gameId || null })), problems },
     problems.length && !saved.length && !removed ? 400 : 200);
@@ -440,7 +455,7 @@ async function botRosters(env, rs) {
   data.people = data.people.slice(-PEOPLE_MAX);
   data.activity = [{ at: now, by: "Discord bot", action: "syncRosters",
     text: `Synced the roster${saved.length === 1 ? "" : "s"} of ${saved.map((s) => s.team).join(", ")} (${players} player${players === 1 ? "" : "s"}${renamed ? `, ${renamed} renamed` : ""})` }, ...data.activity].slice(0, ACTIVITY_MAX);
-  await env.UFF.put(KEY, JSON.stringify(data));
+  await save(env, data);
   return json({ teams: saved.length, players, renamed, problems });
 }
 
@@ -449,7 +464,9 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const path = new URL(req.url).pathname;
     if (req.method === "GET" && path.startsWith("/img/")) return serveImage(env, path.slice(5));
-    if (req.method === "GET") return json(publicData(await load(env)));
+    if (req.method === "GET") {
+      return new Response(await publicText(env), { headers: { "content-type": "application/json", "cache-control": "no-store", ...CORS } });
+    }
     if (req.method === "POST" && path === "/bot") return botTransactions(req, env);
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -633,7 +650,7 @@ export default {
     }
 
     data.activity = [{ at: Date.now(), by, action: body.action, text: log }, ...data.activity].slice(0, ACTIVITY_MAX);
-    await env.UFF.put(KEY, JSON.stringify(data));
+    await save(env, data);
     return json(publicData(data));
   }
 };
