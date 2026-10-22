@@ -5,7 +5,7 @@
 //   POST / { action, token, ... }              -> the saved data ("activity" returns the log)
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
-const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, activity: [] };
+const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [], activity: [] };
 const STAT_FIELDS = {
   passing: ["comp", "att", "yds", "td", "int", "lng", "sacked"],
   rushing: ["att", "yds", "td", "fum", "lng", "pre"],
@@ -116,11 +116,54 @@ function leagueDateTime(when, tz) {
 //   POST /bot   Authorization: Bearer <BOT_KEY>
 //   { "transactions": [{ "type": "sign"|"offer"|"demand"|"release"|"promotion", "player": "...", "team": "...",
 //                        "by": "...", "role": "...", "note": "...", "time": "<ISO time>", "id": "<Discord message id>" }] }
+//
+// It can also post the schedule it generates (same URL and key):
+//   { "schedule": { "replace": false, "weeks": [{ "week": 1, "series": 1,
+//       "games": [{ "id": "W1-1", "teams": ["Team A", "Team B"], "time": "Sat 8 PM EST" | "<ISO time>" }] }] } }
+// Each week sent replaces that week; weeks not sent stay. "replace": true wipes the old schedule first.
+async function botSchedule(env, sched) {
+  const tz = env.LEAGUE_TZ || "America/New_York";
+  // An ISO time or timestamp becomes "Sat, Oct 25, 8:00 PM EDT"; anything else is shown as written
+  const gameTime = (v) => {
+    const s = String(v ?? "").trim();
+    if (!s) return undefined;
+    if (/^\d{10,13}$/.test(s) || /^\d{4}-\d{2}-\d{2}T/.test(s)) {
+      const d = new Date(/^\d+$/.test(s) ? Number(s.length === 10 ? s + "000" : s) : s);
+      if (!isNaN(d)) return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(d);
+    }
+    return str(s, 40);
+  };
+  const problems = [];
+  const weeks = [].concat((sched && sched.weeks) || []).slice(0, 40).map((w, wi) => {
+    const week = Math.round(Number(w && w.week));
+    if (!(week >= 1 && week <= 99)) { problems.push(`week #${wi + 1}: needs a week number`); return null; }
+    const series = Math.round(Number(w.series));
+    const games = [].concat(w.games || []).slice(0, 40).map((g, gi) => {
+      const teams = [].concat((g && g.teams) || [g && g.home, g && g.away].filter(Boolean)).map((t) => str(t, 60));
+      if (teams.length !== 2 || teams.some((t) => !t)) { problems.push(`week ${week} game #${gi + 1}: needs two teams`); return null; }
+      return { id: str(String(g.id ?? ""), 20) || `W${week}-${gi + 1}`, teams, time: gameTime(g.time) };
+    }).filter(Boolean);
+    if (!games.length) { problems.push(`week ${week}: no games with two teams, left as it was`); return null; }
+    return { ...(series >= 1 ? { series } : {}), week, games };
+  }).filter(Boolean);
+  if (!weeks.length && !(sched && sched.replace)) return json({ error: "No schedule weeks to save.", problems }, 400);
+
+  const data = await load(env);
+  const sent = new Set(weeks.map((w) => w.week));
+  data.schedule = [...(sched.replace ? [] : data.schedule.filter((w) => !sent.has(w.week))), ...weeks].sort((a, b) => a.week - b.week);
+  const games = weeks.reduce((n, w) => n + w.games.length, 0);
+  data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveSchedule",
+    text: weeks.length ? `${sched.replace ? "Replaced the schedule with" : "Updated"} week${weeks.length === 1 ? "" : "s"} ${weeks.map((w) => w.week).join(", ")} (${games} game${games === 1 ? "" : "s"})` : "Cleared the schedule" }, ...data.activity].slice(0, ACTIVITY_MAX);
+  await env.UFF.put(KEY, JSON.stringify(data));
+  return json({ weeks: weeks.length, games, problems });
+}
+
 async function botTransactions(req, env) {
   const key = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!env.BOT_KEY || !key || !same(key, env.BOT_KEY)) return json({ error: "Wrong or missing bot key." }, 401);
   let body;
   try { body = await req.json(); } catch (e) { return json({ error: "Send JSON." }, 400); }
+  if (body.schedule) return botSchedule(env, body.schedule);
   const list = [].concat(body.transactions || (body.type ? [body] : []));
   const data = await load(env);
   const keyOf = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();

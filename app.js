@@ -79,7 +79,7 @@
   // (worker/src/index.js, a Cloudflare Worker) and are mixed into data.js when the page loads.
   const API = "https://uff-admin.uffleague.workers.dev";
   const updateKey = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
-  let SAVED = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {} };
+  let SAVED = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [] };
   try {
     const res = await fetch(API, { cache: "no-store" });
     if (res.ok) SAVED = { ...SAVED, ...(await res.json()) };
@@ -92,6 +92,26 @@
       posMap[name] = list;
     });
 
+    // Things sent straight from the Discord bot name teams by name or code, sometimes with :emoji: or @
+    const teamLookup = new Map();
+    LEAGUE.conferences.forEach((c) => c.divisions.forEach((d) => d.teams.forEach((t) => {
+      teamLookup.set(t.name.toLowerCase(), t.name);
+      if (t.code) teamLookup.set(t.code.toLowerCase(), t.name);
+    })));
+    const botTeam = (name) => {
+      const team = String(name).replace(/:[^:\s]+:/g, "").replace(/@/g, "").trim();
+      return teamLookup.get(team.toLowerCase()) || team;
+    };
+
+    // The schedule the bot posts replaces the weeks with the same number in data.js
+    if ((SAVED.schedule || []).length) {
+      const sent = new Set(SAVED.schedule.map((w) => w.week));
+      LEAGUE.schedule = [
+        ...LEAGUE.schedule.filter((w) => !sent.has(w.week)),
+        ...SAVED.schedule.map((w) => ({ ...w, games: w.games.map((g) => ({ ...g, teams: g.teams.map(botTeam) })) }))
+      ].sort((a, b) => a.week - b.week);
+    }
+
     const games = LEAGUE.schedule.flatMap((w) => w.games);
     SAVED.results.forEach((r) => {
       const g = games.find((x) => x.id === r.id);
@@ -100,11 +120,6 @@
 
     // Transactions sent straight from the Discord bot use Discord names: match players to their site names
     // (nicknames in data.js) and teams by name or code, like the paste box does
-    const teamLookup = new Map();
-    LEAGUE.conferences.forEach((c) => c.divisions.forEach((d) => d.teams.forEach((t) => {
-      teamLookup.set(t.name.toLowerCase(), t.name);
-      if (t.code) teamLookup.set(t.code.toLowerCase(), t.name);
-    })));
     SAVED.updates.forEach((u) => {
       if (u.source !== "bot") {
         // Names merged after a transaction was saved still match up (aliases in data.js)
@@ -114,8 +129,7 @@
       }
       u.player = rawAlias(mentionName(String(u.player)));
       if (u.by) u.by = rawAlias(mentionName(String(u.by)));
-      const team = String(u.team).replace(/:[^:\s]+:/g, "").replace(/@/g, "").trim();
-      u.team = teamLookup.get(team.toLowerCase()) || team;
+      u.team = botTeam(u.team);
     });
 
     const have = new Set((LEAGUE.updates = LEAGUE.updates || []).map(updateKey));
@@ -3255,7 +3269,7 @@
 
   const ACTIVITY_LABELS = {
     saveResult: "Results", deleteResult: "Results", saveUpdates: "Transactions", deleteUpdate: "Transactions",
-    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history",
+    setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule",
     saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", addVod: "VODs", removeVod: "VODs"
   };
   function activitySection(limit = 100) {
