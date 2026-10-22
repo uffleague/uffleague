@@ -2148,7 +2148,8 @@
       tokens.filter(Boolean).forEach((tok) => {
         let t;
         if (group === "passing" && (t = tok.match(/^(\d+)\s*\/\s*(\d+)$/))) { row.comp = Number(t[1]); row.att = Number(t[2]); return; }
-        t = tok.match(/^(-?\d+(?:\.\d+)?)%?\s+(\S+)$/);
+        // "3 TGT", or "3TGT" with no space
+        t = tok.match(/^(-?\d+(?:\.\d+)?)%?\s*([A-Za-z]\S*|20\+)$/);
         const [num, label] = t ? [t[1], t[2]] : (tok.match(/^(\S+)\s+(-?\d+(?:\.\d+)?)%?$/) || []).slice(1).reverse();
         const field = label && RECAP_FIELDS[group][label.toUpperCase()];
         if (!field) { out.problems.push(`Couldn't read "${tok}" on ${row.player}'s ${group} line.`); return; }
