@@ -4400,7 +4400,7 @@
           const opp = a.you ? b : a;
           const g = btGame(run, ovr, opp);
           run.result.path.push({ ...g, round: name, r });
-          aWins = a.you === g.win;
+          aWins = a.you ? g.win : !g.win;
           [sa, sb] = a.you ? [g.us, g.them] : [g.them, g.us];
         } else {
           aWins = Math.random() < btCpuChance(a.rating + btDay(), b.rating + btDay());
