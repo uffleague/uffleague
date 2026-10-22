@@ -154,6 +154,36 @@ async function botGameTime(env, gt) {
   return json({ updated: 1, id: game.id, time: game.time || "" });
 }
 
+// A final score from /score (same URL and key); the stats come later from the Admin page:
+//   { "score": { "week": 1, "series": 1, "id": "W1-1", "teams": ["Team A", "Team B"], "scores": [24, 44], "time": "<ISO time>" } }
+// Scores are lined up with the schedule's team order. A game that already has stats keeps them.
+async function botScore(env, sc) {
+  const team = (t) => String(t || "").replace(/:[^:\s]+:/g, "").replace(/@/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const week = Math.round(Number(sc && sc.week));
+  const series = Math.round(Number(sc && sc.series));
+  const id = str(String((sc && sc.id) ?? ""), 20);
+  const teams = [].concat((sc && sc.teams) || []).map(team);
+  const scores = [].concat((sc && sc.scores) || []).map(Number);
+  if (teams.length !== 2 || teams.some((t) => !t) || scores.length !== 2 || scores.some((n) => !Number.isFinite(n) || n < 0)) {
+    return json({ error: "A score needs two teams and two scores." }, 400);
+  }
+  const pair = [...teams].sort().join("|");
+  const data = await load(env);
+  const weeks = data.schedule.filter((w) => (!(week >= 1) || w.week === week) && (!(series >= 1) || !w.series || w.series === series));
+  let game;
+  weeks.some((w) => (game = w.games.find((g) => (id && g.id === id) || g.teams.map(team).sort().join("|") === pair)));
+  if (!game) return json({ updated: 0, note: "That game isn't on the site's schedule, so nothing changed." });
+  const flip = team(game.teams[0]) === teams[1];
+  const score = flip ? [scores[1], scores[0]] : scores;
+  const when = leagueDateTime(sc.time || Date.now(), env.LEAGUE_TZ || "America/New_York");
+  const old = data.results.find((r) => r.id === game.id);
+  data.results = [...data.results.filter((r) => r.id !== game.id), { ...old, id: game.id, score, date: (old && old.date) || (when && when.date) || undefined }];
+  data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveResult",
+    text: `Recorded ${game.id}: ${game.teams[0]} ${score[0]}-${score[1]} ${game.teams[1]}` }, ...data.activity].slice(0, ACTIVITY_MAX);
+  await env.UFF.put(KEY, JSON.stringify(data));
+  return json({ updated: 1, id: game.id, score, teams: game.teams });
+}
+
 async function botSchedule(env, sched) {
   const tz = env.LEAGUE_TZ || "America/New_York";
   const gameTime = (v) => gameTimeText(v, tz);
@@ -189,6 +219,7 @@ async function botTransactions(req, env) {
   try { body = await req.json(); } catch (e) { return json({ error: "Send JSON." }, 400); }
   if (body.schedule) return botSchedule(env, body.schedule);
   if (body.gameTime) return botGameTime(env, body.gameTime);
+  if (body.score) return botScore(env, body.score);
   const list = [].concat(body.transactions || (body.type ? [body] : []));
   const data = await load(env);
   const keyOf = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
@@ -267,7 +298,9 @@ export default {
       const sourceHash = body.source ? await recapHash(body.source) : undefined;
       const dup = sourceHash && data.results.find((x) => x.sourceHash === sourceHash);
       if (dup) return json({ error: `These exact stats were already entered for ${dup.id}.` }, 409);
-      const clean = { id: r.id, score, date: r.date || undefined, potg: r.potg || undefined, box: r.box || undefined, sourceHash };
+      // A score the bot already posted keeps its date if the recap has none
+      const prev = data.results.find((x) => x.id === r.id);
+      const clean = { id: r.id, score, date: r.date || (prev && prev.date) || undefined, potg: r.potg || undefined, box: r.box || undefined, sourceHash };
       data.results = [...data.results.filter((x) => x.id !== r.id), clean];
       log = `Recorded ${str(body.label, 120) || `${r.id}: ${score[0]}-${score[1]}`}`;
     } else if (body.action === "deleteResult") {

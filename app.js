@@ -2133,12 +2133,13 @@
 
   const allGames = () => LEAGUE.schedule.flatMap((wk) => wk.games.map((g) => ({ g, wk })));
 
-  // The scheduled game for these two teams, preferring the recap's week and games not played yet
+  // The scheduled game for these two teams, preferring the recap's week and games with no stats yet
+  // (the Discord bot posts the final score first, so a game can be final with its stats still to come)
   function findGame(recap) {
     if (!recap.teams) return null;
     const want = recap.teams.map(normTeam).sort().join("|");
     const hits = allGames().filter(({ g }) => g.teams.map(normTeam).sort().join("|") === want);
-    const pick = hits.find(({ wk }) => wk.week === recap.week) || hits.find(({ g }) => !Array.isArray(g.score)) || hits[0];
+    const pick = hits.find(({ wk }) => wk.week === recap.week) || hits.find(({ g }) => !g.box) || hits[0];
     return pick ? pick.g : null;
   }
 
