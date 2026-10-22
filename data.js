@@ -34,12 +34,30 @@ const LEAGUE = {
   //     Optional text over the picture (leave it out if the text is in the graphic):
   //     kicker: "Road to the Bowl", title: "Sinaloa vs Salem", sub: "Toronto 2026", button: "View Bowl"
   //     No slides = the built-in league and bowl slides.
-  //   news: Latest News card (the first one shows). { title, sub, image, link, date: "2026-10-18", button: "Read More" }
-  //     No news = the newest signing in that team's colors.
+  //   gfx: the GFX panel in the middle of the home page and the GFX page. The first one is the cover.
+  //     { image: "gfx/<file>.jpg", title: "..." }  Put a small copy (560px wide) in gfx/thumbs/ with the same name.
+  //   news: Latest News card, shown there only when there are no gfx. { title, sub, image, link, date: "2026-10-18", button: "Read More" }
   //   powerRankings: team names (or codes) in order, 1-20 (top 10 show, "Show all" opens the rest). Empty = ranked by record.
   //   social: links shown on the Latest Moves panel.
   home: {
     slides: [],
+    gfx: [
+      { image: "gfx/ea-flag-football-06.jpg", title: "EA Sports Flag Football 06" },
+      { image: "gfx/season-four.jpg", title: "United Flag Football: Season Four" },
+      { image: "gfx/tokyo-road-to-glory.jpg", title: "Tokyo: The Road to Glory" },
+      { image: "gfx/flag-bowl-6-sinaloa-salem.jpg", title: "Flag Bowl VI: Sinaloa Red Devils vs Salem Snowhawks" },
+      { image: "gfx/longhorns-champions.jpg", title: "Longhorns Lift the Trophy" },
+      { image: "gfx/season-2-championship.jpg", title: "Season Two Championship: Chicago" },
+      { image: "gfx/united-flag-bowl-spartans-blizzard.jpg", title: "United Flag Bowl: Spartans vs Blizzard" },
+      { image: "gfx/united-flag-bowl-xx.jpg", title: "United Flag Bowl XX" },
+      { image: "gfx/toronto-champions.jpg", title: "United Flag Bowl Champions: Toronto" },
+      { image: "gfx/pro-bowl.jpg", title: "Pro Bowl: TRC vs GCC" },
+      { image: "gfx/longhorns-halloween.jpg", title: "Longhorns: Halloween Edition" },
+      { image: "gfx/bulldogs.jpg", title: "United Flag Football" },
+      { image: "gfx/fooge-looking-for-revenge.jpg", title: "Fooge: Looking for Revenge" },
+      { image: "gfx/milwaukee-legacy.jpg", title: "Milwaukee: A Legacy to Not Forget" },
+      { image: "gfx/player-of-the-series.jpg", title: "Player of the Series" }
+    ],
     news: [],
     powerRankings: [
       "Toronto Maples", "San Francisco Miners", "Vienna Angels", "Kansas City Jazz", "Olympia Owls",

@@ -25,6 +25,7 @@
     football: '<path d="M4.5 19.5c-1.6-4.7.2-10.2 4.3-13.1 3.1-2.2 7-2.6 10.7-1.4 1.6 4.7-.2 10.2-4.3 13.1-3.1 2.2-7 2.6-10.7 1.4Z"/><path d="m9.5 14.5 5-5M10.5 11l2.5 2.5M12.5 9l2.5 2.5M8.5 13l2.5 2.5"/>',
     swords: '<path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2"/><path d="M9.5 17.5 21 6V3h-3L6.5 14.5M11 19l-6-6M8 16l-4 4M5 21l-2-2"/>',
     flame: '<path d="M12 21c-4 0-6.5-2.6-6.5-6.2 0-3.4 2.4-5.4 3.7-8.3.5 1.8 1.4 3 2.6 3.6C12 6.8 13.2 4.6 15.5 3c-.3 3 1 5.1 2.3 6.9.9 1.3 1.7 2.8 1.7 4.9 0 3.6-2.5 6.2-6.5 6.2Z"/><path d="M12 21c-1.7 0-2.8-1.1-2.8-2.7 0-1.9 1.6-2.8 2.3-4.6 1.3 1.1 3.3 2.4 3.3 4.6 0 1.6-1.1 2.7-2.8 2.7Z"/>',
+    image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18.5 5-5 4 4 3-3 4.5 4.5"/>',
     shield: '<path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6L12 3Z"/><path d="m9 12 2.2 2.2L15.5 10"/>'
   };
   const icon = (name, cls = "") =>
@@ -37,6 +38,7 @@
     { path: "standings", label: "Standings", icon: "standings", top: true },
     { path: "scores", label: "Scores", icon: "scores", top: true },
     { path: "vods", label: "VODs", icon: "play" },
+    { path: "gfx", label: "GFX", icon: "image" },
     { path: "stats", label: "Stats", icon: "stats", top: true },
     { path: "updates", label: "Updates", icon: "updates" },
     { path: "compare", label: "Compare", icon: "compare" },
@@ -636,24 +638,127 @@
           </div>
         </${tag}>`;
     }
-    const u = FEED[FEED.length - 1];
-    if (!u) return `<div class="hx-panel hx-news hx-news--empty"><span class="hx-label">Latest News</span><div class="hx-news-body"><h2 class="hx-news-title">Season ${LEAGUE.season} is coming</h2></div></div>`;
-    const t = u.t;
-    const tint = t ? teamTint(t.name) : { style: "" };
-    const what = u.type === "disband" ? "Team disbanded"
-      : u.type === "promotion" ? `Promoted to ${esc(u.role || "staff")} of the ${esc(u.team)}`
-      : `${{ sign: "Signs with", demand: "Demands out of", release: "Released by" }[u.type] || ""} the ${esc(u.team)}`;
-    return `
-      <a class="hx-panel hx-news hx-news--move" href="#/updates" style="${tint.style}">
-        ${t ? `<img class="hx-news-logo" src="${gfxSrc(t.logo || "logo.png")}" alt="">` : ""}
-        <span class="hx-label">Latest Move &middot; ${shortDate(u.date)}</span>
-        <div class="hx-news-body">
-          <h2 class="hx-news-title">${esc(u.type === "disband" ? u.team : u.player)}</h2>
-          <p class="hx-news-sub">${what}</p>
-          <span class="btn hx-btn">All Updates</span>
-        </div>
-      </a>`;
+    return `<div class="hx-panel hx-news hx-news--empty"><span class="hx-label">Latest News</span><div class="hx-news-body"><h2 class="hx-news-title">Season ${LEAGUE.season} is coming</h2></div></div>`;
   }
+
+  // ---- GFX: league graphics (home.gfx in data.js), the first one is the cover ----
+
+  const GFX = (HOME.gfx || []).filter((g) => g && g.image);
+  // The small copy in gfx/thumbs/ (same file name)
+  const gfxThumb = (src) => gfxSrc(String(src).replace(/^gfx\//, "gfx/thumbs/"));
+  let gfxAt = 0, gfxMoved = 0;
+
+  // The middle home panel: the graphics one after another, the whole picture always showing (a blurred copy fills behind it)
+  function gfxPanel() {
+    gfxAt %= GFX.length;
+    gfxMoved = Date.now();
+    const slide = (g, i) => {
+      const near = i === gfxAt || i === (gfxAt + 1) % GFX.length;
+      const src = (s) => (near ? `src="${s}"` : `data-src="${s}"`); // the rest load when they come up
+      return `
+        <button type="button" class="hx-gfx-slide ${i === gfxAt ? "on" : ""}" data-gfx-open="${i}" aria-label="View ${esc(g.title || "graphic")}">
+          <img class="hx-gfx-blur" ${src(gfxThumb(g.image))} alt="">
+          <img class="hx-gfx-img" ${src(gfxSrc(g.image))} alt="${esc(g.title || "")}">
+        </button>`;
+    };
+    const g = GFX[gfxAt];
+    return `
+      <div class="hx-panel hx-gfx" aria-roledescription="carousel">
+        ${panelHead("GFX", "#/gfx", "Gallery", `<span class="hx-note" id="gfxCount">${gfxAt + 1} / ${GFX.length}</span>`)}
+        <div class="hx-gfx-stage">
+          ${GFX.map(slide).join("")}
+          ${GFX.length > 1 ? `
+            <button type="button" class="hx-arrow hx-arrow--prev hx-gfx-arrow" data-gfx="prev" aria-label="Previous">${icon("arrow")}</button>
+            <button type="button" class="hx-arrow hx-arrow--next hx-gfx-arrow" data-gfx="next" aria-label="Next">${icon("arrow")}</button>` : ""}
+        </div>
+        <div class="hx-gfx-foot">
+          <div class="hx-gfx-caption">
+            <span class="hx-gfx-kicker" id="gfxKicker">${gfxAt === 0 ? "Cover" : "League GFX"}</span>
+            <span class="hx-gfx-title" id="gfxTitle">${esc(g.title || "")}</span>
+          </div>
+          ${GFX.length > 1 ? `<div class="hx-gfx-dots">${GFX.map((_, i) => `<button type="button" class="hx-dot ${i === gfxAt ? "on" : ""}" data-gfx="${i}" aria-label="Graphic ${i + 1}"></button>`).join("")}</div>` : ""}
+        </div>
+      </div>`;
+  }
+
+  // Load a slide's pictures the first time it's needed
+  const gfxLoad = (el) => el && el.querySelectorAll("img[data-src]").forEach((img) => { img.src = img.dataset.src; img.removeAttribute("data-src"); });
+  function gfxGo(n) {
+    const panel = document.querySelector(".hx-gfx");
+    if (!panel) return;
+    gfxMoved = Date.now();
+    const slides = panel.querySelectorAll(".hx-gfx-slide");
+    gfxAt = (n + slides.length) % slides.length;
+    slides.forEach((s, i) => s.classList.toggle("on", i === gfxAt));
+    gfxLoad(slides[gfxAt]);
+    gfxLoad(slides[(gfxAt + 1) % slides.length]);
+    panel.querySelectorAll(".hx-gfx-dots .hx-dot").forEach((d, i) => d.classList.toggle("on", i === gfxAt));
+    document.getElementById("gfxCount").textContent = `${gfxAt + 1} / ${slides.length}`;
+    document.getElementById("gfxKicker").textContent = gfxAt === 0 ? "Cover" : "League GFX";
+    document.getElementById("gfxTitle").textContent = GFX[gfxAt].title || "";
+  }
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    setInterval(() => {
+      const panel = document.querySelector(".hx-gfx");
+      // 6 seconds on each graphic; it waits while you're pointing at it or the viewer is open
+      if (panel && !document.hidden && !gfxBox && Date.now() - gfxMoved > 5900 && !panel.matches(":hover, :focus-within")) gfxGo(gfxAt + 1);
+    }, 1000);
+  }
+
+  function gfxPage() {
+    return `
+      <div class="wrap">
+        ${pageHead("GFX", "Graphics from around the league. Tap one to see it full size.")}
+        ${GFX.length ? `<div class="gfx-grid">${GFX.map((g, i) => `
+          <button type="button" class="card gfx-card" data-gfx-open="${i}">
+            <img src="${gfxThumb(g.image)}" alt="${esc(g.title || "")}" loading="lazy">
+            <span class="gfx-card-title">${i === 0 ? `<span class="pill">Cover</span> ` : ""}${esc(g.title || "")}</span>
+          </button>`).join("")}</div>` : empty("No graphics yet", "League graphics will show up here.")}
+      </div>`;
+  }
+
+  // Full-size viewer over the page: arrows (or the arrow keys) go through them, Esc or a click outside closes it
+  let gfxBox = null;
+  function gfxView(i) {
+    if (!GFX.length) return;
+    const at = (i + GFX.length) % GFX.length;
+    const g = GFX[at];
+    if (!gfxBox) {
+      gfxBox = document.createElement("div");
+      gfxBox.className = "gfx-box";
+      gfxBox.setAttribute("role", "dialog");
+      gfxBox.setAttribute("aria-modal", "true");
+      gfxBox.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-gfx-box]");
+        if (btn) return btn.dataset.gfxBox === "close" ? gfxClose() : gfxView(Number(gfxBox.dataset.at) + (btn.dataset.gfxBox === "next" ? 1 : -1));
+        if (!e.target.closest("img")) gfxClose();
+      });
+      document.body.appendChild(gfxBox);
+      document.body.classList.add("gfx-open");
+    }
+    gfxBox.dataset.at = at;
+    gfxBox.innerHTML = `
+      <button type="button" class="gfx-box-close" data-gfx-box="close" aria-label="Close">&times;</button>
+      ${GFX.length > 1 ? `<button type="button" class="gfx-box-nav gfx-box-nav--prev" data-gfx-box="prev" aria-label="Previous">${icon("arrow")}</button>` : ""}
+      <figure class="gfx-box-fig">
+        <img src="${gfxSrc(g.image)}" alt="${esc(g.title || "")}">
+        <figcaption>${esc(g.title || "")}<span class="muted small">${at + 1} / ${GFX.length}</span></figcaption>
+      </figure>
+      ${GFX.length > 1 ? `<button type="button" class="gfx-box-nav gfx-box-nav--next" data-gfx-box="next" aria-label="Next">${icon("arrow")}</button>` : ""}`;
+    gfxBox.querySelector(".gfx-box-close").focus();
+  }
+  function gfxClose() {
+    if (!gfxBox) return;
+    gfxBox.remove();
+    gfxBox = null;
+    document.body.classList.remove("gfx-open");
+  }
+  document.addEventListener("keydown", (e) => {
+    if (!gfxBox) return;
+    if (e.key === "Escape") gfxClose();
+    else if (e.key === "ArrowRight") gfxView(Number(gfxBox.dataset.at) + 1);
+    else if (e.key === "ArrowLeft") gfxView(Number(gfxBox.dataset.at) - 1);
+  });
 
   // Stat leaders: this season's box scores, or the All-Time sheets until the first game is played
   const HOME_LEADERS = [
@@ -811,7 +916,7 @@
           ${scoreTicker()}
           <div class="hx-grid hx-grid--top">
             <div class="hx-area-rank">${powerRankingsPanel()}</div>
-            <div class="hx-area-news">${newsPanel()}</div>
+            <div class="hx-area-news">${GFX.length ? gfxPanel() : newsPanel()}</div>
             <div class="hx-area-lead">${leadersPanel()}</div>
           </div>
           <div class="hx-grid hx-grid--bottom">
@@ -4552,6 +4657,7 @@
     playoff: playoffPage,
     predictions: predictionsPage,
     vods: vodsPage,
+    gfx: gfxPage,
     build: buildPage,
     bowls: bowlsPage,
     legacy,
@@ -4580,6 +4686,7 @@
 
   let lastTeamOpen = null;
   function render() {
+    gfxClose();
     const parts = location.hash.replace(/^#\/?/, "").split("/");
     const [section, sub] = parts;
     if (section === "schedule" && sub) scheduleWeek = Number(sub);
@@ -4801,6 +4908,12 @@
       const h = t.dataset.hero;
       return heroGo(h === "next" ? heroAt + 1 : h === "prev" ? heroAt - 1 : Number(h));
     }
+    if (t.dataset && t.dataset.gfx) {
+      const g = t.dataset.gfx;
+      return gfxGo(g === "next" ? gfxAt + 1 : g === "prev" ? gfxAt - 1 : Number(g));
+    }
+    const gfxOpen = e.target.closest("[data-gfx-open]");
+    if (gfxOpen) return gfxView(Number(gfxOpen.dataset.gfxOpen));
     if (t.dataset && "rankAll" in t.dataset) {
       rankAll = !rankAll;
       document.querySelector(".hx-area-rank").innerHTML = powerRankingsPanel();
