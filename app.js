@@ -220,9 +220,20 @@
     ({ ...t.disbanded, type: "disband", team: t.name, t, i: Infinity }))).sort(byTime);
   const disbandedTag = (t) => (t && t.disbanded ? ` <span class="pill pill-disbanded">Disbanded</span>` : "");
 
+  // A disbanded team that signs or promotes someone afterwards is back (the Disbanded row stays on Updates)
+  const disbands = TEAMS.filter((t) => t.disbanded).map((t) => ({ ...t.disbanded, type: "disband", t, i: Infinity }));
+  disbands.forEach((d) => {
+    if (UPDATES.some((u) => u.t === d.t && (u.type === "sign" || u.type === "promotion") && byTime(u, d) > 0)) {
+      d.t.revived = d;
+      delete d.t.disbanded;
+    }
+  });
+
   const ROSTERS = {};
-  UPDATES.forEach((u) => {
+  UPDATES.concat(disbands).sort(byTime).forEach((u) => {
     if (!u.t) return;
+    // Disbanding frees everyone signed before it
+    if (u.type === "disband") { delete ROSTERS[u.t.slug]; return; }
     const key = u.player.toLowerCase();
     if (u.type === "sign") {
       Object.values(ROSTERS).forEach((r) => r.delete(key));
@@ -234,8 +245,33 @@
       Object.entries(ROSTERS).forEach(([s, r]) => { if (s !== u.t.slug) r.delete(key); });
     }
   });
-  // A disbanded team's players are free agents
-  TEAMS.filter((t) => t.disbanded).forEach((t) => delete ROSTERS[t.slug]);
+  // A team's staff from promotions on the Updates page (latest role per person), owners first.
+  // Someone whose latest move is to another team (or off this one) isn't on this staff anymore.
+  const isHeadCoach = (role) => /^(head coach|hc)$/i.test(String(role || "").trim());
+  const staffRank = (role) => [/owner/i, /general manager|^gm$/i, /^(head coach|hc)$/i].findIndex((re) => re.test(role)) + 1 || 9;
+  function teamStaff(t) {
+    const staffBy = new Map();
+    // A team that came back after disbanding starts with a fresh staff
+    UPDATES.filter((u) => u.type === "promotion" && u.t && u.t.slug === t.slug && u.role && !(t.revived && byTime(u, t.revived) < 0))
+      .forEach((u) => staffBy.set(rawAlias(u.player).toLowerCase(), u));
+    const lastMove = new Map(UPDATES.filter((u) => u.t).map((u) => [rawAlias(u.player).toLowerCase(), u]));
+    return [...staffBy.entries()]
+      .filter(([key]) => { const m = lastMove.get(key); return m && m.t.slug === t.slug && m.type !== "demand" && m.type !== "release"; })
+      .map(([, u]) => u)
+      .sort((a, b) => staffRank(a.role) - staffRank(b.role));
+  }
+  // Someone promoted to Head Coach (by the Discord bot or on Admin) takes over from the head coach in data.js
+  TEAMS.forEach((t) => {
+    const hc = teamStaff(t).filter((u) => isHeadCoach(u.role)).sort(byTime).pop();
+    if (hc) t.coach = hc.player;
+  });
+  // The Teams list and standings read the teams in data.js, so they get the same head coach and comeback
+  LEAGUE.conferences.forEach((c) => c.divisions.forEach((d) => d.teams.forEach((src) => {
+    const t = TEAMS.find((x) => x.name === src.name);
+    if (!t) return;
+    src.coach = t.coach;
+    if (!t.disbanded) delete src.disbanded;
+  })));
 
   const confCount = LEAGUE.conferences.length;
   const divCount = LEAGUE.conferences.reduce((n, c) => n + c.divisions.length, 0);
@@ -743,15 +779,8 @@
       })
     );
 
-    // Staff from promotions on the Updates page (latest role per person)
-    const staffBy = new Map();
-    UPDATES.filter((u) => u.type === "promotion" && u.t && u.t.slug === t.slug && u.role)
-      .forEach((u) => staffBy.set(aliasName(u.player).toLowerCase(), u));
-    // Someone whose latest move is to another team (or off this one) isn't on this staff anymore
-    const lastMove = new Map(UPDATES.filter((u) => u.t).map((u) => [aliasName(u.player).toLowerCase(), u]));
-    const staff = [...staffBy.entries()]
-      .filter(([key]) => { const m = lastMove.get(key); return m && m.t.slug === t.slug && m.type !== "demand" && m.type !== "release"; })
-      .map(([, u]) => u);
+    // The head coach already shows on the line above
+    const staff = teamStaff(t).filter((u) => !isHeadCoach(u.role));
 
     const games = teamSchedule(t);
     const short =`${t.conference.replace(/ Conference$/, "")} ${t.division.replace(/ Division$/, "")}`;
