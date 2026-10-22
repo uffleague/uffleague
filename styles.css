@@ -1373,3 +1373,8 @@ body.gfx-open { overflow: hidden; }
   .gfx-box-nav--prev { left: 14px; } .gfx-box-nav--next { right: 14px; }
   .gfx-box-fig img { max-height: calc(100vh - 170px); }
 }
+
+/* Power Rankings: the predicted playoff cut */
+.hx-cut { display: flex; align-items: center; gap: 10px; padding: 8px 18px; border-top: 1px solid var(--hx-line); font-family: var(--head); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #ff8a95; }
+.hx-cut::before, .hx-cut::after { content: ""; flex: 1; border-top: 2px dashed rgba(255, 107, 129, .5); }
+.hx-rows.all .hx-cut.hx-row--more { display: flex; }

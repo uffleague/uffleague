@@ -598,6 +598,7 @@
   let rankAll = false;
   function powerRankingsPanel() {
     const { list, ranked } = powerRankingOrder();
+    const cut = ranked && HOME.playoffCut < list.length ? HOME.playoffCut : 0;
     const hex = (c, fallback) => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : fallback);
     // Hover fills the row with the team color, fading into the secondary color; light secondaries get dark text on that side
     const rowStyle = (t) => {
@@ -611,6 +612,7 @@
         ${panelHead("Power Rankings", "#/standings", "Standings")}
         <div class="hx-rows ${rankAll ? "all" : ""}" id="rankRows">
           ${list.map((t, i) => `
+            ${cut && i === cut ? `<div class="hx-cut ${i >= 10 ? "hx-row--more" : ""}"><span>Playoff cut (prediction)</span></div>` : ""}
             <a class="hx-row ${i >= 10 ? "hx-row--more" : ""}" href="#/teams/${t.slug}" style="${rowStyle(t)}">
               <span class="hx-rank">${ranked ? i + 1 : "&ndash;"}</span>
               ${teamLogo(t)}
