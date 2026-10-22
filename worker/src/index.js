@@ -132,22 +132,44 @@ function gameTimeText(v, tz) {
   return str(s, 40);
 }
 
-// A game time set with /gametime or /hostgametime (same URL and key):
-//   { "gameTime": { "week": 1, "series": 1, "id": "W1-1", "teams": ["Team A", "Team B"], "time": "<ISO time>" } }
-// Only changes a game already on the site (by id, or by the two teams in that week); "time": "" clears it.
-async function botGameTime(env, gt) {
-  const team = (t) => String(t || "").replace(/:[^:\s]+:/g, "").replace(/@/g, "").replace(/\s+/g, " ").trim().toLowerCase();
-  const week = Math.round(Number(gt && gt.week));
-  const series = Math.round(Number(gt && gt.series));
-  const id = str(String((gt && gt.id) ?? ""), 20);
-  const pair = [].concat((gt && gt.teams) || [gt && gt.team, gt && gt.opponent].filter(Boolean)).map(team).sort().join("|");
-  if (!(week >= 1) && !id) return json({ error: "Send the week (and the two teams) or the game id." }, 400);
-  const data = await load(env);
+// Finds a game on the saved schedule from what the bot knows about it: the game id, the bot's game code
+// (set with a game time), or the week (and series) plus the two teams in either order
+const botTeamKey = (t) => String(t || "").replace(/:[^:\s]+:/g, "").replace(/@/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+function findBotGame(data, q) {
+  const week = Math.round(Number(q && q.week));
+  const series = Math.round(Number(q && q.series));
+  const id = str(String((q && q.id) ?? ""), 20);
+  const code = str(String((q && q.gameCode) ?? ""), 20);
+  const pair = [].concat((q && q.teams) || [q && (q.team || q.team1), q && (q.opponent || q.team2)].filter(Boolean)).map(botTeamKey).sort().join("|");
   const weeks = data.schedule.filter((w) => (!(week >= 1) || w.week === week) && (!(series >= 1) || !w.series || w.series === series));
   let game;
-  weeks.some((w) => (game = w.games.find((g) => (id && g.id === id) || (!id && g.teams.map(team).sort().join("|") === pair))));
-  if (!game) return json({ updated: 0, note: "That game isn't on the site's schedule, so nothing changed." });
+  weeks.some((w) => (game = w.games.find((g) => (id && g.id === id) || (code && g.code && g.code.toLowerCase() === code.toLowerCase()))));
+  if (!game && pair.includes("|") && (week >= 1 || !id)) weeks.some((w) => (game = w.games.find((g) => g.teams.map(botTeamKey).sort().join("|") === pair)));
+  return game || null;
+}
+const notOnSite = () => json({ updated: 0, note: "That game isn't on the site's schedule, so nothing changed." });
+
+// Live streams for a game that's over (or that started hours ago) become its replay (VOD); one with no game just ends
+const STREAM_HOURS = 8;
+function retireStreams(data, done) {
+  const gone = data.streams.filter(done);
+  if (!gone.length) return;
+  data.streams = data.streams.filter((x) => !done(x));
+  data.vods = [...gone.filter((x) => x.gameId && !data.vods.some((v) => v.gameId === x.gameId && v.url === x.url))
+    .map((x) => ({ id: crypto.randomUUID(), title: x.title, url: x.url, gameId: x.gameId, note: "", at: Date.now() })), ...data.vods];
+}
+
+// A game time set with /gametime or /hostgametime (same URL and key):
+//   { "gameTime": { "week": 1, "series": 1, "id": "W1-1", "teams": ["Team A", "Team B"], "time": "<ISO time>", "gameCode": "NNG646" } }
+// Only changes a game already on the site; "time": "" clears it. The game code lets /stream find the game later.
+async function botGameTime(env, gt) {
+  if (!(Number(gt && gt.week) >= 1) && !(gt && (gt.id || gt.gameCode))) return json({ error: "Send the week (and the two teams) or the game id." }, 400);
+  const data = await load(env);
+  const game = findBotGame(data, gt);
+  if (!game) return notOnSite();
   game.time = gameTimeText(gt.time, env.LEAGUE_TZ || "America/New_York");
+  const code = str(String(gt.gameCode ?? ""), 20);
+  if (code) game.code = code;
   data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveSchedule",
     text: `${game.time ? `Set the time for ${game.id} (${game.teams.join(" vs ")}) to ${game.time}` : `Cleared the time for ${game.id}`}` }, ...data.activity].slice(0, ACTIVITY_MAX);
   await env.UFF.put(KEY, JSON.stringify(data));
@@ -158,30 +180,58 @@ async function botGameTime(env, gt) {
 //   { "score": { "week": 1, "series": 1, "id": "W1-1", "teams": ["Team A", "Team B"], "scores": [24, 44], "time": "<ISO time>" } }
 // Scores are lined up with the schedule's team order. A game that already has stats keeps them.
 async function botScore(env, sc) {
-  const team = (t) => String(t || "").replace(/:[^:\s]+:/g, "").replace(/@/g, "").replace(/\s+/g, " ").trim().toLowerCase();
-  const week = Math.round(Number(sc && sc.week));
-  const series = Math.round(Number(sc && sc.series));
-  const id = str(String((sc && sc.id) ?? ""), 20);
-  const teams = [].concat((sc && sc.teams) || []).map(team);
+  const teams = [].concat((sc && sc.teams) || []).map(botTeamKey);
   const scores = [].concat((sc && sc.scores) || []).map(Number);
   if (teams.length !== 2 || teams.some((t) => !t) || scores.length !== 2 || scores.some((n) => !Number.isFinite(n) || n < 0)) {
     return json({ error: "A score needs two teams and two scores." }, 400);
   }
-  const pair = [...teams].sort().join("|");
   const data = await load(env);
-  const weeks = data.schedule.filter((w) => (!(week >= 1) || w.week === week) && (!(series >= 1) || !w.series || w.series === series));
-  let game;
-  weeks.some((w) => (game = w.games.find((g) => (id && g.id === id) || g.teams.map(team).sort().join("|") === pair)));
-  if (!game) return json({ updated: 0, note: "That game isn't on the site's schedule, so nothing changed." });
-  const flip = team(game.teams[0]) === teams[1];
+  const game = findBotGame(data, sc);
+  if (!game) return notOnSite();
+  const flip = botTeamKey(game.teams[0]) === teams[1];
   const score = flip ? [scores[1], scores[0]] : scores;
   const when = leagueDateTime(sc.time || Date.now(), env.LEAGUE_TZ || "America/New_York");
   const old = data.results.find((r) => r.id === game.id);
   data.results = [...data.results.filter((r) => r.id !== game.id), { ...old, id: game.id, score, date: (old && old.date) || (when && when.date) || undefined }];
+  // The game's live streams stay on its card as replays
+  retireStreams(data, (x) => x.gameId === game.id);
   data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveResult",
     text: `Recorded ${game.id}: ${game.teams[0]} ${score[0]}-${score[1]} ${game.teams[1]}` }, ...data.activity].slice(0, ACTIVITY_MAX);
   await env.UFF.put(KEY, JSON.stringify(data));
   return json({ updated: 1, id: game.id, score, teams: game.teams });
+}
+
+// A live stream from /stream (same URL and key):
+//   { "stream": { "url": "https://www.twitch.tv/name", "streamer": "day", "gameCode": "NNG646",
+//                 "id": "W1-1", "week": 1, "series": 1, "teams": ["Team A", "Team B"] } }
+// It goes on that game's card (and Live Now on the home page). "end": true takes it down; the game's
+// final score, or STREAM_HOURS going by, turns it into the game's replay.
+async function botStream(env, st) {
+  const url = str(st && st.url, 300);
+  if (!url || !STREAM_HOSTS.test(url)) return json({ error: "Send a YouTube or Twitch link." }, 400);
+  const data = await load(env);
+  const old = Date.now() - STREAM_HOURS * 3600 * 1000;
+  retireStreams(data, (x) => x.source === "bot" && x.at < old);
+  const link = (u) => u.toLowerCase().replace(/^https?:\/\/(www\.|m\.)?/, "").replace(/\/+$/, "");
+  const sameUrl = (x) => link(x.url) === link(url);
+  let log;
+  if (st.end) {
+    const had = data.streams.some(sameUrl);
+    retireStreams(data, sameUrl);
+    log = had ? `Ended the live stream ${url}` : "";
+  } else {
+    const game = findBotGame(data, st);
+    const streamer = str(st.streamer, 40);
+    const title = [streamer, game ? game.teams.join(" vs ") : str(st.title, 80)].filter(Boolean).join(" · ") || "UFF live stream";
+    // One stream per link: going live again (or for another game) replaces the old one
+    data.streams = [...data.streams.filter((x) => !sameUrl(x)),
+      { id: crypto.randomUUID(), title, url, gameId: game ? game.id : undefined, at: Date.now(), source: "bot" }];
+    log = `Added live stream "${title}"${game ? ` for ${game.id}` : ""}`;
+  }
+  if (log) data.activity = [{ at: Date.now(), by: "Discord bot", action: "addStream", text: log }, ...data.activity].slice(0, ACTIVITY_MAX);
+  await env.UFF.put(KEY, JSON.stringify(data));
+  const s = data.streams.find(sameUrl);
+  return json({ live: !!s, gameId: (s && s.gameId) || null, title: (s && s.title) || null });
 }
 
 async function botSchedule(env, sched) {
@@ -220,6 +270,7 @@ async function botTransactions(req, env) {
   if (body.schedule) return botSchedule(env, body.schedule);
   if (body.gameTime) return botGameTime(env, body.gameTime);
   if (body.score) return botScore(env, body.score);
+  if (body.stream) return botStream(env, body.stream);
   const list = [].concat(body.transactions || (body.type ? [body] : []));
   const data = await load(env);
   const keyOf = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
