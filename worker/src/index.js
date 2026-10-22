@@ -185,6 +185,7 @@ async function botGameTime(env, gt) {
 //   { "score": { "week": 1, "series": 1, "id": "W1-1", "teams": ["Team A", "Team B"], "scores": [24, 44], "time": "<ISO time>" } }
 // Scores are lined up with the schedule's team order. A game that already has stats keeps them.
 async function botScore(env, sc) {
+  if (sc && sc.remove) return botRemoveScore(env, sc);
   const teams = [].concat((sc && sc.teams) || []).map(botTeamKey);
   const scores = [].concat((sc && sc.scores) || []).map(Number);
   if (teams.length !== 2 || teams.some((t) => !t) || scores.length !== 2 || scores.some((n) => !Number.isFinite(n) || n < 0)) {
@@ -204,6 +205,26 @@ async function botScore(env, sc) {
     text: `Recorded ${game.id}: ${game.teams[0]} ${score[0]}-${score[1]} ${game.teams[1]}` }, ...data.activity].slice(0, ACTIVITY_MAX);
   await env.UFF.put(KEY, JSON.stringify(data));
   return json({ updated: 1, id: game.id, score, teams: game.teams });
+}
+
+// /removescore: { "score": { "week": 1, "series": 1, "id": "W1-1", "teams": ["DET", "SJS"], "remove": true } }
+// The game goes back to unplayed. Its box score and Player of the Game stay saved (hidden while there's no score)
+// and come back with the next score; its replay stays too.
+async function botRemoveScore(env, sc) {
+  const teams = [].concat(sc.teams || []).map(botTeamKey);
+  if (teams.length !== 2 || teams.some((t) => !t)) return json({ error: "A score removal needs the two teams." }, 400);
+  const data = await load(env);
+  const game = findBotGame(data, sc);
+  if (!game) return json({ error: "Couldn't find that game on the site's schedule." }, 400);
+  const old = data.results.find((r) => r.id === game.id);
+  if (!old || !Array.isArray(old.score)) return json({ removed: 0, note: `${game.id} has no score on the site, so nothing changed.` });
+  const { score, ...rest } = old;
+  data.results = data.results.filter((r) => r.id !== game.id);
+  if (rest.box || rest.potg) data.results.push(rest);
+  data.activity = [{ at: Date.now(), by: "Discord bot", action: "deleteResult",
+    text: `Removed the score for ${game.id}: ${game.teams[0]} ${score[0]}-${score[1]} ${game.teams[1]}${rest.box ? " (stats kept for the next score)" : ""}` }, ...data.activity].slice(0, ACTIVITY_MAX);
+  await env.UFF.put(KEY, JSON.stringify(data));
+  return json({ removed: 1, id: game.id });
 }
 
 // A live stream from /stream (same URL and key):
@@ -459,7 +480,7 @@ export default {
       }
       // The same recap pasted twice (e.g. by two admins) is turned away
       const sourceHash = body.source ? await recapHash(body.source) : undefined;
-      const dup = sourceHash && data.results.find((x) => x.sourceHash === sourceHash);
+      const dup = sourceHash && data.results.find((x) => x.sourceHash === sourceHash && Array.isArray(x.score)); // a game whose score was removed can take it again
       if (dup) return json({ error: `These exact stats were already entered for ${dup.id}.` }, 409);
       // A score the bot already posted keeps its date if the recap has none
       const prev = data.results.find((x) => x.id === r.id);

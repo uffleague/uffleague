@@ -1923,7 +1923,7 @@
         <div class="game-foot">
           ${icon("clock", "sm")}
           ${final ? `Final${g.date ? ` &middot; ${fmtDate(g.date)}` : ""}` : g.time || "No game time set yet"}
-          ${g.potg ? `<span class="potg">${icon("scores", "sm")}Player of the Game: <strong>${playerLink(g.potg)}</strong></span>` : ""}
+          ${final && g.potg ? `<span class="potg">${icon("scores", "sm")}Player of the Game: <strong>${playerLink(g.potg)}</strong></span>` : ""}
         </div>
         ${(() => {
           const hasBox = final && g.box;
@@ -2312,7 +2312,10 @@
         ${rows.length ? rows.map(({ r, e }) => `
           <div class="list-row recorded-row">
             <div>
-              <strong>${e ? `${esc(e.g.teams[0])} ${r.score[0]} &mdash; ${r.score[1]} ${esc(e.g.teams[1])}` : `${esc(r.id)} &middot; ${r.score[0]}-${r.score[1]}`}</strong>
+              <strong>${!Array.isArray(r.score)
+                // The Discord bot took the score back out (/removescore); the stats wait for a new one
+                ? `${e ? `${esc(e.g.teams[0])} vs ${esc(e.g.teams[1])}` : esc(r.id)} <span class="warn-text">&middot; score removed</span>`
+                : e ? `${esc(e.g.teams[0])} ${r.score[0]} &mdash; ${r.score[1]} ${esc(e.g.teams[1])}` : `${esc(r.id)} &middot; ${r.score[0]}-${r.score[1]}`}</strong>
               <div class="muted small">${[e && `Week ${e.wk.week}`, r.date && fmtDate(r.date), `${statLines(r.box)} stat lines`].filter(Boolean).join(" &middot; ")}
                 ${e ? `&middot; <span class="ok-text">${esc(e.g.id)} on the schedule</span>` : `&middot; <span class="warn-text">not on the schedule, so it doesn't show on the site</span>`}</div>
             </div>
