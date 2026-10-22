@@ -277,6 +277,7 @@ async function botTransactions(req, env) {
   if (body.score) return botScore(env, body.score);
   if (body.stream) return botStream(env, body.stream);
   if (body.rosters) return botRosters(env, body.rosters);
+  if (body.vod || body.vods) return botVods(env, [].concat(body.vods || body.vod));
   const list = [].concat(body.transactions || (body.type ? [body] : []));
   const data = await load(env);
   const keyOf = (u) => [u.date, u.time, u.type, u.player, u.team].join("|").toLowerCase();
@@ -308,6 +309,44 @@ async function botTransactions(req, env) {
   if (renamed) data.activity = [{ at: Date.now(), by: "Discord bot", action: "renamePlayers", text: `Renamed ${renamed} player${renamed === 1 ? "" : "s"} to their Roblox username` }, ...data.activity].slice(0, ACTIVITY_MAX);
   if (added.length || renamed) await env.UFF.put(KEY, JSON.stringify(data));
   return json({ added: added.length, skipped: list.length - added.length - problems.length, renamed, problems }, problems.length && !added.length ? 400 : 200);
+}
+
+// A game replay or highlight from /vods (same URL and key); one or several:
+//   { "vod": { "url": "https://www.twitch.tv/videos/123", "title": "...", "by": "day", "gameCode": "NNG646",
+//              "id": "W1-1", "week": 1, "series": 1, "teams": ["Team A", "Team B"] } }   or   { "vods": [ ... ] }
+// Tied to a game, it's that card's "▶ Stream" replay (the newest one shows), in place of the channel link kept
+// from its live stream. Every VOD is on the VODs page. "remove": true takes that link down.
+async function botVods(env, list) {
+  const data = await load(env);
+  const link = (u) => String(u).toLowerCase().replace(/^https?:\/\/(www\.|m\.)?/, "").replace(/\/+$/, "");
+  const channelOnly = (u) => /twitch\.tv\/[A-Za-z0-9_]+\/?$/i.test(u) && !/\/videos\//i.test(u);
+  const saved = [], problems = [];
+  let removed = 0;
+  list.slice(0, 20).forEach((v, i) => {
+    const url = str(v && v.url, 300);
+    if (!url || !STREAM_HOSTS.test(url)) { problems.push(`#${i + 1}: needs a YouTube or Twitch link`); return; }
+    if (v.remove) {
+      const before = data.vods.length;
+      data.vods = data.vods.filter((x) => link(x.url) !== link(url));
+      removed += before - data.vods.length;
+      return;
+    }
+    const game = findBotGame(data, v);
+    const title = str(v.title, 80) || [str(v.by, 40), game ? game.teams.join(" vs ") : ""].filter(Boolean).join(" · ") || "UFF VOD";
+    // The same link again updates it; a real replay replaces the live channel link kept for that game
+    data.vods = data.vods.filter((x) => link(x.url) !== link(url) && !(game && x.gameId === game.id && channelOnly(x.url)));
+    const vod = { id: crypto.randomUUID(), title, url, gameId: game ? game.id : undefined, note: str(v.note, 80) || "", at: Date.now(), source: "bot" };
+    data.vods = [vod, ...data.vods];
+    saved.push(vod);
+  });
+  if (saved.length || removed) {
+    data.activity = [{ at: Date.now(), by: "Discord bot", action: "addVod",
+      text: [saved.length && `Added VOD${saved.length === 1 ? "" : "s"} ${saved.map((v) => `"${v.title}"${v.gameId ? ` for ${v.gameId}` : ""}`).join(", ")}`,
+        removed && `Removed ${removed} VOD${removed === 1 ? "" : "s"}`].filter(Boolean).join("; ") }, ...data.activity].slice(0, ACTIVITY_MAX);
+    await env.UFF.put(KEY, JSON.stringify(data));
+  }
+  return json({ added: saved.length, removed, vods: saved.map((v) => ({ title: v.title, gameId: v.gameId || null })), problems },
+    problems.length && !saved.length && !removed ? 400 : 200);
 }
 
 // Old name -> Roblox username, applied by the site in order on top of the aliases in data.js, so a renamed player

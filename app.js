@@ -2727,6 +2727,7 @@
     let m;
     const host = location.hostname || "localhost";
     if ((m = url.match(/twitch\.tv\/videos\/(\d+)/i))) return `https://player.twitch.tv/?video=${m[1]}&parent=${host}`;
+    if ((m = url.match(/(?:clips\.twitch\.tv\/|twitch\.tv\/[A-Za-z0-9_]+\/clip\/)([\w-]+)/i))) return `https://clips.twitch.tv/embed?clip=${m[1]}&parent=${host}`;
     if ((m = url.match(/twitch\.tv\/([A-Za-z0-9_]+)/i))) return `https://player.twitch.tv/?channel=${m[1]}&parent=${host}`;
     if ((m = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|live\/|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/i))) return `https://www.youtube.com/embed/${m[1]}`;
     if ((m = url.match(/youtube\.com\/channel\/(UC[\w-]+)/i))) return `https://www.youtube.com/embed/live_stream?channel=${m[1]}`;
