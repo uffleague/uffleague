@@ -91,8 +91,11 @@
   (function applyRenames() {
     // Roblox usernames the bot knows, with that person's Discord name
     const discordOf = new Map((SAVED.people || []).filter((p) => p.name).map((p) => [p.name.toLowerCase(), (p.discord || "").toLowerCase()]));
-    (SAVED.renames || []).forEach(({ from, to, id }) => {
-      if (!from || !to) return;
+    (SAVED.renames || []).forEach(({ from: sent, to, id }) => {
+      if (!sent || !to) return;
+      // The bot's Discord name has the decorations the site drops when it stores a name ("Yacht (@hitaIicc)®" -> "Yacht")
+      const from = mentionName(String(sent));
+      if (!from) return;
       const was = rawAlias(from);
       // Someone else's Roblox username isn't taken over just because it matches this person's Discord name
       // (a match by id is always the same person)
@@ -206,7 +209,8 @@
 
     // Rosters the bot syncs: each one sets that team's players (and staff) at that moment
     LEAGUE.rosterSyncs = (SAVED.rosterSyncs || []).map((s) => ({
-      ...s, team: rn(botTeam(s.team)), players: (s.players || []).map((p) => ({ ...p, name: rawAlias(p.name) }))
+      // An unverified player comes as their Discord name, decorations and all ("zlssei®")
+      ...s, team: rn(botTeam(s.team)), players: (s.players || []).map((p) => ({ ...p, name: rawAlias(mentionName(String(p.name))) }))
     }));
     // A VOD's two teams from the bot (names or codes)
     (SAVED.vods || []).forEach((v) => { if (Array.isArray(v.teams)) v.teams = v.teams.map((t) => rn(botTeam(t))); });
@@ -290,11 +294,18 @@
     if (u.type === "disband") { delete ROSTERS[s]; delete STAFF[s]; return; }
     if (u.type === "sync") {
       if (u.replace) { ROSTERS[s] = new Map(); STAFF[s] = new Map(); synced.add(s); }
+      // Someone listed both with a role and as a player is on the staff and the roster (a player-coach)
+      const listed = (key, staff) => u.players.some((p) => p.name.toLowerCase() === key && !!p.role === staff);
       u.players.forEach((p) => {
         const key = p.name.toLowerCase();
         leaveOthers(key, s, [ROSTERS, STAFF]);
-        if (p.role) { staffOf(u.t).set(key, { player: p.name, role: p.role, date: u.date, time: u.time, i: u.i }); rosterOf(u.t).delete(key); }
-        else { rosterOf(u.t).set(key, p.name); staffOf(u.t).delete(key); }
+        if (p.role) {
+          staffOf(u.t).set(key, { player: p.name, role: p.role, date: u.date, time: u.time, i: u.i });
+          if (!listed(key, false)) rosterOf(u.t).delete(key);
+        } else {
+          rosterOf(u.t).set(key, p.name);
+          if (!listed(key, true)) staffOf(u.t).delete(key);
+        }
       });
       return;
     }
