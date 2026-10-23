@@ -1379,3 +1379,32 @@ body.gfx-open { overflow: hidden; }
 .hx-cut { display: flex; align-items: center; gap: 10px; padding: 8px 18px; border-top: 1px solid var(--hx-line); font-family: var(--head); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #ff8a95; }
 .hx-cut::before, .hx-cut::after { content: ""; flex: 1; border-top: 2px dashed rgba(255, 107, 129, .5); }
 .hx-rows.all .hx-cut.hx-row--more { display: flex; }
+
+/* Series deadlines: normal, soon (last 48 hours), late (passed with games left), done (every game final) */
+.deadline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 0 0 18px; padding: 12px 16px; border: 1px solid var(--line); border-left: 4px solid var(--edge-hover); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 15px; }
+.deadline strong { color: var(--heading); }
+.deadline-when { font-weight: 700; color: var(--cream); }
+.deadline-count { margin-left: auto; color: var(--muted); font-size: 13px; }
+.deadline--soon { border-left-color: #f0c45a; background: rgba(240, 196, 90, .08); }
+.deadline--soon .deadline-when { color: #f0c45a; }
+.deadline--late { border-left-color: #ff6b81; background: rgba(255, 107, 129, .08); }
+.deadline--late .deadline-when { color: #ff6b81; }
+.deadline--done { border-left-color: #4cc38a; background: rgba(76, 195, 138, .08); }
+.deadline--done .deadline-when, .deadline--done .deadline-icon { color: #4cc38a; }
+.hx-deadline { display: flex; flex-direction: column; gap: 2px; margin: 0 18px 10px; padding: 10px 14px; border: 1px solid var(--hx-line); border-left: 4px solid var(--edge-hover); border-radius: 8px; background: rgba(255, 255, 255, .03); color: var(--hx-ink); }
+.hx-deadline:hover { border-color: var(--edge-hover); }
+.hx-deadline-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--hx-muted); }
+.hx-deadline-date { font-family: var(--head); font-size: 18px; color: var(--heading); }
+.hx-deadline-meta { font-size: 13px; color: var(--hx-muted); }
+.hx-deadline-meta b { color: var(--cream); }
+.hx-deadline.deadline--soon { border-left-color: #f0c45a; } .hx-deadline.deadline--soon b { color: #f0c45a; }
+.hx-deadline.deadline--done { border-left-color: #4cc38a; } .hx-deadline.deadline--done b { color: #4cc38a; }
+.dl-admin { padding-top: 6px; padding-bottom: 6px; }
+.dl-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 0; }
+.dl-row + .dl-row { border-top: 1px solid var(--line); }
+.dl-row-name { min-width: 0; }
+.dl-edited { margin-left: 6px; font-size: 11px; padding: 1px 8px; background: var(--accent); color: var(--cream); border-color: var(--accent-2); }
+.dl-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dl-row input[type="datetime-local"] { font: inherit; font-size: 14px; color: var(--ink); padding: 7px 10px; border: 1.5px solid var(--edge); border-radius: 10px; background: var(--surface); }
+.dl-row input:focus { outline: 2px solid var(--cream); outline-offset: 2px; }
+@media (max-width: 600px) { .deadline-count { margin-left: 0; } .dl-row-actions { width: 100%; } .dl-row input[type="datetime-local"] { flex: 1; min-width: 0; } }

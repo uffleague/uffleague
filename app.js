@@ -844,6 +844,7 @@
     if (upcoming.length || !finalWeeks().length) return `
       <div class="hx-panel">
         ${panelHead("Upcoming Games", "#/schedule", "Schedule")}
+        ${nextDeadline()}
         ${upcoming.length ? upcoming.map(({ g, wk }) => `
           <a class="hx-game" href="#/schedule/${wk.week}">
             ${gameSide(g.teams[0])}<span class="hx-game-vs">vs</span>${gameSide(g.teams[1])}
@@ -854,6 +855,7 @@
     return `
       <div class="hx-panel">
         ${panelHead("Latest Scores", "#/scores", "All Scores")}
+        ${nextDeadline()}
         ${finals.map(({ g, wk }) => `
           <a class="hx-game" href="#/scores">
             ${gameSide(g.teams[0], g.score[0], g.score[0] >= g.score[1])}<span class="hx-game-vs">&ndash;</span>${gameSide(g.teams[1], g.score[1], g.score[1] >= g.score[0])}
@@ -2408,10 +2410,75 @@
       </div>`;
   }
 
+  /* ---------- Series deadlines ---------- */
+  // Every game in a series has to be played by its deadline. The Discord bot sends them and an admin can change
+  // them (Admin -> Deadlines); the worker sends what to show in SAVED.deadlines. Shown in Eastern time.
+  const DL_TZ = "America/New_York";
+  const deadlineList = () => ((SAVED.deadlines || {}).series || []).filter((s) => s && s.deadline && Array.isArray(s.weeks));
+  const deadlineFor = (week) => deadlineList().find((s) => s.weeks.includes(week));
+  const etDay = (when) => new Date(when).toLocaleDateString("en-CA", { timeZone: DL_TZ });
+  // "Mon, Nov 2 · 11:59 PM ET"
+  const fmtDeadline = (iso) => {
+    const d = new Date(iso);
+    return `${d.toLocaleDateString("en-US", { timeZone: DL_TZ, weekday: "short", month: "short", day: "numeric" })} &middot; ${d.toLocaleTimeString("en-US", { timeZone: DL_TZ, hour: "numeric", minute: "2-digit" })} ET`;
+  };
+  // A schedule without series has one deadline a week, which the bot sends as "series" = the week number
+  const deadlineName = (s) => LEAGUE.schedule.some((w) => s.weeks.includes(w.week) && w.series) || s.weeks.length > 1 ? `Series ${s.series}` : `Week ${s.weeks[0]}`;
+  // Games played, the countdown, and how it looks: "" before, soon (last 48 hours), late (passed with games
+  // left), done (every game final)
+  function deadlineInfo(s) {
+    const games = LEAGUE.schedule.filter((w) => s.weeks.includes(w.week)).flatMap((w) => w.games);
+    const played = games.filter((g) => Array.isArray(g.score)).length;
+    const due = Date.parse(s.deadline), now = Date.now();
+    const days = Math.round((Date.parse(etDay(due)) - Date.parse(etDay(now))) / 864e5);
+    const when = now > due ? "passed" : days <= 0 ? "due today" : days === 1 ? "due tomorrow" : `in ${days} days`;
+    const state = games.length && played === games.length ? "done" : now > due ? "late" : due - now <= 48 * 3600e3 ? "soon" : "";
+    return { games: games.length, played, when, state };
+  }
+  function deadlineBar(s) {
+    const i = deadlineInfo(s);
+    return `
+      <div class="deadline ${i.state ? `deadline--${i.state}` : ""}">
+        <span class="deadline-icon" aria-hidden="true">${i.state === "done" ? "&#10004;" : "&#9200;"}</span>
+        <span class="deadline-text">${deadlineName(s)} deadline: <strong>${fmtDeadline(s.deadline)}</strong></span>
+        <span class="deadline-when">${i.state === "done" ? "All games played" : i.when}</span>
+        ${i.games ? `<span class="deadline-count">${i.played} of ${i.games} games played</span>` : ""}
+      </div>`;
+  }
+  // Home page: the nearest deadline still to come
+  function nextDeadline() {
+    const s = deadlineList().filter((x) => Date.parse(x.deadline) > Date.now()).sort((a, b) => Date.parse(a.deadline) - Date.parse(b.deadline))[0];
+    if (!s) return "";
+    const i = deadlineInfo(s);
+    const week = LEAGUE.schedule.find((w) => s.weeks.includes(w.week));
+    return `
+      <a class="hx-deadline ${i.state ? `deadline--${i.state}` : ""}" href="#/schedule${week ? `/${week.week}` : ""}">
+        <span class="hx-deadline-label">${i.state === "done" ? "&#10004;" : "&#9200;"} Next deadline &middot; ${deadlineName(s)}</span>
+        <span class="hx-deadline-date">${fmtDeadline(s.deadline)}</span>
+        <span class="hx-deadline-meta"><b>${i.state === "done" ? "All games played" : i.when}</b>${i.games ? ` &middot; ${i.played} of ${i.games} games played` : ""}</span>
+      </a>`;
+  }
+
   function schedule() {
     if (!LEAGUE.schedule.length) return placeholder("Schedule", "The season schedule will be posted soon.")();
     const wk = LEAGUE.schedule.find((w) => w.week === scheduleWeek) || LEAGUE.schedule[0];
     const finals = wk.games.filter((g) => Array.isArray(g.score)).length;
+    const dl = deadlineFor(wk.week);
+    // The week picker is grouped by series, each with its deadline
+    const option = (w) => `<option value="${w.week}" ${w.week === wk.week ? "selected" : ""}>Week ${w.week}</option>`;
+    const groups = [];
+    LEAGUE.schedule.forEach((w) => {
+      const last = groups[groups.length - 1];
+      if (last && w.series && last.series === w.series) last.weeks.push(w);
+      else groups.push({ series: w.series, weeks: [w] });
+    });
+    const picker = LEAGUE.schedule.some((w) => w.series)
+      ? groups.map((g) => {
+          if (!g.series) return g.weeks.map(option).join("");
+          const d = deadlineFor(g.weeks[0].week);
+          return `<optgroup label="Series ${g.series}${d ? ` · due ${new Date(d.deadline).toLocaleDateString("en-US", { timeZone: DL_TZ, month: "short", day: "numeric" })}` : ""}">${g.weeks.map(option).join("")}</optgroup>`;
+        }).join("")
+      : LEAGUE.schedule.map(option).join("");
     return `
       <div class="wrap">
         <div class="page-head page-head--row">
@@ -2419,10 +2486,9 @@
             <h1>Schedule</h1>
             <p class="muted">${wk.series ? `Series ${wk.series} &middot; ` : ""}Week ${wk.week} &middot; ${wk.games.length} games &middot; ${finals} final</p>
           </div>
-          <select id="scheduleWeek" class="select" aria-label="Week">
-            ${LEAGUE.schedule.map((w) => `<option value="${w.week}" ${w.week === wk.week ? "selected" : ""}>Week ${w.week}</option>`).join("")}
-          </select>
+          <select id="scheduleWeek" class="select" aria-label="Week">${picker}</select>
         </div>
+        ${dl ? deadlineBar(dl) : ""}
         <div class="game-grid">${wk.games.map(gameCard).join("")}</div>
       </div>`;
   }
@@ -3263,6 +3329,7 @@
     ["players", "Players", "legacy", () => playersAdminSection()],
     ["honors", "Honors", "awards", () => honorsAdminSection()],
     ["teams", "Teams", "teams", () => teamsAdminSection()],
+    ["deadlines", "Deadlines", "clock", () => deadlinesAdminSection()],
     ["streams", "Live Streams", "live", () => streamsAdminSection()],
     ["vods", "VODs", "play", () => vodsAdminSection()],
     ["playoffs", "Playoffs", "playoff", () => playoffsAdminSection()],
@@ -3715,6 +3782,59 @@
       </section>`;
   }
 
+  // ---- Admin: series deadlines ----
+  // Date and time in Eastern for a date-time picker ("2026-11-02T23:59")
+  const etLocal = (iso) => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: DL_TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
+    return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+  };
+  // Every series: the ones with a deadline, plus the schedule's series (or weeks, when it has none) that have none yet
+  function deadlineRows() {
+    const rows = new Map(((SAVED.deadlines || {}).series || []).map((s) => [s.series, s]));
+    LEAGUE.schedule.forEach((w) => {
+      const n = w.series || w.week;
+      const row = rows.get(n);
+      if (!row) rows.set(n, { series: n, weeks: [w.week], deadline: null, edited: false, bot: null });
+      else if (!row.deadline && !row.weeks.includes(w.week)) row.weeks.push(w.week);
+    });
+    return [...rows.values()].sort((a, b) => a.series - b.series);
+  }
+  const weeksText = (weeks) => (weeks.length > 1 && weeks[weeks.length - 1] - weeks[0] === weeks.length - 1
+    ? `Weeks ${weeks[0]}-${weeks[weeks.length - 1]}` : `Week${weeks.length > 1 ? "s" : ""} ${weeks.join(", ")}`);
+
+  function deadlinesAdminSection() {
+    const dl = SAVED.deadlines || {};
+    const rows = deadlineRows();
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Series Deadlines</h2></div>
+        <form class="card admin-card" id="dlRecalc" autocomplete="off">
+          <p class="muted small admin-note">Every game in a series has to be played by its deadline. The Discord bot sends them; a date changed here wins over the bot's (Discord shows it too) until you press <strong>Reset to bot's date</strong>. All times are Eastern. <strong>Recalculate all</strong> sets every series from a start date: Series 1 = start + the days between, Series 2 = start + twice that, and so on, at 11:59 PM.</p>
+          <div class="admin-fields">
+            <label class="field"><span>Start date</span><input type="date" name="start" value="${esc(dl.start || "")}" required></label>
+            <label class="field"><span>Days between</span><input type="number" name="days" min="1" max="60" value="${esc(dl.days || 10)}" required></label>
+            <button class="btn btn-primary" type="submit">Recalculate all</button>
+          </div>
+        </form>
+        <div class="card admin-card dl-admin">
+          ${rows.length ? rows.map((s) => `
+            <form class="dl-row" data-series="${s.series}" data-weeks="${s.weeks.join(",")}" autocomplete="off">
+              <div class="dl-row-name">
+                <strong>Series ${s.series}</strong> <span class="muted small">${weeksText(s.weeks)}</span>
+                ${s.edited ? `<span class="pill dl-edited">Edited on site</span>` : ""}
+                <div class="muted small">${s.deadline ? `${fmtDeadline(s.deadline)} &middot; ${deadlineInfo(s).when}` : "No deadline yet"}${s.edited ? ` &middot; Bot's date: ${s.bot ? fmtDeadline(s.bot) : "none"}` : ""}</div>
+              </div>
+              <span class="dl-row-actions">
+                <input type="datetime-local" name="local" value="${s.deadline ? etLocal(s.deadline) : ""}" aria-label="Series ${s.series} deadline (Eastern)" required>
+                <button class="btn btn-primary btn-sm" type="submit">Save</button>
+                ${s.edited ? `<button type="button" class="btn btn-ghost btn-sm" data-dl-reset="${s.series}">${s.bot ? "Reset to bot's date" : "Clear"}</button>` : ""}
+              </span>
+            </form>`).join("") : `<p class="muted small">No schedule yet. Deadlines show up here once the bot sends the schedule.</p>`}
+        </div>
+      </section>`;
+  }
+
   // ---- Admin: teams ----
 
   let teamEditKey = null; // the team being edited (its original name), or "+new"
@@ -4080,6 +4200,7 @@
   const ACTIVITY_LABELS = {
     saveResult: "Results", deleteResult: "Results", saveUpdates: "Transactions", deleteUpdate: "Transactions",
     setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule", renamePlayers: "Player names", syncRosters: "Rosters", editPlayer: "Players", undoPlayerEdit: "Players", giveAward: "Honors", giveRecord: "Honors", undoHonor: "Honors",
+    deadlines: "Deadlines", setDeadline: "Deadlines", recalcDeadlines: "Deadlines", resetDeadline: "Deadlines",
     saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", editGameLine: "Player stats", addVod: "VODs", removeVod: "VODs"
   };
   function activitySection(limit = 100) {
@@ -4825,6 +4946,21 @@
 
   app.addEventListener("submit", async (e) => {
     const id = e.target.id;
+    // Admin -> Deadlines: one series' date, or every series from a start date
+    if (e.target.classList.contains("dl-row") || id === "dlRecalc") {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const d = e.target.dataset;
+      const body = id === "dlRecalc"
+        ? { action: "recalcDeadlines", start: String(form.get("start") || ""), days: Number(form.get("days")),
+            list: deadlineRows().map((s) => ({ series: s.series, weeks: s.weeks })) }
+        : { action: "setDeadline", series: Number(d.series), weeks: d.weeks.split(",").map(Number), local: String(form.get("local") || "") };
+      return adminSave(e.target.querySelector("button[type=submit]"), body, (res) => {
+        SAVED.deadlines = res.deadlines;
+        adminFlash = id === "dlRecalc" ? "Recalculated every series deadline. The site and Discord show them now."
+          : `Saved the Series ${d.series} deadline. The site and Discord show it now.`;
+      });
+    }
     // Admin -> Player Stats: one game's stat line, or a new line for a game
     if (e.target.classList.contains("game-line-form") || id === "gameLineAdd") {
       e.preventDefault();
@@ -5107,6 +5243,12 @@
         SAVED.bowls = res.bowls;
         bowlDraft = null;
         adminFlash = "Saved the United Flag Bowl history. It's on the Past Bowls page now.";
+      });
+    }
+    if (t.dataset.dlReset) {
+      return adminSave(t, { action: "resetDeadline", series: Number(t.dataset.dlReset) }, (res) => {
+        SAVED.deadlines = res.deadlines;
+        adminFlash = `Series ${t.dataset.dlReset} is back to the bot's date.`;
       });
     }
     if (t.dataset.delStream) {

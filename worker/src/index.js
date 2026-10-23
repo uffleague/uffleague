@@ -3,10 +3,11 @@
 //   GET  /                                     -> saved data (everything but the activity log)
 //   POST / { action: "login", username, password, name } -> { username, name, token }
 //   POST / { action, token, ... }              -> the saved data ("activity" returns the log)
+//   POST /bot, GET /bot/deadlines (Authorization: Bearer <BOT_KEY>) -> the Discord bot (see below)
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
-  renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], activity: [] };
+  renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, activity: [] };
 const RENAMES_MAX = 3000;
 const PEOPLE_MAX = 3000;
 const SYNCS_MAX = 200;
@@ -70,7 +71,9 @@ async function load(env) {
   return { ...EMPTY, ...data };
 }
 // The site gets each known player's Roblox and Discord names, but not their ids
-const publicData = ({ activity, people, ...rest }) => ({ ...rest, people: (people || []).map((p) => ({ name: p.name, discord: p.discord })) });
+// and the series deadlines it's showing (with the bot's own date for each, for the Admin page)
+const publicData = ({ activity, people, ...rest }) => ({ ...rest, people: (people || []).map((p) => ({ name: p.name, discord: p.discord })),
+  deadlines: shownDeadlines(rest, true) });
 
 // The site checks for updates every 30 seconds, so reads are kept for a few seconds in this copy of the worker
 // instead of hitting KV every time; a save here clears it right away
@@ -316,6 +319,7 @@ async function botTransactions(req, env) {
   if (!env.BOT_KEY || !key || !same(key, env.BOT_KEY)) return json({ error: "Wrong or missing bot key." }, 401);
   let body;
   try { body = await req.json(); } catch (e) { return json({ error: "Send JSON." }, 400); }
+  if (body.deadlines) return botDeadlines(env, body.deadlines);
   if (body.schedule) return botSchedule(env, body.schedule);
   if (body.gameTime) return botGameTime(env, body.gameTime);
   if (body.score) return botScore(env, body.score);
@@ -459,11 +463,155 @@ async function botRosters(env, rs) {
   return json({ teams: saved.length, players, renamed, problems });
 }
 
+// ---- Series deadlines ----
+// Every game in a series has to be played by its deadline (11:59 PM Eastern, DEADLINE_DAYS apart by default).
+// The bot sends them (POST /bot { deadlines }); an admin can change one on the site, and that edit wins over what
+// the bot sends until it's reset; the bot reads back what the site shows (GET /bot/deadlines) so Discord matches.
+// Saved as { bot: { start, days, series: [{ series, weeks, deadline }] }, edits: { [series]: { deadline, weeks } },
+//            site: { start, days } (the Admin page's "Start date" form), updatedAt }
+const isoTime = (v) => {
+  if (typeof v !== "string" && typeof v !== "number") return null;
+  const d = new Date(v);
+  return isNaN(d) ? null : d.toISOString();
+};
+const isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(`${v}T00:00:00Z`));
+const cleanWeeks = (v, fallback) => {
+  const weeks = [...new Set([].concat(v || []).map((n) => Math.round(Number(n))).filter((n) => n >= 1 && n <= 99))].sort((a, b) => a - b);
+  return weeks.length ? weeks.slice(0, 20) : [fallback];
+};
+const deadlineState = (data) => ({ bot: null, edits: {}, site: null, updatedAt: null, ...(data.deadlines || {}) });
+
+// What the site shows: the bot's deadlines with the admin edits on top. withBot adds the bot's own date (Admin page).
+function shownDeadlines(data, withBot) {
+  const d = deadlineState(data);
+  const bot = (d.bot && d.bot.series) || [];
+  const nums = [...new Set([...bot.map((s) => s.series), ...Object.keys(d.edits).map(Number)])].sort((a, b) => a - b);
+  const from = d.site || d.bot || {};
+  return {
+    start: from.start || null,
+    days: from.days || null,
+    series: nums.map((n) => {
+      const b = bot.find((s) => s.series === n);
+      const e = d.edits[n];
+      return { series: n, weeks: (b && b.weeks) || (e && e.weeks) || [n], deadline: e ? e.deadline : b.deadline, edited: !!e,
+        ...(withBot ? { bot: b ? b.deadline : null } : {}) };
+    }),
+    updatedAt: d.updatedAt
+  };
+}
+
+// The moment a league-time date and time ("2026-11-02", "23:59") happens, as an ISO time
+function leagueInstant(date, time, tz) {
+  const want = Date.parse(`${date}T${time}:00Z`);
+  if (isNaN(want)) return null;
+  let t = want;
+  for (let i = 0; i < 3; i++) {
+    const p = leagueDateTime(t, tz);
+    t += want - Date.parse(`${p.date}T${p.time}:00Z`);
+  }
+  return new Date(t).toISOString();
+}
+const addDays = (day, n) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+// "Nov 14", plus the time when it isn't 11:59 PM, for the activity log
+function shortDeadline(iso, tz) {
+  const d = new Date(iso);
+  const day = new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "short", day: "numeric" }).format(d);
+  const p = leagueDateTime(d.getTime(), tz);
+  return p.time === "23:59" ? day : `${day} ${new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }).format(d)} ET`;
+}
+
+//   POST /bot { "deadlines": { "start": "2026-10-23", "days": 10,
+//     "series": [{ "series": 1, "weeks": [1, 2], "deadline": "2026-11-03T04:59:00.000Z" }] } }
+// Replaces the bot's deadlines (an empty list clears them); deadlines edited on the site stay until reset.
+async function botDeadlines(env, dl) {
+  const tz = env.LEAGUE_TZ || "America/New_York";
+  const sent = [].concat((dl && dl.series) || []);
+  const problems = [];
+  const seen = new Set();
+  const series = sent.slice(0, 99).map((s, i) => {
+    const n = Math.round(Number(s && s.series));
+    if (!(n >= 1 && n <= 99)) { problems.push(`#${i + 1}: needs a series number`); return null; }
+    const deadline = isoTime(s.deadline);
+    if (!deadline) { problems.push(`series ${n}: needs a deadline (ISO time)`); return null; }
+    if (seen.has(n)) { problems.push(`series ${n}: sent twice, kept the first`); return null; }
+    seen.add(n);
+    return { series: n, weeks: cleanWeeks(s.weeks, n), deadline };
+  }).filter(Boolean).sort((a, b) => a.series - b.series);
+  if (sent.length && !series.length) return json({ error: "No deadlines to save.", series: 0, problems }, 400);
+  const days = Number(dl && dl.days);
+  const bot = { start: isDay(dl && dl.start) ? dl.start : null, days: days >= 1 && days <= 60 ? days : null, series };
+
+  const data = await load(env);
+  const d = deadlineState(data);
+  if (JSON.stringify(d.bot) !== JSON.stringify(bot)) {
+    d.bot = bot;
+    d.updatedAt = new Date().toISOString();
+    data.deadlines = d;
+    const edited = series.filter((s) => d.edits[s.series]).length;
+    data.activity = [{ at: Date.now(), by: "Discord bot", action: "deadlines",
+      text: series.length ? `Got ${series.length} series deadline${series.length === 1 ? "" : "s"} from the bot: ${series.map((s) => `Series ${s.series} → ${shortDeadline(s.deadline, tz)}`).join(", ")}${edited ? ` (${edited} edited on the site, those stay)` : ""}`
+        : "The bot cleared its series deadlines" }, ...data.activity].slice(0, ACTIVITY_MAX);
+    await save(env, data);
+  }
+  return json({ series: series.length, problems });
+}
+
+// GET /bot/deadlines: the deadlines the site is showing, admin edits included ("edited": true)
+async function botReadDeadlines(req, env) {
+  const key = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!env.BOT_KEY || !key || !same(key, env.BOT_KEY)) return json({ error: "Wrong or missing bot key." }, 401);
+  return json(shownDeadlines(await load(env)));
+}
+
+// Admin -> Deadlines. Returns the log line, or a Response for a mistake.
+function adminDeadlines(env, data, body) {
+  const tz = env.LEAGUE_TZ || "America/New_York";
+  const d = deadlineState(data);
+  const n = Math.round(Number(body.series));
+  let log;
+  if (body.action === "setDeadline") {
+    // "local": the date and time in Eastern, as a date-time picker gives it ("2026-11-14T23:59")
+    const m = String(body.local || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+    const deadline = m && isDay(m[1]) ? leagueInstant(m[1], m[2], tz) : null;
+    if (!(n >= 1 && n <= 99)) return json({ error: "Pick the series." }, 400);
+    if (!deadline) return json({ error: "Pick a date and time." }, 400);
+    const shown = shownDeadlines(data).series.find((s) => s.series === n);
+    d.edits = { ...d.edits, [n]: { deadline, weeks: shown ? shown.weeks : cleanWeeks(body.weeks, n) } };
+    log = `Series ${n} → ${shortDeadline(deadline, tz)}`;
+  } else if (body.action === "recalcDeadlines") {
+    // Every series again from a start date: Series n = start + n × days, at 11:59 PM
+    const days = Math.round(Number(body.days));
+    if (!isDay(body.start)) return json({ error: "Pick the start date." }, 400);
+    if (!(days >= 1 && days <= 60)) return json({ error: "Days between has to be 1 to 60." }, 400);
+    // The series the site knows, plus the ones on the schedule (sent by the Admin page) that have no deadline yet
+    const list = new Map(shownDeadlines(data).series.map((s) => [s.series, s.weeks]));
+    [].concat(body.list || []).slice(0, 99).forEach((s) => {
+      const k = Math.round(Number(s && s.series));
+      if (k >= 1 && k <= 99 && !list.has(k)) list.set(k, cleanWeeks(s.weeks, k));
+    });
+    if (!list.size) return json({ error: "There's no schedule to set deadlines for yet." }, 400);
+    d.edits = Object.fromEntries([...list].sort((a, b) => a[0] - b[0]).map(([k, weeks]) => [k, { deadline: leagueInstant(addDays(body.start, k * days), "23:59", tz), weeks }]));
+    d.site = { start: body.start, days };
+    log = `From ${shortDeadline(leagueInstant(body.start, "23:59", tz), tz)}, ${days} days apart: ${Object.entries(d.edits).map(([k, e]) => `Series ${k} → ${shortDeadline(e.deadline, tz)}`).join(", ")}`;
+  } else {
+    if (!d.edits[n]) return json({ error: "That series already has the bot's date." }, 400);
+    const { [n]: gone, ...rest } = d.edits;
+    d.edits = rest;
+    if (!Object.keys(rest).length) d.site = null;
+    const bot = ((d.bot && d.bot.series) || []).find((s) => s.series === n);
+    log = bot ? `Series ${n} → back to the bot's date (${shortDeadline(bot.deadline, tz)})` : `Series ${n} → no deadline (the bot hasn't sent one)`;
+  }
+  d.updatedAt = new Date().toISOString();
+  data.deadlines = d;
+  return log; // the activity log shows it under "Deadlines"
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const path = new URL(req.url).pathname;
     if (req.method === "GET" && path.startsWith("/img/")) return serveImage(env, path.slice(5));
+    if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/deadlines") return botReadDeadlines(req, env);
     if (req.method === "GET") {
       return new Response(await publicText(env), { headers: { "content-type": "application/json", "cache-control": "no-store", ...CORS } });
     }
@@ -500,7 +648,10 @@ export default {
     }
 
     let log = "";
-    if (body.action === "saveResult") {
+    if (["setDeadline", "recalcDeadlines", "resetDeadline"].includes(body.action)) {
+      log = adminDeadlines(env, data, body);
+      if (log instanceof Response) return log;
+    } else if (body.action === "saveResult") {
       const r = body.result || {};
       const score = Array.isArray(r.score) ? r.score.map(Number) : [];
       if (typeof r.id !== "string" || score.length !== 2 || score.some((n) => !Number.isFinite(n))) {
