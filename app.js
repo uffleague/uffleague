@@ -343,7 +343,10 @@
   // Rosters and staff, played back in time order. ROSTERS[slug]: player key -> name;
   // STAFF[slug]: player key -> { player, role, date, time } (the latest role each person has there)
   const ROSTERS = {}, STAFF = {};
-  const synced = new Set(); // teams whose whole staff a roster sync has set
+  const synced = new Set(); // teams whose whole roster and staff a roster sync has set
+  // Players whose team a transaction, sync or Admin move has decided: off every roster means a free agent,
+  // not still on the team from their old box scores
+  const placed = new Set();
   const rosterOf = (t) => (ROSTERS[t.slug] = ROSTERS[t.slug] || new Map());
   const staffOf = (t) => (STAFF[t.slug] = STAFF[t.slug] || new Map());
   // Takes someone off every other team's roster and/or staff
@@ -351,6 +354,7 @@
   UPDATES.concat(disbands, syncs, moves).sort(byTime).forEach((u) => {
     if (u.type === "move") {
       const key = u.player.toLowerCase();
+      placed.add(key);
       leaveOthers(key, u.t ? u.t.slug : null, [ROSTERS, STAFF]);
       if (u.t) rosterOf(u.t).set(key, u.player);
       return;
@@ -361,9 +365,14 @@
     if (u.type === "disband") { delete ROSTERS[s]; delete STAFF[s]; return; }
     if (u.type === "sync") {
       // The sync is that team's whole roster and staff (replace), so older staff records don't carry over
-      if (u.replace) { ROSTERS[s] = new Map(); STAFF[s] = new Map(); synced.add(s); }
+      if (u.replace) {
+        // Anyone on the team who isn't in the sync is off it
+        [ROSTERS[s], STAFF[s]].forEach((m) => m && m.forEach((_, key) => placed.add(key)));
+        ROSTERS[s] = new Map(); STAFF[s] = new Map(); synced.add(s);
+      }
       u.players.filter((p) => !p.role).forEach((p) => {
         const key = p.name.toLowerCase();
+        placed.add(key);
         leaveOthers(key, s, [ROSTERS, STAFF]);
         rosterOf(u.t).set(key, p.name);
         if (!u.players.some((x) => x.role && x.name.toLowerCase() === key)) staffOf(u.t).delete(key);
@@ -374,6 +383,7 @@
       // Owners and coaches play too: they're on the roster as well as the staff
       u.players.filter((p) => p.role).forEach((p) => {
         const key = p.name.toLowerCase();
+        placed.add(key);
         leaveOthers(key, s, [ROSTERS, STAFF]);
         rosterOf(u.t).set(key, p.name);
         staffOf(u.t).set(key, { player: p.name, role: p.role, date: u.date, time: u.time, i: u.i });
@@ -381,6 +391,7 @@
       return;
     }
     const key = u.player.toLowerCase();
+    if (UPDATE_TYPES[u.type]) placed.add(key);
     if (u.type === "sign") {
       // Signing somewhere else also ends a staff job on another team
       leaveOthers(key, s, [ROSTERS, STAFF]);
@@ -390,7 +401,9 @@
       if (STAFF[s]) STAFF[s].delete(key);
     } else if (u.type === "promotion") {
       // Joining another team's staff (owner, coach...) takes them off their old team's roster and staff
+      // and they stay on (or join) the promoting team's roster
       leaveOthers(key, s, [ROSTERS, STAFF]);
+      rosterOf(u.t).set(key, u.player);
       if (u.role) staffOf(u.t).set(key, u);
     }
   });
@@ -1007,15 +1020,17 @@
     return out;
   }
 
-  // Team a player is on: their roster from Updates, otherwise the team from their latest box score,
+  // Team a player is on: their roster from Updates and roster syncs (off every roster after a transaction or sync
+  // = free agent), otherwise the team from their latest box score unless a sync has set that team's whole roster,
   // otherwise the team they're head coach of, otherwise their latest staff promotion
   function currentTeam(name) {
     const key = name.toLowerCase();
     const slugOn = Object.keys(ROSTERS).find((s) => ROSTERS[s].has(key));
     if (slugOn) return TEAMS.find((t) => t.slug === slugOn);
+    if (placed.has(key)) return null;
     const games = playerGames(name);
     const last = games[games.length - 1];
-    const played = last && TEAMS.find((t) => t.name === last.g.teams[last.i]);
+    const played = last && TEAMS.find((t) => t.name === last.g.teams[last.i] && !synced.has(t.slug));
     const staffSlug = Object.keys(STAFF).find((s) => STAFF[s].has(key));
     const staff = staffSlug && TEAMS.find((t) => t.slug === staffSlug && !t.disbanded);
     return played || TEAMS.find((t) => !t.disbanded && t.coach && t.coach.toLowerCase() === key) || staff || null;
@@ -1092,9 +1107,10 @@
     if (!t) return notFound();
     tab = TEAM_TABS.some(([k]) => k === tab) ? tab : "overview";
 
-    // Roster: signings from Updates, plus anyone whose latest box score was for this team
+    // Roster: signings from Updates and roster syncs, plus anyone whose latest box score was for this team
+    // (a team the bot has synced has exactly the synced roster and the transactions since)
     const roster = new Map(ROSTERS[t.slug] || []);
-    Object.values(BOX_TOTALS).forEach((group) =>
+    if (!synced.has(t.slug)) Object.values(BOX_TOTALS).forEach((group) =>
       Object.values(group).forEach((r) => {
         const key = r.player.toLowerCase();
         if (!roster.has(key) && r.team === t.name && currentTeam(r.player) === t) roster.set(key, r.player);

@@ -142,7 +142,10 @@ function leagueDateTime(when, tz) {
 // The transactions bot (ZevoraV2) posts here the moment it announces a transaction:
 //   POST /bot   Authorization: Bearer <BOT_KEY>
 //   { "transactions": [{ "type": "sign"|"offer"|"demand"|"release"|"promotion", "player": "...", "team": "...",
-//                        "by": "...", "role": "...", "note": "...", "time": "<ISO time>", "id": "<Discord message id>" }] }
+//                        "by": "...", "role": "...", "note": "...", "time": "<ISO time>", "id": "<Discord message id>",
+//                        "discord": "<Discord name>", "robloxId": 123, "discordId": "..." }] }
+// The site moves the player right away: release / demand take them off that team, sign / offer put them on it (and
+// off any other), promotion keeps them on it. They're matched like a roster sync: Roblox / Discord id, then Discord name.
 //
 // It can also post the schedule it generates (same URL and key):
 //   { "schedule": { "replace": false, "weeks": [{ "week": 1, "series": 1,
@@ -354,6 +357,7 @@ async function botTransactions(req, env) {
   const ids = new Set(data.updates.map((u) => u.sourceId).filter(Boolean));
   const added = [], problems = [];
   let renamed = 0;
+  const id = (v, re) => (re.test(String(v ?? "")) ? String(v) : undefined);
   list.slice(0, 50).forEach((t, i) => {
     const type = String(t.type || "").toLowerCase() === "offer" ? "sign" : String(t.type || "").toLowerCase();
     const when = leagueDateTime(t.time || Date.now(), env.LEAGUE_TZ || "America/New_York");
@@ -363,8 +367,18 @@ async function botTransactions(req, env) {
       sourceId: str(String(t.id ?? ""), 40), source: "bot"
     };
     if (!UPDATE_TYPES.includes(type) || !u.player || !u.team || !when) { problems.push(`#${i + 1}: needs type, player, team and a valid time`); return; }
-    // "player" is the Roblox username and "discord" the Discord name the site used to store
+    // "player" is the Roblox username and "discord" the Discord name the site used to store; someone the site knows
+    // by their Roblox / Discord id under another name is renamed to it, like a roster sync does
+    const robloxId = id(t.robloxId, /^\d{1,20}$/), discordId = id(t.discordId, /^\d{5,25}$/);
+    const known = (robloxId && data.people.find((x) => x.robloxId === robloxId)) || (discordId && data.people.find((x) => x.discordId === discordId));
+    if (known && addRename(data, known.name, u.player, true)) renamed++;
     if (u.discord && addRename(data, u.discord, u.player)) renamed++;
+    if (robloxId || discordId) {
+      const person = { name: u.player, discord: u.discord || (known && known.discord), robloxId: robloxId || (known && known.robloxId),
+        discordId: discordId || (known && known.discordId), at: Date.now() };
+      if (known) Object.assign(known, person);
+      else data.people.push(person);
+    }
     if ((u.sourceId && ids.has(u.sourceId)) || have.has(keyOf(u))) return; // already have it
     have.add(keyOf(u));
     if (u.sourceId) ids.add(u.sourceId);
@@ -376,6 +390,7 @@ async function botTransactions(req, env) {
       text: `Added ${added.length} transaction${added.length === 1 ? "" : "s"}: ${added.map((u) => `${u.player} (${u.type}, ${u.team})`).join(", ")}` }, ...data.activity].slice(0, ACTIVITY_MAX);
   }
   if (renamed) data.activity = [{ at: Date.now(), by: "Discord bot", action: "renamePlayers", text: `Renamed ${renamed} player${renamed === 1 ? "" : "s"} to their Roblox username` }, ...data.activity].slice(0, ACTIVITY_MAX);
+  data.people = data.people.slice(-PEOPLE_MAX);
   if (added.length || renamed) await save(env, data);
   return json({ added: added.length, skipped: list.length - added.length - problems.length, renamed, problems }, problems.length && !added.length ? 400 : 200);
 }
@@ -436,7 +451,8 @@ function addRename(data, from, to, byId) {
 // Every team's current roster from the bot (same URL and key):
 //   { "rosters": { "replace": true, "teams": [{ "team": "San Francisco Miners", "players": [
 //       { "name": "<Roblox username>", "discord": "<Discord name>", "discordId": "...", "robloxId": 123, "role": "Head Coach" }] }] } }
-// replace: each team sent gets exactly this roster and staff (otherwise the players are added). It's a correction,
+// replace: each team sent gets exactly this roster and staff (otherwise the players are added): anyone on the team
+// who isn't listed comes off it (a free agent, unless another team's sync has them), stats kept. It's a correction,
 // so no transactions are made. Players are matched to who the site already has by Roblox id, Discord id, then Discord
 // name, and renamed to their Roblox username.
 async function botRosters(env, rs) {
