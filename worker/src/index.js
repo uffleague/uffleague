@@ -169,16 +169,23 @@ function gameTimeAt(v) {
 // Finds a game on the saved schedule from what the bot knows about it: the game id, the bot's game code
 // (set with a game time), or the week (and series) plus the two teams in either order
 const botTeamKey = (t) => String(t || "").replace(/:[^:\s]+:/g, "").replace(/@/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+// The bot's schedule names teams by code ("NO") but its game times and scores use the full name ("@New Orleans Raiders"),
+// so both go through the league's team list (the one the primetime games last read) before they're compared
+function gameTeamKey(data) {
+  const { resolve } = ptTeams(ptState(data).teams, data.teams);
+  return (t) => botTeamKey(resolve(t));
+}
 function findBotGame(data, q) {
+  const key = gameTeamKey(data);
   const week = Math.round(Number(q && q.week));
   const series = Math.round(Number(q && q.series));
   const id = str(String((q && q.id) ?? ""), 20);
   const code = str(String((q && q.gameCode) ?? ""), 20);
-  const pair = [].concat((q && q.teams) || [q && (q.team || q.team1), q && (q.opponent || q.team2)].filter(Boolean)).map(botTeamKey).sort().join("|");
+  const pair = [].concat((q && q.teams) || [q && (q.team || q.team1), q && (q.opponent || q.team2)].filter(Boolean)).map(key).sort().join("|");
   const weeks = data.schedule.filter((w) => (!(week >= 1) || w.week === week) && (!(series >= 1) || !w.series || w.series === series));
   let game;
   weeks.some((w) => (game = w.games.find((g) => (id && g.id === id) || (code && g.code && g.code.toLowerCase() === code.toLowerCase()))));
-  if (!game && pair.includes("|") && (week >= 1 || !id)) weeks.some((w) => (game = w.games.find((g) => g.teams.map(botTeamKey).sort().join("|") === pair)));
+  if (!game && pair.includes("|") && (week >= 1 || !id)) weeks.some((w) => (game = w.games.find((g) => g.teams.map(key).sort().join("|") === pair)));
   return game || null;
 }
 const notOnSite = () => json({ updated: 0, note: "That game isn't on the site's schedule, so nothing changed." });
@@ -225,7 +232,8 @@ async function botScore(env, sc) {
   const data = await load(env);
   const game = findBotGame(data, sc);
   if (!game) return notOnSite();
-  const flip = botTeamKey(game.teams[0]) === teams[1];
+  const key = gameTeamKey(data);
+  const flip = key(game.teams[0]) === key(sc.teams[1]);
   const score = flip ? [scores[1], scores[0]] : scores;
   const when = leagueDateTime(sc.time || Date.now(), env.LEAGUE_TZ || "America/New_York");
   const old = data.results.find((r) => r.id === game.id);
