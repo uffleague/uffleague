@@ -844,6 +844,7 @@
     if (upcoming.length || !finalWeeks().length) return `
       <div class="hx-panel">
         ${panelHead("Upcoming Games", "#/schedule", "Schedule")}
+        ${primetimeCard()}
         ${nextDeadline()}
         ${upcoming.length ? upcoming.map(({ g, wk }) => `
           <a class="hx-game" href="#/schedule/${wk.week}">
@@ -855,6 +856,7 @@
     return `
       <div class="hx-panel">
         ${panelHead("Latest Scores", "#/scores", "All Scores")}
+        ${primetimeCard()}
         ${nextDeadline()}
         ${finals.map(({ g, wk }) => `
           <a class="hx-game" href="#/scores">
@@ -2342,21 +2344,22 @@
     const [a, b] = g.teams.map((n) => TEAMS.find((t) => t.name === n) || { name: n });
     const type = matchupType(a.slug && a, b.slug && b);
     const final = Array.isArray(g.score);
+    const pt = ptGame(g.id); // a primetime game: gold card, its badge and both teams' seeds
     const side = (t, i) => {
       const won = final && g.score[i] > g.score[1 - i];
       return `
         <a class="game-team ${i ? "game-team--right" : ""} ${final && !won ? "lost" : ""}" ${t.slug ? `href="#/teams/${t.slug}"` : ""}>
           ${teamLogo(t, "md")}
           <span>
-            <span class="game-team-name">${t.name}</span>
+            <span class="game-team-name">${ptSeed(pt, i)}${t.name}</span>
             ${t.slug ? `<span class="muted small">${t.w}-${t.l}</span>` : ""}
           </span>
         </a>`;
     };
     return `
-      <div class="card game-card">
+      <div class="card game-card ${pt ? "game-card--pt" : ""}">
         <div class="game-top">
-          <span class="game-id">${g.id}</span>
+          <span class="game-id">${g.id}${pt ? ptBadge(pt) : ""}</span>
           <span class="game-type game-type--${type.cls}">${type.label}</span>
         </div>
         <div class="game-row">
@@ -2459,6 +2462,75 @@
       </a>`;
   }
 
+  /* ---------- Primetime games ---------- */
+  // The marquee game(s) of each series between top seeds. The worker picks them from the standings (an admin can
+  // star or unstar games on Admin -> Primetime) and sends them in SAVED.primetime: per series, the primetime games
+  // ({ id, teams, seeds, label, manual }) and every game ("all", with its kickoff "start" when it has one).
+  const ptSeries = () => ((SAVED.primetime || {}).series || []);
+  const ptGame = (id) => ptSeries().flatMap((s) => s.games).find((g) => g.id === id) || null;
+  const ptStart = (id) => (ptSeries().flatMap((s) => s.all || []).find((g) => g.id === id) || {}).start || null;
+  const ptBadge = (pt) => `<span class="pt-badge">&#11088; ${esc(pt.label || "Primetime")}</span>`;
+  const ptSeed = (pt, i) => (pt && pt.seeds && pt.seeds[i] ? `<span class="pt-seed">#${pt.seeds[i]}</span>` : "");
+  const liveStream = (id) => (SAVED.streams || []).find((s) => s.gameId === id && streamEmbed(s.url));
+  // "in 2d 4h", "in 3h 12m", "in 12m"; past kickoff: "" (the game shows as live or started instead)
+  function untilKickoff(at) {
+    const mins = Math.ceil((at - Date.now()) / 6e4);
+    if (mins <= 0) return "";
+    const d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+    return `in ${d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`}`;
+  }
+  // Countdowns on the page tick on their own
+  setInterval(() => document.querySelectorAll("[data-kickoff]").forEach((el) => {
+    el.textContent = untilKickoff(Number(el.dataset.kickoff)) || "now";
+  }), 30000);
+
+  // Schedule page: a series' primetime games, above its games
+  function ptStrip(series) {
+    const s = ptSeries().find((x) => x.series === series);
+    const list = s ? s.games.map((pt) => ({ pt, g: allGames().find(({ g }) => g.id === pt.id) })).filter((x) => x.g) : [];
+    if (!list.length) return "";
+    return `
+      <div class="pt-strip">
+        <div class="pt-strip-head">&#11088; Primetime <span>Series ${series}</span></div>
+        <div class="pt-strip-games">
+          ${list.map(({ pt, g: { g, wk } }) => {
+            const live = !Array.isArray(g.score) && liveStream(g.id);
+            return `
+              <div class="pt-item">
+                <a class="pt-item-main" href="#/schedule/${wk.week}">
+                  <span class="pt-item-label">${esc(pt.label)} &middot; ${esc(g.id)}</span>
+                  <span class="pt-item-teams">${[0, 1].map((i) => `
+                    <span class="pt-item-team">${logoOr(teamByName(g.teams[i]))}${ptSeed(pt, i)}<span class="pt-name-full">${esc(g.teams[i])}</span><span class="pt-name-short">${esc(shortName(g.teams[i]))}</span></span>`).join(`<span class="pt-item-vs">vs</span>`)}
+                  </span>
+                  <span class="pt-item-time">${Array.isArray(g.score) ? `Final &middot; ${g.score[0]}-${g.score[1]}` : esc(g.time || `Week ${wk.week} &middot; no game time yet`)}</span>
+                </a>
+                ${live ? `<a class="pt-watch" href="${esc(live.url)}" target="_blank" rel="noopener"><span class="live-dot"></span>Watch live</a>` : ""}
+              </div>`;
+          }).join("")}
+        </div>
+      </div>`;
+  }
+
+  // Home page: the next primetime game still to be played, with its kickoff countdown
+  function primetimeCard() {
+    const next = ptSeries().flatMap((s) => s.games.map((pt) => ({ pt, s })))
+      .map((x) => ({ ...x, g: allGames().find(({ g }) => g.id === x.pt.id), start: ptStart(x.pt.id) }))
+      .filter((x) => x.g && !Array.isArray(x.g.g.score))
+      .sort((a, b) => a.s.series - b.s.series || (a.start || Infinity) - (b.start || Infinity))[0];
+    if (!next) return "";
+    const { pt, g: { g, wk }, start } = next;
+    const live = liveStream(g.id);
+    return `
+      <div class="hx-pt">
+        <a class="hx-pt-main" href="#/schedule/${wk.week}">
+          <span class="hx-pt-label">&#11088; Primetime this series &middot; ${esc(pt.label === "Primetime" ? `Series ${next.s.series}` : pt.label)}</span>
+          <span class="hx-pt-teams">${[0, 1].map((i) => `<span class="hx-pt-team">${logoOr(teamByName(g.teams[i]), "md")}${ptSeed(pt, i)}<b>${esc(shortName(g.teams[i]))}</b></span>`).join(`<span class="hx-pt-vs">vs</span>`)}</span>
+          <span class="hx-pt-when">${live ? "<b>Live now</b>" : start ? `Kickoff <b data-kickoff="${start}">${untilKickoff(start) || "now"}</b>` : ""}${g.time ? `<span>${esc(g.time)}</span>` : `<span>Week ${wk.week} &middot; no game time yet</span>`}</span>
+        </a>
+        ${live ? `<a class="hx-pt-watch" href="${esc(live.url)}" target="_blank" rel="noopener"><span class="live-dot"></span>Watch</a>` : ""}
+      </div>`;
+  }
+
   function schedule() {
     if (!LEAGUE.schedule.length) return placeholder("Schedule", "The season schedule will be posted soon.")();
     const wk = LEAGUE.schedule.find((w) => w.week === scheduleWeek) || LEAGUE.schedule[0];
@@ -2489,7 +2561,8 @@
           <select id="scheduleWeek" class="select" aria-label="Week">${picker}</select>
         </div>
         ${dl ? deadlineBar(dl) : ""}
-        <div class="game-grid">${wk.games.map(gameCard).join("")}</div>
+        ${ptStrip(wk.series || wk.week)}
+        <div class="game-grid">${[...wk.games].sort((a, b) => !!ptGame(b.id) - !!ptGame(a.id)).map(gameCard).join("")}</div>
       </div>`;
   }
 
@@ -3330,6 +3403,7 @@
     ["honors", "Honors", "awards", () => honorsAdminSection()],
     ["teams", "Teams", "teams", () => teamsAdminSection()],
     ["deadlines", "Deadlines", "clock", () => deadlinesAdminSection()],
+    ["primetime", "Primetime", "star", () => primetimeAdminSection()],
     ["streams", "Live Streams", "live", () => streamsAdminSection()],
     ["vods", "VODs", "play", () => vodsAdminSection()],
     ["playoffs", "Playoffs", "playoff", () => playoffsAdminSection()],
@@ -3835,6 +3909,48 @@
       </section>`;
   }
 
+  // ---- Admin: primetime games ----
+  function primetimeAdminSection() {
+    const pt = SAVED.primetime || {};
+    const set = pt.settings || { perSeries: 1, topSeeds: 6 };
+    const seeds = (g) => g.teams.map((n, i) => `${g.seeds[i] ? `<span class="pt-seed">#${g.seeds[i]}</span>` : ""}${esc(shortName(n))}`).join(` <span class="muted">vs</span> `);
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Primetime Games</h2></div>
+        <form class="card admin-card" id="ptSettings" autocomplete="off">
+          <p class="muted small admin-note">Each series' primetime games are its games between two top seeds, best matchup first (seeds come from the standings). They get a gold card with a &#11088; badge on the Schedule and Scores pages, a strip at the top of the series and a card on the home page; Discord reads them too. Starring or unstarring a game here wins over the automatic pick. A series that has started, or is within 48 hours of its first game time, keeps its automatic pick.</p>
+          ${pt.seeded === false ? `<p class="muted small admin-note"><strong>No game is final yet</strong>, so there are no seeds and nothing is picked automatically. Star games by hand until the first scores are in.</p>` : ""}
+          <div class="admin-fields">
+            <label class="field"><span>Primetime games per series</span><input type="number" name="perSeries" min="0" max="3" value="${esc(set.perSeries)}" required></label>
+            <label class="field"><span>Top seeds</span><input type="number" name="topSeeds" min="2" max="32" value="${esc(set.topSeeds)}" required></label>
+            <button class="btn btn-primary" type="submit">Save settings</button>
+          </div>
+        </form>
+        ${(pt.series || []).length ? pt.series.map((s) => `
+          <div class="card admin-card pt-admin">
+            <div class="pt-admin-head">
+              <div><strong>Series ${s.series}</strong> <span class="muted small">${weeksText(s.weeks)}</span>
+                ${s.locked ? `<span class="pill pt-pill" title="Started, or within 48 hours of its first game: the automatic pick stays">Locked</span>` : ""}</div>
+              ${s.all.some((g) => g.manual !== null) ? `<button type="button" class="btn btn-ghost btn-sm" data-pt-reset="${s.series}">Reset to automatic</button>` : ""}
+            </div>
+            ${s.all.map((g) => `
+              <div class="pt-row ${g.primetime ? "on" : ""}">
+                <button type="button" class="pt-star" data-pt-star="${esc(g.id)}" data-on="${g.primetime ? "" : "1"}" aria-pressed="${g.primetime}" title="${g.primetime ? "Unstar: not primetime" : "Star: make it primetime"}">${g.primetime ? "&#9733;" : "&#9734;"}</button>
+                <div class="pt-row-game">
+                  <span class="pt-row-id">${esc(g.id)}</span> ${seeds(g)}
+                  ${g.final ? `<span class="muted small">Final</span>` : ""}
+                  ${g.manual !== null ? `<span class="pill pt-pill">Set by admin</span>` : g.auto ? `<span class="pill pt-pill pt-pill--auto">Automatic</span>` : ""}
+                </div>
+                ${g.primetime ? `
+                  <form class="pt-label-form" data-id="${esc(g.id)}" autocomplete="off">
+                    <input type="text" name="label" maxlength="24" placeholder="Primetime" value="${esc(g.label || "")}" aria-label="${esc(g.id)} label">
+                    <button class="btn btn-ghost btn-sm" type="submit">Save label</button>
+                  </form>` : ""}
+              </div>`).join("")}
+          </div>`).join("") : `<div class="card admin-card"><p class="muted small">No schedule yet. Games show up here once the bot sends the schedule.</p></div>`}
+      </section>`;
+  }
+
   // ---- Admin: teams ----
 
   let teamEditKey = null; // the team being edited (its original name), or "+new"
@@ -4201,6 +4317,7 @@
     saveResult: "Results", deleteResult: "Results", saveUpdates: "Transactions", deleteUpdate: "Transactions",
     setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule", renamePlayers: "Player names", syncRosters: "Rosters", editPlayer: "Players", undoPlayerEdit: "Players", giveAward: "Honors", giveRecord: "Honors", undoHonor: "Honors",
     deadlines: "Deadlines", setDeadline: "Deadlines", recalcDeadlines: "Deadlines", resetDeadline: "Deadlines",
+    primetime: "Primetime", ptSettings: "Primetime", ptStar: "Primetime", ptLabel: "Primetime", ptReset: "Primetime",
     saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", editGameLine: "Player stats", addVod: "VODs", removeVod: "VODs"
   };
   function activitySection(limit = 100) {
@@ -4946,6 +5063,22 @@
 
   app.addEventListener("submit", async (e) => {
     const id = e.target.id;
+    // Admin -> Primetime: the settings, or a primetime game's label
+    if (id === "ptSettings" || e.target.classList.contains("pt-label-form")) {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const body = id === "ptSettings"
+        ? { action: "ptSettings", perSeries: Number(form.get("perSeries")), topSeeds: Number(form.get("topSeeds")) }
+        : { action: "ptLabel", id: e.target.dataset.id, label: String(form.get("label") || "").trim() };
+      const y = window.scrollY;
+      await adminSave(e.target.querySelector("button[type=submit]"), body, (res) => {
+        SAVED.primetime = res.primetime;
+        adminFlash = id === "ptSettings" ? "Saved the primetime settings. The automatic picks were made again (locked series kept theirs)."
+          : body.label ? `${body.id} now shows "${esc(body.label)}" on its badge.` : `${body.id} shows PRIMETIME on its badge again.`;
+      });
+      if (id !== "ptSettings") window.scrollTo(0, y);
+      return;
+    }
     // Admin -> Deadlines: one series' date, or every series from a start date
     if (e.target.classList.contains("dl-row") || id === "dlRecalc") {
       e.preventDefault();
@@ -5244,6 +5377,18 @@
         bowlDraft = null;
         adminFlash = "Saved the United Flag Bowl history. It's on the Past Bowls page now.";
       });
+    }
+    // Admin -> Primetime: star / unstar a game (stays where you were in the list), or a series back to automatic
+    if (t.dataset.ptStar || t.dataset.ptReset) {
+      const body = t.dataset.ptStar ? { action: "ptStar", id: t.dataset.ptStar, on: !!t.dataset.on } : { action: "ptReset", series: Number(t.dataset.ptReset) };
+      const y = window.scrollY;
+      await adminSave(t, body, (res) => {
+        SAVED.primetime = res.primetime;
+        adminFlash = body.action === "ptReset" ? `Series ${body.series} is back to the automatic pick.`
+          : `${body.id} is ${body.on ? "now" : "no longer"} a primetime game.`;
+      });
+      window.scrollTo(0, y);
+      return;
     }
     if (t.dataset.dlReset) {
       return adminSave(t, { action: "resetDeadline", series: Number(t.dataset.dlReset) }, (res) => {

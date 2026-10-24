@@ -3,11 +3,11 @@
 //   GET  /                                     -> saved data (everything but the activity log)
 //   POST / { action: "login", username, password, name } -> { username, name, token }
 //   POST / { action, token, ... }              -> the saved data ("activity" returns the log)
-//   POST /bot, GET /bot/deadlines (Authorization: Bearer <BOT_KEY>) -> the Discord bot (see below)
+//   POST /bot, GET /bot/deadlines, GET /bot/primetime (Authorization: Bearer <BOT_KEY>) -> the Discord bot (see below)
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
-  renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, activity: [] };
+  renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, primetime: null, activity: [] };
 const RENAMES_MAX = 3000;
 const PEOPLE_MAX = 3000;
 const SYNCS_MAX = 200;
@@ -71,9 +71,9 @@ async function load(env) {
   return { ...EMPTY, ...data };
 }
 // The site gets each known player's Roblox and Discord names, but not their ids
-// and the series deadlines it's showing (with the bot's own date for each, for the Admin page)
+// and the series deadlines it's showing (with the bot's own date for each, for the Admin page), and the primetime games
 const publicData = ({ activity, people, ...rest }) => ({ ...rest, people: (people || []).map((p) => ({ name: p.name, discord: p.discord })),
-  deadlines: shownDeadlines(rest, true) });
+  deadlines: shownDeadlines(rest, true), primetime: (rest.primetime && rest.primetime.view) || null });
 
 // The site checks for updates every 30 seconds, so reads are kept for a few seconds in this copy of the worker
 // instead of hitting KV every time; a save here clears it right away
@@ -81,11 +81,15 @@ const READ_CACHE_MS = 10 * 1000;
 let readCache = null; // { text, at }
 async function publicText(env) {
   if (readCache && Date.now() - readCache.at < READ_CACHE_MS) return readCache.text;
-  const text = JSON.stringify(publicData(await load(env)));
+  const data = await load(env);
+  if (!(data.primetime && data.primetime.view)) await save(env, data); // the primetime games, the first time
+  const text = JSON.stringify(publicData(data));
   readCache = { text, at: Date.now() };
   return text;
 }
+// Every save picks the primetime games again, since results, the schedule and game times all change them
 async function save(env, data) {
+  await refreshPrimetime(env, data);
   await env.UFF.put(KEY, JSON.stringify(data));
   readCache = null;
 }
@@ -154,6 +158,13 @@ function gameTimeText(v, tz) {
   }
   return str(s, 40);
 }
+// The moment (ms) of an ISO time or timestamp, kept on the game as "at" so the site can count down to it
+function gameTimeAt(v) {
+  const s = String(v ?? "").trim();
+  if (!/^\d{10,13}$/.test(s) && !/^\d{4}-\d{2}-\d{2}T/.test(s)) return undefined;
+  const t = new Date(/^\d+$/.test(s) ? Number(s.length === 10 ? s + "000" : s) : s).getTime();
+  return isNaN(t) ? undefined : t;
+}
 
 // Finds a game on the saved schedule from what the bot knows about it: the game id, the bot's game code
 // (set with a game time), or the week (and series) plus the two teams in either order
@@ -191,6 +202,8 @@ async function botGameTime(env, gt) {
   const game = findBotGame(data, gt);
   if (!game) return notOnSite();
   game.time = gameTimeText(gt.time, env.LEAGUE_TZ || "America/New_York");
+  game.at = gameTimeAt(gt.time);
+  if (!game.at) delete game.at;
   const code = str(String(gt.gameCode ?? ""), 20);
   if (code) game.code = code;
   data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveSchedule",
@@ -289,7 +302,7 @@ async function botSchedule(env, sched) {
     const games = [].concat(w.games || []).slice(0, 40).map((g, gi) => {
       const teams = [].concat((g && g.teams) || [g && g.home, g && g.away].filter(Boolean)).map((t) => str(t, 60));
       if (teams.length !== 2 || teams.some((t) => !t)) { problems.push(`week ${week} game #${gi + 1}: needs two teams`); return null; }
-      return { id: str(String(g.id ?? ""), 20) || `W${week}-${gi + 1}`, teams, time: gameTime(g.time) };
+      return { id: str(String(g.id ?? ""), 20) || `W${week}-${gi + 1}`, teams, time: gameTime(g.time), at: gameTimeAt(g.time) };
     }).filter(Boolean);
     if (!games.length) { problems.push(`week ${week}: no games with two teams, left as it was`); return null; }
     return { ...(series >= 1 ? { series } : {}), week, games };
@@ -606,12 +619,227 @@ function adminDeadlines(env, data, body) {
   return log; // the activity log shows it under "Deadlines"
 }
 
+// ---- Primetime games ----
+// The marquee game(s) of each series: its games between two top seeds, best first (lowest seed total; ties: the
+// better seed of the worse team, then the earlier game). Seeds come from the standings (win %, point differential,
+// points for), so they're only there once a game is final; until then the admin picks. An admin can star or unstar
+// any game (that wins over the automatic pick) and give it a label. A series that's started (a game is final) or is
+// within PT_LOCK_HOURS of its first game keeps the automatic pick and seeds it had. The bot reads them at GET /bot/primetime.
+// Saved as { settings: { perSeries, topSeeds }, manual: { [gameId]: true|false }, labels: { [gameId]: "Rivalry Night" },
+//            auto: { [series]: { ids, seeds: { team: seed }, locked } }, teams: [{ name, code }] (the last team list read),
+//            view: what the site and the bot get, updatedAt (changes whenever the view does) }
+const PT_LOCK_HOURS = 48;
+const PT_DEFAULTS = { perSeries: 1, topSeeds: 6 };
+const SITE_DATA = "https://uffleague.github.io/data.js";
+const ptState = (data) => ({ manual: {}, labels: {}, auto: {}, teams: [], view: null, updatedAt: null, ...(data.primetime || {}),
+  settings: { ...PT_DEFAULTS, ...((data.primetime || {}).settings || {}) } });
+
+// The league's teams ({ name, code }, in data.js order) from the site's data.js, read again every 10 minutes.
+// The bot's schedule names teams by code, so this is how "DET" becomes Detroit Dynasty.
+let siteTeams = null; // { list, at }
+async function leagueTeams(env, lastRead) {
+  if (!siteTeams || Date.now() - siteTeams.at > 10 * 60 * 1000) {
+    try {
+      const res = await fetch(env.SITE_DATA || SITE_DATA);
+      const text = res.ok ? await res.text() : "";
+      const at = text.indexOf("conferences:");
+      const list = at < 0 ? [] : [...text.slice(at).matchAll(/\{\s*name:\s*"([^"]+)",\s*code:\s*"([^"]*)"/g)].map((m) => ({ name: m[1], code: m[2] }));
+      if (list.length) siteTeams = { list, at: Date.now() };
+    } catch (e) {}
+  }
+  return siteTeams ? siteTeams.list : lastRead;
+}
+
+// Team names as the site shows them (data.js with the Admin -> Teams edits on top), and resolve() to read the bot's
+// names and codes ("DET", ":DET: Detroit Dynasty") the way the site does
+function ptTeams(list, edits) {
+  const teams = list.map((t) => ({ ...t, key: t.name, keys: [t.name, t.code] }));
+  Object.entries(edits || {}).forEach(([key, e]) => {
+    if (!e || !e.name) return;
+    const t = teams.find((x) => x.key === key);
+    if (t) { t.name = e.name; t.code = e.code || t.code; t.keys.push(e.name, e.code); }
+    else if (key.startsWith("+")) teams.push({ name: e.name, code: e.code || "", key, keys: [e.name, e.code] });
+  });
+  const lookup = new Map();
+  teams.forEach((t) => t.keys.filter(Boolean).forEach((k) => lookup.set(botTeamKey(k), t.name)));
+  // A nickname the bot has differently still matches by its city when only one team has it
+  const city = (n) => n.split(" ").slice(0, -1).join(" ");
+  const resolve = (name) => {
+    const k = botTeamKey(name);
+    if (lookup.has(k)) return lookup.get(k);
+    const same = city(k) ? teams.filter((t) => city(t.name.toLowerCase()) === city(k)) : [];
+    return same.length === 1 ? same[0].name : str(String(name).replace(/:[^:\s]+:/g, "").replace(/@/g, ""), 60) || String(name);
+  };
+  return { names: teams.map((t) => t.name), resolve };
+}
+
+// Each team's seed (1 = best) from the final scores: win %, then point differential, then points for (then data.js
+// order, like the Standings page). null before any game is final: the site has no last-season standings to go by.
+function ptSeeds(data, names, resolve) {
+  const rec = new Map(names.map((n, i) => [n, { n, i, w: 0, l: 0, pf: 0, pa: 0 }]));
+  const scores = new Map(data.results.filter((r) => Array.isArray(r.score)).map((r) => [r.id, r.score]));
+  let finals = 0;
+  data.schedule.forEach((w) => w.games.forEach((g) => {
+    const s = scores.get(g.id);
+    if (!s) return;
+    finals++;
+    g.teams.map(resolve).forEach((n, k) => {
+      const t = rec.get(n);
+      if (!t) return;
+      t.pf += s[k];
+      t.pa += s[1 - k];
+      if (s[k] !== s[1 - k]) s[k] > s[1 - k] ? t.w++ : t.l++;
+    });
+  }));
+  if (!finals) return null;
+  const pct = (t) => (t.w + t.l ? t.w / (t.w + t.l) : 0);
+  const order = [...rec.values()].sort((a, b) => pct(b) - pct(a) || (b.pf - b.pa) - (a.pf - a.pa) || b.pf - a.pf || a.i - b.i);
+  return Object.fromEntries(order.map((t, i) => [t.n, i + 1]));
+}
+
+// When a game starts (ms): its "at", or its time as the site shows it ("Sat, Oct 25, 8:00 PM EDT"; no year, so the
+// one nearest to now). null when it has no time, or one written some other way.
+const US_ZONES = { E: -5, C: -6, M: -7, P: -8 };
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+function gameStart(g, now) {
+  if (Number.isFinite(g.at)) return g.at;
+  const m = String(g.time || "").match(/\b([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{1,2}):(\d{2})\s*([AP])M\s+([ECMP])([DS])T\b/i);
+  const mon = m ? MONTHS.indexOf(m[1].toLowerCase()) : -1;
+  if (mon < 0) return null;
+  const hour = (Number(m[3]) % 12) + (m[5].toUpperCase() === "P" ? 12 : 0);
+  const offset = US_ZONES[m[6].toUpperCase()] + (m[7].toUpperCase() === "D" ? 1 : 0);
+  const year = new Date(now).getUTCFullYear();
+  return [year - 1, year, year + 1].map((y) => Date.UTC(y, mon, Number(m[2]), hour - offset, Number(m[4])))
+    .sort((a, b) => Math.abs(a - now) - Math.abs(b - now))[0];
+}
+
+// Picks the primetime games again and rebuilds what the site and bot see (run by every save)
+async function refreshPrimetime(env, data) {
+  try {
+    const pt = ptState(data);
+    const now = Date.now();
+    pt.teams = (await leagueTeams(env, pt.teams)).map(({ name, code }) => ({ name, code }));
+    const { names, resolve } = ptTeams(pt.teams, data.teams);
+    const seeds = ptSeeds(data, names, resolve);
+    const finals = new Set(data.results.filter((r) => Array.isArray(r.score)).map((r) => r.id));
+    // Each series (a schedule without series: each week) with its games in schedule order
+    const series = new Map();
+    let order = 0;
+    [...data.schedule].sort((a, b) => a.week - b.week).forEach((w) => {
+      const n = w.series || w.week;
+      if (!series.has(n)) series.set(n, { series: n, weeks: [], games: [] });
+      const s = series.get(n);
+      s.weeks.push(w.week);
+      w.games.forEach((g) => s.games.push({ id: g.id, week: w.week, order: order++, teams: g.teams.map(resolve), final: finals.has(g.id), start: gameStart(g, now) }));
+    });
+    const { perSeries, topSeeds } = pt.settings;
+    const worst = (sd, g) => Math.max(...g.teams.map((t) => sd[t] || 999));
+    const total = (sd, g) => g.teams.reduce((n, t) => n + (sd[t] || 999), 0);
+    const log = [];
+    const auto = {};
+    series.forEach((s, n) => {
+      const starts = s.games.map((g) => g.start).filter(Number.isFinite);
+      const lockNow = s.games.some((g) => g.final) || (starts.length > 0 && now >= Math.min(...starts) - PT_LOCK_HOURS * 3600e3);
+      const prev = pt.auto[n];
+      if (prev && (prev.locked || lockNow)) { auto[n] = { ...prev, locked: true }; return; }
+      // The seeds of this series' teams stay with the pick, so a locked series shows the seeds it was picked with
+      const sd = seeds ? Object.fromEntries(s.games.flatMap((g) => g.teams).filter((t) => seeds[t]).map((t) => [t, seeds[t]])) : {};
+      const ids = s.games.filter((g) => g.teams.every((t) => sd[t] && sd[t] <= topSeeds))
+        .sort((a, b) => total(sd, a) - total(sd, b) || worst(sd, a) - worst(sd, b) || a.order - b.order)
+        .slice(0, perSeries).map((g) => g.id);
+      auto[n] = { ids, seeds: sd, locked: lockNow };
+      if (ids.join() !== (prev ? prev.ids.join() : "")) {
+        const what = ids.map((id) => { const g = s.games.find((x) => x.id === id); return `${id} (${g.teams.map((t) => `#${sd[t]}`).join(" vs ")})`; });
+        log.push(`Series ${n} · automatic pick: ${what.length ? what.join(", ") : `none (no game between two top-${topSeeds} seeds)`}`);
+      }
+    });
+
+    const view = {
+      settings: pt.settings,
+      seeded: !!seeds,
+      series: [...series.values()].map((s) => {
+        const a = auto[s.series];
+        const sd = a.locked ? { ...(seeds || {}), ...a.seeds } : seeds || {};
+        const all = s.games.map((g) => {
+          const m = pt.manual[g.id];
+          return { id: g.id, week: g.week, teams: g.teams, seeds: g.teams.map((t) => sd[t] || null), start: g.start || null, final: g.final,
+            auto: a.ids.includes(g.id), manual: typeof m === "boolean" ? m : null, primetime: m === true || (m !== false && a.ids.includes(g.id)),
+            label: pt.labels[g.id] || null };
+        });
+        const rank = (g) => (g.seeds.every(Boolean) ? g.seeds[0] + g.seeds[1] : 999);
+        const top = (g) => (g.seeds.every(Boolean) ? Math.max(...g.seeds) : 999);
+        const games = all.filter((g) => g.primetime).sort((x, y) => rank(x) - rank(y) || top(x) - top(y))
+          .map((g) => ({ id: g.id, teams: g.teams, seeds: g.seeds, label: g.label || "Primetime", manual: g.manual === true }));
+        return { series: s.series, weeks: s.weeks, locked: a.locked, games, all };
+      })
+    };
+    const { updatedAt: was, ...old } = pt.view || {};
+    if (JSON.stringify(view) !== JSON.stringify(old) || !pt.updatedAt) pt.updatedAt = new Date(now).toISOString();
+    view.updatedAt = pt.updatedAt;
+    pt.view = view;
+    pt.auto = auto;
+    data.primetime = pt;
+    if (log.length) data.activity = [...log.reverse().map((text) => ({ at: now, by: "Automatic (standings)", action: "primetime", text })), ...data.activity].slice(0, ACTIVITY_MAX);
+  } catch (e) {
+    console.log("primetime refresh failed", e && e.stack);
+  }
+}
+
+// GET /bot/primetime: every series and its primetime games, admin picks included ("manual": true)
+async function botReadPrimetime(req, env) {
+  const key = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!env.BOT_KEY || !key || !same(key, env.BOT_KEY)) return json({ error: "Wrong or missing bot key." }, 401);
+  const data = await load(env);
+  if (!(data.primetime && data.primetime.view)) await save(env, data); // first read after this was added
+  const view = data.primetime && data.primetime.view;
+  if (!view) return json({ updatedAt: null, series: [] });
+  return json({ updatedAt: view.updatedAt, series: view.series.map((s) => ({ series: s.series,
+    games: s.games.map((g) => ({ id: g.id, teams: g.teams, seeds: g.seeds, label: g.label, manual: g.manual })) })) });
+}
+
+// Admin -> Primetime. Returns the log line, or a Response for a mistake.
+function adminPrimetime(data, body) {
+  const pt = ptState(data);
+  let log;
+  if (body.action === "ptSettings") {
+    const perSeries = Math.round(Number(body.perSeries));
+    const topSeeds = Math.round(Number(body.topSeeds));
+    if (!(perSeries >= 0 && perSeries <= 3)) return json({ error: "Primetime games per series has to be 0 to 3." }, 400);
+    if (!(topSeeds >= 2 && topSeeds <= 32)) return json({ error: "Top seeds has to be 2 to 32." }, 400);
+    pt.settings = { perSeries, topSeeds };
+    log = `Settings · ${perSeries} game${perSeries === 1 ? "" : "s"} per series, top ${topSeeds} seeds`;
+  } else if (body.action === "ptReset") {
+    const n = Math.round(Number(body.series));
+    const ids = data.schedule.filter((w) => (w.series || w.week) === n).flatMap((w) => w.games.map((g) => g.id));
+    if (!ids.some((id) => id in pt.manual)) return json({ error: "That series already uses the automatic pick." }, 400);
+    pt.manual = Object.fromEntries(Object.entries(pt.manual).filter(([id]) => !ids.includes(id)));
+    log = `Series ${n} · reset to automatic`;
+  } else {
+    const id = str(body.id, 20);
+    const w = id && data.schedule.find((x) => x.games.some((g) => g.id === id));
+    if (!w) return json({ error: "That game isn't on the schedule. Reload and try again." }, 400);
+    const where = `Series ${w.series || w.week} · ${id}`;
+    if (body.action === "ptStar") {
+      pt.manual = { ...pt.manual, [id]: body.on === true };
+      log = `${where} ${body.on === true ? "starred" : "unstarred"}`;
+    } else {
+      const label = str(body.label, 24);
+      const { [id]: gone, ...rest } = pt.labels;
+      pt.labels = label ? { ...rest, [id]: label } : rest;
+      log = label ? `${where} labeled "${label}"` : `${where} label cleared`;
+    }
+  }
+  data.primetime = pt;
+  return log; // the activity log shows it under "Primetime"
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const path = new URL(req.url).pathname;
     if (req.method === "GET" && path.startsWith("/img/")) return serveImage(env, path.slice(5));
     if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/deadlines") return botReadDeadlines(req, env);
+    if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/primetime") return botReadPrimetime(req, env);
     if (req.method === "GET") {
       return new Response(await publicText(env), { headers: { "content-type": "application/json", "cache-control": "no-store", ...CORS } });
     }
@@ -650,6 +878,9 @@ export default {
     let log = "";
     if (["setDeadline", "recalcDeadlines", "resetDeadline"].includes(body.action)) {
       log = adminDeadlines(env, data, body);
+      if (log instanceof Response) return log;
+    } else if (["ptSettings", "ptStar", "ptLabel", "ptReset"].includes(body.action)) {
+      log = adminPrimetime(data, body);
       if (log instanceof Response) return log;
     } else if (body.action === "saveResult") {
       const r = body.result || {};

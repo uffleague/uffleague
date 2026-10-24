@@ -1408,3 +1408,59 @@ body.gfx-open { overflow: hidden; }
 .dl-row input[type="datetime-local"] { font: inherit; font-size: 14px; color: var(--ink); padding: 7px 10px; border: 1.5px solid var(--edge); border-radius: 10px; background: var(--surface); }
 .dl-row input:focus { outline: 2px solid var(--cream); outline-offset: 2px; }
 @media (max-width: 600px) { .deadline-count { margin-left: 0; } .dl-row-actions { width: 100%; } .dl-row input[type="datetime-local"] { flex: 1; min-width: 0; } }
+
+/* Primetime games: gold card with a badge and both teams' seeds, the series strip, the home card, Admin -> Primetime */
+:root { --gold: #f0c45a; --gold-soft: rgba(240, 196, 90, .1); }
+.game-card--pt { border-color: rgba(240, 196, 90, .7); background: linear-gradient(180deg, rgba(240, 196, 90, .08), rgba(240, 196, 90, 0) 55%), var(--surface); box-shadow: 0 0 0 1px rgba(240, 196, 90, .25), 0 0 24px rgba(240, 196, 90, .16); }
+.game-card--pt .game-foot { border-top-color: rgba(240, 196, 90, .25); }
+.game-id { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.pt-badge { font-family: var(--body, inherit); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; line-height: 1; padding: 4px 9px; border-radius: 999px; background: var(--gold); color: #1d1606; white-space: nowrap; }
+.pt-seed { margin-right: 5px; font-family: var(--head); font-weight: 700; color: var(--gold); }
+.pt-strip { margin: 0 0 18px; padding: 12px 14px; border: 1px solid rgba(240, 196, 90, .55); border-left: 4px solid var(--gold); border-radius: 10px; background: var(--gold-soft); }
+.pt-strip-head { margin-bottom: 10px; font-family: var(--head); font-size: 15px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+.pt-strip-head span { margin-left: 6px; color: var(--muted); font-weight: 600; }
+.pt-strip-games { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.pt-item { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.pt-item-main { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; color: var(--ink); }
+.pt-item-main:hover .pt-name-full, .pt-item-main:hover .pt-name-short { text-decoration: underline; }
+.pt-item-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+.pt-item-teams { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-weight: 600; color: var(--heading); }
+.pt-item-team { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.pt-item-team .pt-seed { margin-right: 0; }
+.pt-item-vs { font-size: 12px; text-transform: uppercase; color: var(--muted); }
+.pt-name-short { display: none; }
+.pt-item-time { font-size: 13px; color: var(--muted); }
+.pt-watch, .hx-pt-watch { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 8px; background: var(--cream); color: var(--navy); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.pt-watch .live-dot, .hx-pt-watch .live-dot { width: 8px; height: 8px; box-shadow: 0 0 0 3px rgba(209, 26, 42, .25); }
+.hx-pt { display: flex; align-items: center; gap: 10px; margin: 0 18px 10px; padding: 10px 14px; border: 1px solid rgba(240, 196, 90, .55); border-left: 4px solid var(--gold); border-radius: 8px; background: var(--gold-soft); box-shadow: 0 0 18px rgba(240, 196, 90, .1); }
+.hx-pt-main { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; color: var(--hx-ink); }
+.hx-pt-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+.hx-pt-teams { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.hx-pt-team { display: inline-flex; align-items: center; gap: 7px; font-family: var(--head); font-size: 17px; color: #fff; }
+.hx-pt-team .pt-seed { margin-right: -3px; }
+.hx-pt-vs { font-size: 12px; text-transform: uppercase; color: var(--hx-muted); }
+.hx-pt-when { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 13px; color: var(--hx-muted); }
+.hx-pt-when b { color: var(--gold); }
+.pt-admin { margin-top: 14px; padding-top: 8px; padding-bottom: 8px; }
+.pt-admin-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0 10px; border-bottom: 1px solid var(--line); }
+.pt-pill { margin-left: 6px; font-size: 11px; padding: 1px 8px; background: var(--accent); color: var(--cream); border-color: var(--accent-2); }
+.pt-pill--auto { background: var(--gold-soft); color: var(--gold); border-color: rgba(240, 196, 90, .45); }
+.pt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 0; }
+.pt-row + .pt-row { border-top: 1px solid var(--line); }
+.pt-row.on .pt-row-game { color: var(--heading); }
+.pt-star { flex-shrink: 0; width: 36px; height: 36px; display: grid; place-items: center; cursor: pointer; font-size: 20px; line-height: 1; color: var(--muted); background: var(--surface); border: 1.5px solid var(--edge); border-radius: 8px; }
+.pt-star:hover { color: var(--gold); border-color: var(--gold); }
+.pt-row.on .pt-star { color: #1d1606; background: var(--gold); border-color: var(--gold); }
+.pt-star:focus-visible { outline: 2px solid var(--cream); outline-offset: 2px; }
+.pt-row-game { flex: 1; min-width: 180px; color: var(--ink); }
+.pt-row-id { display: inline-block; min-width: 52px; font-family: var(--head); font-weight: 600; color: var(--heading); }
+.pt-label-form { display: flex; gap: 8px; align-items: center; }
+.pt-label-form input { width: 170px; font: inherit; font-size: 14px; color: var(--ink); padding: 6px 10px; border: 1.5px solid var(--edge); border-radius: 10px; background: var(--surface); }
+.pt-label-form input:focus { outline: 2px solid var(--cream); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .pt-strip-games { grid-template-columns: minmax(0, 1fr); }
+  .pt-name-full { display: none; }
+  .pt-name-short { display: inline; }
+  .pt-label-form { width: 100%; padding-left: 48px; }
+  .pt-label-form input { flex: 1; min-width: 0; width: auto; }
+}
