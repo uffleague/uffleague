@@ -778,7 +778,7 @@
     else if (e.key === "ArrowLeft") gfxView(Number(gfxBox.dataset.at) - 1);
   });
 
-  // Stat leaders: this season's box scores, or the All-Time sheets until the first game is played
+  // Stat leaders: this season's box scores (shown first), or the All-Time sheets
   const HOME_LEADERS = [
     { label: "Passing", group: "passing", f: "yds", unit: "YDS", cats: ["QB"] },
     { label: "Receiving", group: "receiving", f: "yds", unit: "YDS", cats: ["WR", "TE"] },
@@ -786,7 +786,7 @@
     { label: "Defense", group: "defense", f: "tak", unit: "TAK", cats: ["Tackles"] }
   ];
   let leadTab = 0;
-  let leadScope = "alltime"; // All-Time first; the switch in the panel shows this season
+  let leadScope = "season"; // This season first; the switch in the panel shows All-Time
   function leadersPanel() {
     const season = leadScope === "season";
     const tabs = HOME_LEADERS.map((l) => {
@@ -808,7 +808,7 @@
       <div class="hx-panel">
         ${panelHead("Stat Leaders", `#/stats/${leadScope}`, "View All")}
         <div class="hx-scope" role="group" aria-label="Stat leaders season">
-          ${[["alltime", "All-Time"], ["season", `Season ${LEAGUE.season}`]].map(([k, label]) =>
+          ${[["season", `Season ${LEAGUE.season}`], ["alltime", "All-Time"]].map(([k, label]) =>
             `<button type="button" class="${k === leadScope ? "on" : ""}" data-lead-scope="${k}" aria-pressed="${k === leadScope}">${label}</button>`).join("")}
         </div>
         <div class="hx-tabs" role="tablist">
