@@ -202,7 +202,7 @@ const LEAGUE = {
     // Award winners listed under a shorter or misspelled name
     "biglester": "biglester1", "kevski": "Kevskiiiiiiii", "VampViolence": "vampviolences", "yavient": "PPspecialist",
     "affused": "IlIIIllIllIIllIlI", "2687affused982673260": "IlIIIllIllIIllIlI", "touchdenim": "denim", "xv89r12azk74m3a4": "stunaaaaaaaaaaaaa", "nskx": "curfaw", "GalanBlox2": "galan",
-    "rip": "KrxticalLag", "ripb_ried": "KrxticalLag", "iluvphenom": "mr_devy1122", ".coaserh": "coaserh", "LightExe": "LighttExe", "i56gwe": "bloodhownd",
+    "rip": "KrxticalLag", "ripb_ried": "KrxticalLag", "iluvphenom": "mr_devy1122", ".coaserh": "coaserh", "LightExe": "LighttExe",
     "sk8star": "sk8erboy111", "slazery": "Conaments", "UFF_HighRANK": "SparkyFaceIsPunched", "JpingRandySanchez": "SparkyFaceIsPunched",
     "jaylenyagami": "rosewood", "✴ 2223007": "n4w", "2223007": "n4w",
     "Nxstalgjc": "PPspecialist", "Made Her Suffer.": "PPspecialist", "Made Her Suffer": "PPspecialist", "hey": "2kaiju", "romance": "galan", "Galan101dragon20": "galan",
