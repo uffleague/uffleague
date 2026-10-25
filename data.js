@@ -157,8 +157,9 @@ const LEAGUE = {
   // You can also add rows by hand under season or allTime (same keys as the columns).
   stats: {
     // Defense lines also have YDA (yards allowed in coverage) and TDA (touchdowns allowed); lower is better.
-    // Rushing lines always go to DE. Receivers count as WR and defenders as DB unless listed here,
-    // e.g. "sk8erboy111": "TE", "i56gwe": "LB".
+    // Rushing lines go to RB. Receivers count as WR and defenders as DB unless listed here,
+    // e.g. "sk8erboy111": "TE", "i56gwe": "LB", "knqq": "DE". Anyone with a sack, TFL, safety or pressure
+    // on a defense line also shows on the DE tab.
     // A player who plays both sides can have two: "breakxu": ["TE", "LB"].
     positions: {},
     // `allTime` = how the All-Time tab looks (same layout as the old stat sheets). Its rows come from the
@@ -166,17 +167,16 @@ const LEAGUE = {
     categories: [
       { key: "QB", from: "passing", sort: "yds", columns: [["comp", "CMP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["int", "INT"], ["cmpPct", "CMP%"], ["lng", "LNG"], ["sacked", "SCKD"]],
         allTime: { sort: "fpts", fpts: { yds: 0.04, td: 4, int: -4 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["comp", "CMP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["int", "INT"]] } },
-      { key: "RB", sort: "yds", columns: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["ypc", "YPC"], ["fum", "FUM"], ["plus20", "20+"], ["lng", "LNG"]],
-        allTime: { from: "rushing", sort: "fpts", fpts: { yds: 1, td: 20 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["fum", "FUM"]] } },
+      { key: "RB", from: "rushing", sort: "yds", columns: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["ypc", "YPC"], ["fum", "FUM"], ["plus20", "20+"], ["lng", "LNG"]],
+        allTime: { sort: "fpts", fpts: { yds: 1, td: 20 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["fum", "FUM"]] } },
       { key: "WR", from: "receiving", pos: "WR", sort: "yds", columns: [["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"], ["lng", "LNG"]],
         allTime: { sort: "fpts", fpts: { yds: 0.1, td: 6 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"]] } },
       { key: "TE", from: "receiving", pos: "TE", sort: "yds", columns: [["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"], ["lng", "LNG"]],
         allTime: { sort: "fpts", fpts: { yds: 0.1, td: 6 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"]] } },
       { key: "Tackles", from: "defense", sort: "tak", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["pbu", "PBU"], ["int", "INT"]],
         allTime: { sort: "fpts", fpts: { tak: 1, tfl: 2 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["tak", "TAK"], ["tfl", "TFL"]] } },
-      // PRE (pressures) counts from the DE's rushing lines plus any defense lines they have
-      { key: "DE", from: "rushing", sort: "yds", addFrom: { pre: "defense" }, columns: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["ypc", "YPC"], ["fum", "FUM"], ["plus20", "20+"], ["lng", "LNG"], ["pre", "PRE"]],
-        allTime: { from: "defense", addFrom: null, sort: "fpts", fpts: { sck: 1, saf: 2 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["sck", "SCK"], ["saf", "SAF"]] } },
+      { key: "DE", from: "defense", pos: "DE", sort: "sck", columns: [["sck", "SCK"], ["tfl", "TFL"], ["pre", "PRE"], ["saf", "SAF"], ["tak", "TAK"], ["swat", "SWAT"]],
+        allTime: { sort: "fpts", fpts: { sck: 1, saf: 2 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["sck", "SCK"], ["saf", "SAF"]] } },
       { key: "DB", from: "defense", pos: "DB", sort: "int", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"], ["yda", "YDA"], ["tda", "TDA"]],
         allTime: { sort: "fpts", fpts: { int: 1, pbu: 0.5 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["int", "INT"], ["pbu", "PBU"]] } },
       // The old LB sheet's FPTS used stats it didn't show, so this season's LB points are a best guess
@@ -227,16 +227,16 @@ const LEAGUE = {
     defense: { tak: 1, tfl: 1, sck: 2, saf: 2, swat: 1, int: 3, pbu: 1, pre: 0.5, td: 6 }
   },
   // Award Candidates: which box score sections count for each award, and (optional) position.
-  // Rushing counts as defense here because rushing lines are DE stats.
   candidates: [
     { code: "MVP", name: "Most Valuable Player", groups: ["passing", "rushing", "receiving", "defense"] },
     { code: "OPOTY", name: "Offensive Player of the Year", groups: ["passing", "receiving"] },
-    { code: "DPOTY", name: "Defensive Player of the Year", groups: ["defense", "rushing"] },
+    { code: "DPOTY", name: "Defensive Player of the Year", groups: ["defense"] },
     { code: "QBOTY", name: "Quarterback of the Year", groups: ["passing"] },
     { code: "WROTY", name: "Wide Receiver of the Year", groups: ["receiving"], pos: "WR" },
     { code: "TEOTY", name: "Tight End of the Year", groups: ["receiving"], pos: "TE" },
     { code: "DBOTY", name: "Defensive Back of the Year", groups: ["defense"], pos: "DB" },
-    { code: "DEOTY", name: "Defensive End of the Year", groups: ["rushing"] },
+    { code: "RBOTY", name: "Running Back of the Year", groups: ["rushing"] },
+    { code: "DEOTY", name: "Defensive End of the Year", groups: ["defense"], pos: "DE" },
     { code: "LBOTY", name: "Linebacker of the Year", groups: ["defense"], pos: "LB" }
   ],
   // Updates page (shown newest first). type: "sign", "demand", "release" or "promotion".

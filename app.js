@@ -1036,7 +1036,7 @@
     return played || TEAMS.find((t) => !t.disbanded && t.coach && t.coach.toLowerCase() === key) || staff || null;
   }
 
-  const POS_ORDER = ["QB", "WR", "TE", "DE", "DB", "LB"];
+  const POS_ORDER = ["QB", "RB", "WR", "TE", "DE", "DB", "LB"];
   function positionsFor(name) {
     const set = new Set();
     const map = LEAGUE.stats.positions || {};
@@ -1044,9 +1044,10 @@
     [].concat(found ? map[found] : []).forEach((p) => set.add(p.toUpperCase()));
     playerGames(name).forEach(({ lines }) => {
       if (lines.passing) set.add("QB");
-      if (lines.rushing) set.add("DE");
+      if (lines.rushing) set.add("RB");
       if (lines.receiving) set.add(positionOf(name, "receiving"));
       if (lines.defense) set.add(positionOf(name, "defense"));
+      if (lines.defense && hasPos(lines.defense, "defense", "DE")) set.add("DE");
     });
     return POS_ORDER.filter((p) => set.has(p));
   }
@@ -1617,6 +1618,14 @@
     if (from === "defense") return list.find((p) => p === "DB" || p === "LB") || "DB";
     return null;
   }
+  // A defense line counts as DE when the player is listed as DE or got after the passer (sack, TFL, safety or pressure)
+  function hasPos(r, from, pos) {
+    if (pos !== "DE") return positionOf(r.player, from) === pos;
+    const map = LEAGUE.stats.positions || {};
+    const found = Object.keys(map).find((n) => n.toLowerCase() === r.player.toLowerCase());
+    const listed = [].concat(found ? map[found] : []).some((p) => p.toUpperCase() === "DE");
+    return from === "defense" && (listed || !!(r.sck || r.tfl || r.saf || r.pre));
+  }
 
   // ---- Season leaders & award candidates (from this season's box scores) ----
 
@@ -1632,7 +1641,7 @@
       const pts = new Map();
       c.groups.forEach((g) =>
         Object.values(BOX_TOTALS[g]).forEach((r) => {
-          if (c.pos && positionOf(r.player, g) !== c.pos) return;
+          if (c.pos && !hasPos(r, g, c.pos)) return;
           const key = r.player.toLowerCase();
           const cur = pts.get(key) || { player: r.player, pts: 0 };
           cur.pts += fantasyPoints(g, r);
@@ -1733,8 +1742,8 @@
   function statRowsFor(cat, scope) {
     const shown = cat.columns.map(([k]) => k).filter((k) => k !== "gp" && k !== "fpts");
     const fromBox = (cat.from ? Object.values(BOX_TOTALS[cat.from]) : [])
-      .filter((r) => !cat.pos || positionOf(r.player, cat.from) === cat.pos)
-      // `addFrom` pulls a stat in from another box score section (a DE's pressures can be on their defense line)
+      .filter((r) => !cat.pos || hasPos(r, cat.from, cat.pos))
+      // `addFrom` pulls a stat in from another box score section (e.g. addFrom: { pre: "defense" })
       .map((r) => Object.entries(cat.addFrom || {}).reduce((row, [f, g]) => {
         const other = g !== cat.from && BOX_TOTALS[g][row.player.toLowerCase()];
         return other && other[f] ? { ...row, [f]: (row[f] || 0) + other[f] } : row;
