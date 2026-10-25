@@ -109,9 +109,10 @@
     // Roblox usernames the bot knows, with that person's Discord names
     const discordOf = new Map((SAVED.people || []).filter((p) => p.name)
       .map((p) => [p.name.toLowerCase(), discordNames(p.discord || "").map((n) => n.toLowerCase())]));
-    // Renames made on Admin -> Players come last, so they win over the bot's
+    // Renames made on Admin -> Players come last, so they win over the bot's; data.js renames after those
     const renames = SAVED.renames || [];
-    renames.filter((r) => !r.admin).concat(renames.filter((r) => r.admin)).forEach(({ from: sent, to, id, admin }) => {
+    const siteRenames = Object.entries(LEAGUE.renames || {}).map(([from, to]) => ({ from, to, admin: true }));
+    renames.filter((r) => !r.admin).concat(renames.filter((r) => r.admin), siteRenames).forEach(({ from: sent, to, id, admin }) => {
       if (!sent || !to) return;
       (admin ? [String(sent)] : discordNames(sent)).forEach((from) => {
         const was = rawAlias(from);

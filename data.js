@@ -186,6 +186,9 @@ const LEAGUE = {
     season: { QB: [], RB: [], WR: [], TE: [], Tackles: [], DE: [], DB: [], LB: [] },
     allTime: {} // filled from stats-alltime-*.js
   },
+  // Same person, shown under the second name. Applied after the Discord bot's renames (like Admin -> Players renames),
+  // so a bot roster sync under the first name still lands on the second.
+  renames: { "bloodhownd": "i56gwe" },
   // Old Discord nicknames -> the name used on the site. Applied when pasting stats or transactions.
   // A player's site name is the Roblox account on their Bloxlink (from the ZevoraV2 bot) where the bot has one.
   aliases: {
