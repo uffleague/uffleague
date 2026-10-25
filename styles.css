@@ -423,6 +423,7 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .pill-navy { background: var(--accent); color: var(--cream); border-color: var(--accent); }
 .pill-staff { font-size: 10.5px; padding: 1px 7px; letter-spacing: .04em; vertical-align: middle; margin-left: 6px; }
 .pill-disbanded { background: transparent; color: var(--muted); border-color: var(--line); font-size: 10.5px; padding: 1px 7px; letter-spacing: .06em; text-transform: uppercase; vertical-align: middle; }
+.pill-offroster { background: transparent; color: var(--muted); border-color: var(--line); font-size: 10.5px; padding: 1px 7px; letter-spacing: .04em; vertical-align: middle; margin-left: 6px; white-space: nowrap; }
 
 /* ---------- Past bowls ---------- */
 .bowl-list { display: flex; flex-direction: column; gap: 14px; }

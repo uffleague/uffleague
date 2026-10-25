@@ -212,9 +212,13 @@
     // Everyone goes by their current name (old Discord names and nicknames -> Roblox username), so a renamed
     // player keeps their transactions, box score lines, Player of the Game awards, position, stat edits and staff jobs
     LEAGUE.updates.forEach((u) => { u.player = rawAlias(u.player); if (u.by) u.by = rawAlias(u.by); });
+    // A stat line with a Roblox id is that person whatever name it was saved under (the bot's people list has their username)
+    const byRobloxId = new Map((SAVED.people || []).filter((p) => p.robloxId && p.name).map((p) => [String(p.robloxId), p.name]));
     games.forEach((g) => {
       if (g.potg) g.potg = rawAlias(g.potg);
-      (g.box || []).forEach((side) => Object.values(side || {}).forEach((rows) => [].concat(rows).forEach((r) => { if (r && r.player) r.player = rawAlias(r.player); })));
+      (g.box || []).forEach((side) => Object.values(side || {}).forEach((rows) => [].concat(rows).forEach((r) => {
+        if (r && r.player) r.player = rawAlias((r.robloxId && byRobloxId.get(String(r.robloxId))) || r.player);
+      })));
     });
     allDivs().forEach(({ d }) => d.teams.forEach((t) => { if (t.coach) t.coach = rawAlias(t.coach); }));
     // An entry under an old name moves to the current one, unless the current name already has its own
@@ -347,6 +351,11 @@
   // Players whose team a transaction, sync or Admin move has decided: off every roster means a free agent,
   // not still on the team from their old box scores
   const placed = new Set();
+  const placedOn = new Map(); // player key -> date their team was last decided
+  const place = (key, u) => {
+    placed.add(key);
+    if (u.date && !(placedOn.get(key) >= u.date)) placedOn.set(key, u.date);
+  };
   const rosterOf = (t) => (ROSTERS[t.slug] = ROSTERS[t.slug] || new Map());
   const staffOf = (t) => (STAFF[t.slug] = STAFF[t.slug] || new Map());
   // Takes someone off every other team's roster and/or staff
@@ -354,7 +363,7 @@
   UPDATES.concat(disbands, syncs, moves).sort(byTime).forEach((u) => {
     if (u.type === "move") {
       const key = u.player.toLowerCase();
-      placed.add(key);
+      place(key, u);
       leaveOthers(key, u.t ? u.t.slug : null, [ROSTERS, STAFF]);
       if (u.t) rosterOf(u.t).set(key, u.player);
       return;
@@ -367,12 +376,12 @@
       // The sync is that team's whole roster and staff (replace), so older staff records don't carry over
       if (u.replace) {
         // Anyone on the team who isn't in the sync is off it
-        [ROSTERS[s], STAFF[s]].forEach((m) => m && m.forEach((_, key) => placed.add(key)));
+        [ROSTERS[s], STAFF[s]].forEach((m) => m && m.forEach((_, key) => place(key, u)));
         ROSTERS[s] = new Map(); STAFF[s] = new Map(); synced.add(s);
       }
       u.players.filter((p) => !p.role).forEach((p) => {
         const key = p.name.toLowerCase();
-        placed.add(key);
+        place(key, u);
         leaveOthers(key, s, [ROSTERS, STAFF]);
         rosterOf(u.t).set(key, p.name);
         if (!u.players.some((x) => x.role && x.name.toLowerCase() === key)) staffOf(u.t).delete(key);
@@ -383,7 +392,7 @@
       // Owners and coaches play too: they're on the roster as well as the staff
       u.players.filter((p) => p.role).forEach((p) => {
         const key = p.name.toLowerCase();
-        placed.add(key);
+        place(key, u);
         leaveOthers(key, s, [ROSTERS, STAFF]);
         rosterOf(u.t).set(key, p.name);
         staffOf(u.t).set(key, { player: p.name, role: p.role, date: u.date, time: u.time, i: u.i });
@@ -391,7 +400,7 @@
       return;
     }
     const key = u.player.toLowerCase();
-    if (UPDATE_TYPES[u.type]) placed.add(key);
+    if (UPDATE_TYPES[u.type]) place(key, u);
     if (u.type === "sign") {
       // Signing somewhere else also ends a staff job on another team
       leaveOthers(key, s, [ROSTERS, STAFF]);
@@ -1020,20 +1029,44 @@
     return out;
   }
 
+  // Stats-only players: played for a team in a final game but aren't on any official roster. They're worked out from
+  // the box scores each time (never stored), so a roster sync can't remove them; once a roster lists them (same Roblox
+  // id or name) they're simply rostered. One team each: the latest one they played for. A transaction, sync or Admin
+  // move about them on or after that game day decides their team instead (e.g. released = free agent).
+  let statsOnly = null; // player key -> { name, team, date, t }
+  function statsOnlyPlayers() {
+    if (statsOnly) return statsOnly;
+    statsOnly = new Map();
+    [...LEAGUE.schedule].sort((a, b) => a.week - b.week).forEach((wk) => wk.games.forEach((g) => {
+      if (!Array.isArray(g.score) || !g.box) return;
+      g.box.forEach((side, i) => ["passing", "rushing", "receiving", "defense"].forEach((k) => ((side && side[k]) || []).forEach((line) => {
+        const key = line.player.toLowerCase();
+        const prev = statsOnly.get(key);
+        if (!prev || !g.date || !prev.date || g.date >= prev.date) statsOnly.set(key, { name: line.player, team: g.teams[i], date: g.date });
+      })));
+    }));
+    statsOnly.forEach((p, key) => {
+      const t = TEAMS.find((x) => x.name === p.team && !x.disbanded);
+      const decidedAfter = placed.has(key) && (!p.date || placedOn.get(key) >= p.date);
+      if (!t || decidedAfter || Object.values(ROSTERS).some((r) => r.has(key))) statsOnly.delete(key);
+      else p.t = t;
+    });
+    return statsOnly;
+  }
+
   // Team a player is on: their roster from Updates and roster syncs (off every roster after a transaction or sync
-  // = free agent), otherwise the team from their latest box score unless a sync has set that team's whole roster,
+  // = free agent), otherwise the team they played for as a stats-only player,
   // otherwise the team they're head coach of, otherwise their latest staff promotion
   function currentTeam(name) {
     const key = name.toLowerCase();
     const slugOn = Object.keys(ROSTERS).find((s) => ROSTERS[s].has(key));
     if (slugOn) return TEAMS.find((t) => t.slug === slugOn);
+    const so = statsOnlyPlayers().get(key);
+    if (so) return so.t;
     if (placed.has(key)) return null;
-    const games = playerGames(name);
-    const last = games[games.length - 1];
-    const played = last && TEAMS.find((t) => t.name === last.g.teams[last.i] && !synced.has(t.slug));
     const staffSlug = Object.keys(STAFF).find((s) => STAFF[s].has(key));
     const staff = staffSlug && TEAMS.find((t) => t.slug === staffSlug && !t.disbanded);
-    return played || TEAMS.find((t) => !t.disbanded && t.coach && t.coach.toLowerCase() === key) || staff || null;
+    return TEAMS.find((t) => !t.disbanded && t.coach && t.coach.toLowerCase() === key) || staff || null;
   }
 
   const POS_ORDER = ["QB", "RB", "WR", "TE", "DE", "DB", "LB"];
@@ -1108,16 +1141,15 @@
     if (!t) return notFound();
     tab = TEAM_TABS.some(([k]) => k === tab) ? tab : "overview";
 
-    // Roster: signings from Updates and roster syncs, plus anyone whose latest box score was for this team
-    // (a team the bot has synced has exactly the synced roster and the transactions since)
+    // Roster: signings from Updates and roster syncs, then stats-only players (played for this team, on no roster)
     const roster = new Map(ROSTERS[t.slug] || []);
-    if (!synced.has(t.slug)) Object.values(BOX_TOTALS).forEach((group) =>
-      Object.values(group).forEach((r) => {
-        const key = r.player.toLowerCase();
-        if (!roster.has(key) && r.team === t.name && currentTeam(r.player) === t) roster.set(key, r.player);
-      })
-    );
+    const offRoster = new Set();
+    statsOnlyPlayers().forEach((p, key) => {
+      if (p.t === t && !roster.has(key)) { roster.set(key, p.name); offRoster.add(key); }
+    });
     const players = [...roster.values()];
+    const offRosterTag = (name) => offRoster.has(name.toLowerCase())
+      ? ` <span class="pill pill-offroster" title="Played for ${esc(t.name)} but isn't on the official roster">Not on roster</span>` : "";
 
     // Staff who are on the roster get a small tag there: FO, HC, AHC...
     const staffTag = (name) => {
@@ -1166,7 +1198,7 @@
 
     const rosterRows = (list) => list.length
       ? `<div class="tp-rows">${list.map((p, i) => `
-          <div class="tp-row"><span class="tp-num">${i + 1}</span><span class="tp-name">${playerLink(p)}${staffTag(p)}</span><span class="tp-pos">${posOf(p)}</span></div>`).join("")}</div>`
+          <div class="tp-row"><span class="tp-num">${i + 1}</span><span class="tp-name">${playerLink(p)}${staffTag(p)}${offRosterTag(p)}</span><span class="tp-pos">${posOf(p)}</span></div>`).join("")}</div>`
       : blank("teams", "", t.disbanded ? "Team disbanded. Everyone on this roster is a free agent now." : "Players show up here once they sign.");
 
     const nextGame = () => {
@@ -1278,7 +1310,7 @@
               <table class="tp-table tp-table--roster">
                 <thead><tr><th>#</th><th class="team-col">Player</th><th>Pos</th><th>GP</th><th class="team-col">Season ${LEAGUE.season}</th></tr></thead>
                 <tbody>${players.map((p, i) => `
-                  <tr><td>${i + 1}</td><td class="team-col"><strong>${playerLink(p)}</strong>${staffTag(p)}</td><td>${posOf(p)}</td><td>${gp(p)}</td>
+                  <tr><td>${i + 1}</td><td class="team-col"><strong>${playerLink(p)}</strong>${staffTag(p)}${offRosterTag(p)}</td><td>${posOf(p)}</td><td>${gp(p)}</td>
                     <td class="team-col muted small">${seasonLine(p) || "&ndash;"}</td></tr>`).join("")}
                 </tbody>
               </table>
