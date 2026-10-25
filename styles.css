@@ -519,6 +519,16 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .sched-opp { flex: 1; min-width: 0; font-weight: 500; color: var(--ink); }
 .sched-score { font-family: var(--head); font-weight: 700; color: var(--heading); }
 
+/* Player profile picture: round Roblox headshot (like a Discord member list) with the current team's logo
+   inside the circle behind it; a dark circle alone when they have no team */
+.player-art { position: relative; flex-shrink: 0; }
+.player-art .team-logo { display: block; }
+.player-art.has-avatar { width: 150px; height: 150px; border-radius: 50%; overflow: hidden;
+  background: var(--cream-2); border: 1px solid var(--line); box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
+.player-art.has-avatar .team-logo { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; z-index: 0; }
+/* Roblox's head-and-shoulders picture (its heads come out the same size, unlike headshots, which zoom to fit big
+   hair), zoomed in on the head so the shoulders fall outside the circle */
+.player-avatar { position: absolute; z-index: 1; left: -12.5%; top: 5%; width: 125%; height: 125%; max-width: none; object-fit: cover; }
 .player-title { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .legacy-rank-badge {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px;
@@ -867,6 +877,7 @@ button.box-toggle.open::after { content: " ▴"; }
   .team-head h1 { font-size: 32px; }
   .player-stats { grid-template-columns: repeat(2, 1fr); }
   .team-logo.xl { width: 88px; height: 88px; }
+  .player-art.has-avatar { width: 116px; height: 116px; }
   .team-hero h1 { font-size: 30px; }
 }
 

@@ -4,6 +4,7 @@
 //   POST / { action: "login", username, password, name } -> { username, name, token }
 //   POST / { action, token, ... }              -> the saved data ("activity" returns the log)
 //   POST /bot, GET /bot/deadlines, GET /bot/primetime (Authorization: Bearer <BOT_KEY>) -> the Discord bot (see below)
+//   GET /avatars?names=a,b -> Roblox headshots for player profiles (see avatars)
 //   GET /test, POST /test (Authorization: Bearer <GAME_KEY>) -> test log for the Roblox game (see gameTest)
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
@@ -452,8 +453,9 @@ function addRename(data, from, to, byId) {
 // Every team's current roster from the bot (same URL and key):
 //   { "rosters": { "replace": true, "teams": [{ "team": "San Francisco Miners", "players": [
 //       { "name": "<Roblox username>", "discord": "<Discord name>", "discordId": "...", "robloxId": 123, "role": "Head Coach" }] }] } }
-// replace: each team sent gets exactly this roster and staff (otherwise the players are added): anyone on the team
-// who isn't listed comes off it (a free agent, unless another team's sync has them), stats kept. It's a correction,
+// replace: each team sent gets exactly this roster and staff (otherwise the players are added): anyone the bot put on
+// the team who isn't listed comes off it (a free agent, unless another team's sync has them), stats kept. Players added
+// by hand on the site stay (the site sees to that) until the bot lists them itself. It's a correction,
 // so no transactions are made. Players are matched to who the site already has by Roblox id, Discord id, then Discord
 // name, and renamed to their Roblox username.
 async function botRosters(env, rs) {
@@ -478,6 +480,16 @@ async function botRosters(env, rs) {
       const robloxId = id(p.robloxId, /^\d{1,20}$/);
       const discordId = id(p.discordId, /^\d{5,25}$/);
       const known = (robloxId && data.people.find((x) => x.robloxId === robloxId)) || (discordId && data.people.find((x) => x.discordId === discordId));
+      // A player added by hand on the site (Admin -> Players) who the bot now lists, by Roblox id or the same username:
+      // they become one player (stats kept, under the bot's name) and the bot decides their team from now on
+      const byId = robloxId && known && known.robloxId === robloxId ? known.name : null;
+      data.rosterMoves.filter((m) => m.source !== "bot" && m.team).forEach((m) => {
+        const same = m.player.toLowerCase() === name.toLowerCase() || (byId && m.player.toLowerCase() === byId.toLowerCase());
+        if (!same) return;
+        m.source = "bot";
+        m.merged = { at: now, team };
+        if (addRename(data, m.player, name, true)) renamed++;
+      });
       if (known && addRename(data, known.name, name, true)) renamed++;
       if (discord && addRename(data, discord, name)) renamed++;
       const person = { name, discord: discord || (known && known.discord), robloxId: robloxId || (known && known.robloxId), discordId: discordId || (known && known.discordId), at: now };
@@ -858,6 +870,90 @@ function adminPrimetime(data, body) {
   return log; // the activity log shows it under "Primetime"
 }
 
+// Roblox head-and-shoulders pictures for player profiles (Roblox's API can't be called from other websites, so the site asks here)
+//   GET /avatars?names=a,b,c  -> { avatars: { "<name lowercase>": "<image url>" | null } }
+// null = that name has no Roblox account or no picture. A name left out couldn't be checked right now (Roblox down,
+// busy, or the picture is still being made), so the site tries again later. A player the bot knows uses their Roblox
+// id; anyone else is looked up by their exact Roblox username. Answers are kept in KV for a day (6 hours for a miss).
+const AVATAR_KEY = "busts";
+const AVATAR_MAX_NAMES = 50;
+const AVATAR_KEEP = 3000;
+const AVATAR_HIT_MS = 24 * 3600 * 1000;
+const AVATAR_MISS_MS = 6 * 3600 * 1000;
+const ROBLOX_NAME = /^[A-Za-z0-9_]{3,20}$/;
+let avatarMemo = null; // this copy of the worker's view of the KV list
+async function avatars(req, env) {
+  const asked = [...new Set(String(new URL(req.url).searchParams.get("names") || "").split(",")
+    .map((n) => n.trim().toLowerCase()).filter(Boolean))].slice(0, AVATAR_MAX_NAMES);
+  const out = {};
+  asked.filter((n) => !ROBLOX_NAME.test(n)).forEach((n) => { out[n] = null; }); // can't be a Roblox username
+  const valid = asked.filter((n) => ROBLOX_NAME.test(n));
+  const now = Date.now();
+  const fresh = (e) => e && now - e.at < (e.url ? AVATAR_HIT_MS : AVATAR_MISS_MS);
+  if (!avatarMemo || valid.some((n) => !fresh(avatarMemo[n]))) avatarMemo = (await env.UFF.get(AVATAR_KEY, { type: "json" })) || {};
+  const cache = avatarMemo;
+  const stale = valid.filter((n) => {
+    if (!fresh(cache[n])) return true;
+    out[n] = cache[n].url;
+    return false;
+  });
+
+  if (stale.length) {
+    const found = {}; // name -> { url } | { url: null }, only what Roblox actually answered
+    // Roblox ids the bot has for these names, then the rest by username
+    const ids = {};
+    const people = (await load(env)).people || [];
+    stale.forEach((n) => {
+      const p = people.find((x) => x.robloxId && String(x.name || "").toLowerCase() === n);
+      if (p && /^\d{1,20}$/.test(String(p.robloxId))) ids[n] = String(p.robloxId);
+    });
+    const byName = stale.filter((n) => !ids[n]);
+    if (byName.length) {
+      try {
+        const res = await fetch("https://users.roblox.com/v1/usernames/users", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ usernames: byName, excludeBannedUsers: true })
+        });
+        if (res.ok) {
+          const list = ((await res.json()) || {}).data || [];
+          byName.forEach((n) => {
+            const u = list.find((x) => String(x.requestedUsername || "").toLowerCase() === n);
+            if (u && u.id) ids[n] = String(u.id);
+            else found[n] = { url: null }; // no such account
+          });
+        }
+      } catch (e) {}
+    }
+    const want = Object.entries(ids);
+    if (want.length) {
+      try {
+        const q = [...new Set(want.map(([, id]) => id))].join(",");
+        const res = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-bust?userIds=${q}&size=420x420&format=Png&isCircular=false`);
+        if (res.ok) {
+          const list = ((await res.json()) || {}).data || [];
+          want.forEach(([n, id]) => {
+            const t = list.find((x) => String(x.targetId) === id);
+            if (t && t.state === "Completed" && /^https:\/\/[\w.-]+\.rbxcdn\.com\//.test(t.imageUrl || "")) found[n] = { url: t.imageUrl };
+            else if (t && t.state !== "Pending") found[n] = { url: null }; // blocked or no picture
+          });
+        }
+      } catch (e) {}
+    }
+    Object.entries(found).forEach(([n, { url }]) => {
+      out[n] = url;
+      cache[n] = { url, at: now };
+    });
+    if (Object.keys(found).length) {
+      const keep = Object.entries(cache).sort((a, b) => b[1].at - a[1].at).slice(0, AVATAR_KEEP);
+      avatarMemo = Object.fromEntries(keep);
+      await env.UFF.put(AVATAR_KEY, JSON.stringify(avatarMemo));
+    }
+  }
+  return new Response(JSON.stringify({ avatars: out }), {
+    headers: { "content-type": "application/json", "cache-control": "public, max-age=300", ...CORS }
+  });
+}
+
 // Test endpoint for hooking up the Roblox game; it only keeps a log of what was sent and never touches the site's data
 //   POST /test  Authorization: Bearer <GAME_KEY>  { ...any JSON... }  -> { ok, received }
 //   GET  /test  -> { ok, recent: [the last TEST_MAX posts, newest first] }
@@ -887,6 +983,7 @@ export default {
     if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/deadlines") return botReadDeadlines(req, env);
     if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/primetime") return botReadPrimetime(req, env);
     if (req.method === "GET" && path.replace(/\/+$/, "") === "/test") return gameTest(req, env);
+    if (req.method === "GET" && path.replace(/\/+$/, "") === "/avatars") return avatars(req, env);
     if (req.method === "GET") {
       return new Response(await publicText(env), { headers: { "content-type": "application/json", "cache-control": "no-store", ...CORS } });
     }
@@ -1121,7 +1218,8 @@ export default {
       }
       if (moving) {
         const when = leagueDateTime(Date.now(), env.LEAGUE_TZ || "America/New_York");
-        data.rosterMoves = [...data.rosterMoves, { id: crypto.randomUUID(), player: name || player, team, date: when.date, time: when.time, at: Date.now() }].slice(-SYNCS_MAX);
+        // source "manual": a bot roster sync doesn't take them off the team (see botRosters for when the bot takes over)
+        data.rosterMoves = [...data.rosterMoves, { id: crypto.randomUUID(), player: name || player, team, date: when.date, time: when.time, at: Date.now(), source: "manual" }].slice(-SYNCS_MAX);
         done.push(team ? `put ${name || player} on the ${team}` : `made ${name || player} a free agent`);
       }
       if (!done.length) return json({ error: "That's already their name." }, 400);

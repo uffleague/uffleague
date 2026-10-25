@@ -188,7 +188,7 @@ const LEAGUE = {
   },
   // Same person, shown under the second name. Applied after the Discord bot's renames (like Admin -> Players renames),
   // so a bot roster sync under the first name still lands on the second.
-  renames: { "bloodhownd": "i56gwe" },
+  renames: { "bloodhownd": "i56gwe", "vcoostwash": "nichelarpers" },
   // Old Discord nicknames -> the name used on the site. Applied when pasting stats or transactions.
   // A player's site name is the Roblox account on their Bloxlink (from the ZevoraV2 bot) where the bot has one.
   aliases: {
@@ -201,7 +201,7 @@ const LEAGUE = {
     "coIdview": "hurdle", "3va8dkq1zafjmxtn": "3vo8dkq1zafjmxtn", "hello78alt3": "helloo78alt3",
     "gamerpony4182": "gamerpony4132", "settIe": "settle", "Iaddmcconkey": "seaboy", "laddmcconkey": "seaboy", "laddmconkey": "seaboy",
     "influencethekilI": "influencethekill", "depthqcfler": "depthacfler",
-    "t1memanagement": "tlmemanagement", "maIikvrt": "maiikvrt", "nichelarpers": "vcoostwash", "cooks423": "cooks", "t8l": "SparkyFaceIsPunched",
+    "t1memanagement": "tlmemanagement", "maIikvrt": "maiikvrt", "cooks423": "cooks", "t8l": "SparkyFaceIsPunched",
     // Award winners listed under a shorter or misspelled name
     "biglester": "biglester1", "kevski": "Kevskiiiiiiii", "VampViolence": "vampviolences", "yavient": "PPspecialist",
     "affused": "IlIIIllIllIIllIlI", "2687affused982673260": "IlIIIllIllIIllIlI", "touchdenim": "denim", "xv89r12azk74m3a4": "stunaaaaaaaaaaaaa", "nskx": "curfaw", "GalanBlox2": "galan",
@@ -215,7 +215,7 @@ const LEAGUE = {
     "loverloverlover": "loverIoverlover",
     // Names the site used before -> the Roblox account on their Bloxlink
     "2 trey": "Aloneinnewyorkcity", "248": "loverIoverlover", "BIGGIECHEESE": "biglester1", "bloodhill": "freebloodhill",
-    "CountTo5": "f84d", "day": "vcoostwash", "dictator 10": "SparkyFaceIsPunched", "goatnotgood": "perkialtacc",
+    "CountTo5": "f84d", "day": "nichelarpers", "dictator 10": "SparkyFaceIsPunched", "goatnotgood": "perkialtacc",
     "hellraiser": "Hellraiser000", "hellraiser000": "Hellraiser000", "jvkethings": "JvkeThingz", "Kevskiiiiiii": "Kevskiiiiiiii",
     "liarliarliar": "130liar", "lord 9": "IlIIIllIllIIllIlI", "msuede": "marmersie", "phentric": "sIicur",
     "rcbkailer": "Marauderpress", "rekid": "bloodhownd", "ripburied": "KrxticalLag", "sec": "sec2v", "shazam": "shazamzq",
@@ -556,7 +556,7 @@ const LEAGUE = {
             { name: "San Francisco Miners", code: "SF", color: "#cf1d1d", color2: "#fcc00b", coach: "sk8erboy111", logo: "logos/san-francisco-miners.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
             { name: "Vienna Angels", code: "VIE", color: "#e5ad00", color2: "#050505", coach: "Kamil08", logo: "logos/vienna-angels.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
             { name: "Olympia Owls", code: "OLY", color: "#1e5b45", color2: "#aeafb1", coach: "fooge", logo: "logos/olympia-owls.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Novasota Wolf Pack", code: "NWP", color: "#2a5a3f", color2: "#e5dfc5", coach: "Yacht", logo: "logos/novasota-wolf-pack.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Novasota Wolf Pack", code: "NWP", color: "#2a5a3f", color2: "#e5dfc5", coach: "Yacht", logo: "logos/novasota-wolf-pack.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-10-25", time: "18:55" } },
             { name: "Long Beach Pirates", code: "LBP", color: "#2a8de0", color2: "#062c45", coach: "splndd", logo: "logos/long-beach-pirates.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         },

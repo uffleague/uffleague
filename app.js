@@ -361,27 +361,38 @@
   const staffOf = (t) => (STAFF[t.slug] = STAFF[t.slug] || new Map());
   // Takes someone off every other team's roster and/or staff
   const leaveOthers = (key, slugKeep, maps) => maps.forEach((m) => Object.entries(m).forEach(([s, r]) => { if (s !== slugKeep) r.delete(key); }));
+  // Players added by hand on Admin -> Players (source "manual"; older moves have no source and count as manual):
+  // player key -> slug of the team they were put on. A bot roster sync doesn't take them off that team; once the bot
+  // lists them itself (sync, signing or promotion) it decides their team from then on.
+  const MANUAL = new Map();
   UPDATES.concat(disbands, syncs, moves).sort(byTime).forEach((u) => {
     if (u.type === "move") {
       const key = u.player.toLowerCase();
       place(key, u);
       leaveOthers(key, u.t ? u.t.slug : null, [ROSTERS, STAFF]);
       if (u.t) rosterOf(u.t).set(key, u.player);
+      if (u.t && u.source !== "bot") MANUAL.set(key, u.t.slug);
+      else MANUAL.delete(key);
       return;
     }
     if (!u.t) return;
     const s = u.t.slug;
     // Disbanding frees everyone; a team that comes back starts with a fresh roster and staff
-    if (u.type === "disband") { delete ROSTERS[s]; delete STAFF[s]; return; }
+    if (u.type === "disband") {
+      MANUAL.forEach((slugOn, key) => { if (slugOn === s) MANUAL.delete(key); });
+      delete ROSTERS[s]; delete STAFF[s]; return;
+    }
     if (u.type === "sync") {
       // The sync is that team's whole roster and staff (replace), so older staff records don't carry over
       if (u.replace) {
-        // Anyone on the team who isn't in the sync is off it
-        [ROSTERS[s], STAFF[s]].forEach((m) => m && m.forEach((_, key) => place(key, u)));
-        ROSTERS[s] = new Map(); STAFF[s] = new Map(); synced.add(s);
+        // Anyone the bot put on the team who isn't in the sync is off it; players added by hand stay
+        const kept = [...(ROSTERS[s] || new Map())].filter(([key]) => MANUAL.get(key) === s);
+        [ROSTERS[s], STAFF[s]].forEach((m) => m && m.forEach((_, key) => { if (MANUAL.get(key) !== s) place(key, u); }));
+        ROSTERS[s] = new Map(kept); STAFF[s] = new Map(); synced.add(s);
       }
       u.players.filter((p) => !p.role).forEach((p) => {
         const key = p.name.toLowerCase();
+        MANUAL.delete(key);
         place(key, u);
         leaveOthers(key, s, [ROSTERS, STAFF]);
         rosterOf(u.t).set(key, p.name);
@@ -393,6 +404,7 @@
       // Owners and coaches play too: they're on the roster as well as the staff
       u.players.filter((p) => p.role).forEach((p) => {
         const key = p.name.toLowerCase();
+        MANUAL.delete(key);
         place(key, u);
         leaveOthers(key, s, [ROSTERS, STAFF]);
         rosterOf(u.t).set(key, p.name);
@@ -402,6 +414,8 @@
     }
     const key = u.player.toLowerCase();
     if (UPDATE_TYPES[u.type]) place(key, u);
+    // A signing or promotion puts them back in the bot's hands; so does leaving the team they were added to
+    if (u.type === "sign" || u.type === "promotion" || MANUAL.get(key) === s) MANUAL.delete(key);
     if (u.type === "sign") {
       // Signing somewhere else also ends a staff job on another team
       leaveOthers(key, s, [ROSTERS, STAFF]);
@@ -1151,6 +1165,10 @@
     const players = [...roster.values()];
     const offRosterTag = (name) => offRoster.has(name.toLowerCase())
       ? ` <span class="pill pill-offroster" title="Played for ${esc(t.name)} but isn't on the official roster">Not on roster</span>` : "";
+    // Admins only: players added by hand (the bot's roster syncs leave them be, so they're taken off here)
+    const manualTag = (name) => getAdmin() && MANUAL.get(name.toLowerCase()) === t.slug
+      ? ` <span class="pill pill-offroster" title="Added on Admin -> Players; the Discord bot's roster syncs don't remove them">Added on site</span>
+         <button type="button" class="btn btn-ghost btn-sm" data-remove-manual="${esc(name)}">Remove</button>` : "";
 
     // Staff who are on the roster get a small tag there: FO, HC, AHC...
     const staffTag = (name) => {
@@ -1311,7 +1329,7 @@
               <table class="tp-table tp-table--roster">
                 <thead><tr><th>#</th><th class="team-col">Player</th><th>Pos</th><th>GP</th><th class="team-col">Season ${LEAGUE.season}</th></tr></thead>
                 <tbody>${players.map((p, i) => `
-                  <tr><td>${i + 1}</td><td class="team-col"><strong>${playerLink(p)}</strong>${staffTag(p)}${offRosterTag(p)}</td><td>${posOf(p)}</td><td>${gp(p)}</td>
+                  <tr><td>${i + 1}</td><td class="team-col"><strong>${playerLink(p)}</strong>${staffTag(p)}${offRosterTag(p)}${manualTag(p)}</td><td>${posOf(p)}</td><td>${gp(p)}</td>
                     <td class="team-col muted small">${seasonLine(p) || "&ndash;"}</td></tr>`).join("")}
                 </tbody>
               </table>
@@ -1455,6 +1473,53 @@
     return [...byCode.values()].sort((a, b) => rank(a.code) - rank(b.code));
   }
 
+  // Roblox headshots for player profiles come from the Worker (Roblox doesn't let other sites call its API; see
+  // avatars in worker/src/index.js). Each answer is kept in this browser for a day so a profile doesn't ask again.
+  const AVATAR_STORE = "uffBusts";
+  const AVATAR_KEEP_MS = 24 * 3600 * 1000;
+  const avatarCache = (() => { try { return JSON.parse(localStorage.getItem(AVATAR_STORE)) || {}; } catch (e) { return {}; } })();
+  const avatarKnown = (name) => {
+    const e = avatarCache[String(name).toLowerCase()];
+    return e && Date.now() - e.at < AVATAR_KEEP_MS ? e : null;
+  };
+  // The profile picture: their Roblox headshot in front of their current team's logo. No avatar (yet)
+  // = the team logo alone like before; no team or no logo = the avatar alone. Until the avatar is known it's
+  // marked data-avatar, and fillAvatars() swaps it in once the Worker answers.
+  function playerArt(name, t) {
+    const known = avatarKnown(name);
+    const logo = t && t.logo ? teamLogo(t, "xl") : "";
+    if (known && known.url) {
+      return `<div class="player-art has-avatar">${logo}<img class="player-avatar" src="${esc(known.url)}" alt="${esc(name)}'s Roblox avatar"></div>`;
+    }
+    const wait = known ? "" : ` data-avatar="${esc(name)}" data-team="${t ? t.slug : ""}"`;
+    return `<div class="player-art"${wait}>${t ? teamLogo(t, "xl") : `<img class="team-logo xl" src="logo.png" alt="">`}</div>`;
+  }
+  async function fillAvatars() {
+    const spots = [...document.querySelectorAll("#app [data-avatar]")];
+    const ask = [...new Set(spots.map((el) => el.dataset.avatar.toLowerCase()))].filter((n) => !avatarKnown(n));
+    if (!ask.length) return;
+    try {
+      const res = await fetch(`${API}/avatars?names=${encodeURIComponent(ask.join(","))}`);
+      // A name the Worker leaves out couldn't be checked right now, so it's asked again next time
+      Object.entries((res.ok && (await res.json()).avatars) || {}).forEach(([n, url]) => { avatarCache[n] = { url, at: Date.now() }; });
+      try { localStorage.setItem(AVATAR_STORE, JSON.stringify(avatarCache)); } catch (e) {}
+    } catch (e) {}
+    spots.forEach((el) => {
+      const e = avatarKnown(el.dataset.avatar);
+      if (e && e.url && el.isConnected) el.outerHTML = playerArt(el.dataset.avatar, TEAMS.find((t) => t.slug === el.dataset.team));
+    });
+  }
+  // An avatar that won't load (or a team logo file that's missing) drops out instead of showing a broken picture
+  document.addEventListener("error", (e) => {
+    const img = e.target, art = img.closest && img.closest(".player-art.has-avatar");
+    if (!art) return;
+    if (img.classList.contains("player-avatar")) {
+      art.classList.remove("has-avatar");
+      if (!art.querySelector(".team-logo")) art.insertAdjacentHTML("beforeend", `<img class="team-logo xl" src="logo.png" alt="">`);
+    }
+    img.remove();
+  }, true);
+
   function player(enc) {
     const raw = aliasName(decodeURIComponent(enc));
     const key = raw.toLowerCase();
@@ -1483,7 +1548,7 @@
       <div class="wrap">
         <a href="javascript:history.back()" class="link back">&larr; Back</a>
         <div class="team-head">
-          ${t ? teamLogo(t, "xl") : `<img class="team-logo xl" src="logo.png" alt="">`}
+          ${playerArt(name, t)}
           <div>
             <h1 class="player-title">${name}
               ${leg ? `<span class="legacy-rank-badge" title="Legacy ranking">${icon("legacy")}Legacy #${leg.rank} &middot; ${leg.score} pts</span>` : ""}
@@ -2793,7 +2858,7 @@
       <section>
         <div class="section-head section-head--left"><h2>Players</h2></div>
         <form class="card admin-card" id="playerForm" autocomplete="off">
-          <p class="muted small admin-note">Change how a player's name shows on the site, or the team they're on. Their old name still counts as them, so their stats, honors and transactions stay with them. Renaming someone to a name another player already has merges the two into one player. A team change doesn't add a transaction, and a later roster sync or signing from the Discord bot still counts.</p>
+          <p class="muted small admin-note">Change how a player's name shows on the site, or the team they're on. Their old name still counts as them, so their stats, honors and transactions stay with them. Renaming someone to a name another player already has merges the two into one player. A team change doesn't add a transaction. A player you put on a team stays there through the Discord bot's roster syncs until the bot lists them itself (or signs or promotes them), or you take them off (Free agent here, or Remove on the team's Roster tab).</p>
           <div class="admin-fields">
             <label class="field admin-grow"><span>Player</span><input name="player" id="editPlayer" list="playerNames" required></label>
             <label class="field admin-grow"><span>New name (optional)</span><input name="name" maxlength="60" placeholder="Leave blank to keep it"></label>
@@ -5032,6 +5097,7 @@
       : section === "players" && sub ? () => player(sub)
       : ROUTES[section] || notFound;
     app.innerHTML = page();
+    fillAvatars();
     document.body.classList.toggle("is-home", page === home);
     [nav, topnav].forEach((list) => list.querySelectorAll("a").forEach((a) =>
       a.classList.toggle("active", a.dataset.path === (section || ""))
@@ -5367,6 +5433,14 @@
       return adminCall({ action: "undoHonor", id: t.dataset.undoHonor })
         .then(() => reloadWithFlash("Undone. Everyone sees it now."))
         .catch((err) => { adminError = err.message; render(); });
+    }
+    if (t.dataset.removeManual) {
+      const name = t.dataset.removeManual;
+      if (!confirm(`Take ${name} off this team? They'll be a free agent.`)) return;
+      t.disabled = true;
+      return adminCall({ action: "editPlayer", player: name, team: "" })
+        .then(() => reloadWithFlash(`${name} is a free agent now. Everyone sees it now.`))
+        .catch((err) => { t.disabled = false; alert(err.message); });
     }
     if (t.dataset.undoPlayerEdit) {
       t.disabled = true;
