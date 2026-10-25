@@ -4,6 +4,7 @@
 //   POST / { action: "login", username, password, name } -> { username, name, token }
 //   POST / { action, token, ... }              -> the saved data ("activity" returns the log)
 //   POST /bot, GET /bot/deadlines, GET /bot/primetime (Authorization: Bearer <BOT_KEY>) -> the Discord bot (see below)
+//   GET /test, POST /test (Authorization: Bearer <GAME_KEY>) -> test log for the Roblox game (see gameTest)
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
@@ -857,6 +858,27 @@ function adminPrimetime(data, body) {
   return log; // the activity log shows it under "Primetime"
 }
 
+// Test endpoint for hooking up the Roblox game; it only keeps a log of what was sent and never touches the site's data
+//   POST /test  Authorization: Bearer <GAME_KEY>  { ...any JSON... }  -> { ok, received }
+//   GET  /test  -> { ok, recent: [the last TEST_MAX posts, newest first] }
+const TEST_KEY = "test";
+const TEST_MAX = 20;
+const TEST_BYTES = 64 * 1024;
+async function gameTest(req, env) {
+  const recent = (await env.UFF.get(TEST_KEY, { type: "json" })) || [];
+  if (req.method === "GET") return json({ ok: true, time: new Date().toISOString(), recent });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  const key = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!env.GAME_KEY || !key || !same(key, env.GAME_KEY)) return json({ error: "Wrong or missing game key." }, 401);
+  const text = await req.text();
+  if (text.length > TEST_BYTES) return json({ error: "That's too big (64 KB max)." }, 400);
+  let body;
+  try { body = JSON.parse(text); } catch (e) { return json({ error: "Send JSON." }, 400); }
+  const entry = { at: new Date().toISOString(), robloxServer: req.headers.get("roblox-id") || undefined, body };
+  await env.UFF.put(TEST_KEY, JSON.stringify([entry, ...recent].slice(0, TEST_MAX)));
+  return json({ ok: true, received: body });
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
@@ -864,10 +886,12 @@ export default {
     if (req.method === "GET" && path.startsWith("/img/")) return serveImage(env, path.slice(5));
     if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/deadlines") return botReadDeadlines(req, env);
     if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/primetime") return botReadPrimetime(req, env);
+    if (req.method === "GET" && path.replace(/\/+$/, "") === "/test") return gameTest(req, env);
     if (req.method === "GET") {
       return new Response(await publicText(env), { headers: { "content-type": "application/json", "cache-control": "no-store", ...CORS } });
     }
     if (req.method === "POST" && path === "/bot") return botTransactions(req, env);
+    if (path.replace(/\/+$/, "") === "/test") return gameTest(req, env);
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
     const { ADMIN_USERNAME, ADMIN_PASSWORD_HASH } = env;
