@@ -157,30 +157,30 @@ const LEAGUE = {
   // You can also add rows by hand under season or allTime (same keys as the columns).
   stats: {
     // Defense lines also have YDA (yards allowed in coverage) and TDA (touchdowns allowed); lower is better.
-    // Rushing lines go to RB. Receivers count as WR and defenders as DB unless listed here,
-    // e.g. "sk8erboy111": "TE", "i56gwe": "LB", "knqq": "DE". Anyone with a sack, TFL, safety or pressure
-    // on a defense line also shows on the DE tab.
+    // Rushing lines go to RB. Receivers count as WR unless listed here, e.g. "sk8erboy111": "TE", "i56gwe": "LB",
+    // "knqq": "DE". A listed defender only shows at their listed spot; one not listed counts as DE when most
+    // of their points came from sacks, TFLs, safeties and pressures, otherwise DB.
     // A player who plays both sides can have two: "breakxu": ["TE", "LB"].
     positions: {},
     // `allTime` = how the All-Time tab looks (same layout as the old stat sheets). Its rows come from the
     // stats-alltime-*.js sheets plus this season's box scores; `fpts` scores this season's games the way the sheets did.
     categories: [
-      { key: "QB", from: "passing", sort: "yds", columns: [["comp", "CMP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["int", "INT"], ["cmpPct", "CMP%"], ["lng", "LNG"], ["sacked", "SCKD"]],
+      { key: "QB", from: "passing", sort: "fpts", columns: [["fpts", "FPTS"], ["comp", "CMP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["int", "INT"], ["cmpPct", "CMP%"], ["lng", "LNG"], ["sacked", "SCKD"]],
         allTime: { sort: "fpts", fpts: { yds: 0.04, td: 4, int: -4 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["comp", "CMP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["int", "INT"]] } },
-      { key: "RB", from: "rushing", sort: "yds", columns: [["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["ypc", "YPC"], ["fum", "FUM"], ["plus20", "20+"], ["lng", "LNG"]],
+      { key: "RB", from: "rushing", sort: "fpts", columns: [["fpts", "FPTS"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["ypc", "YPC"], ["fum", "FUM"], ["plus20", "20+"], ["lng", "LNG"]],
         allTime: { sort: "fpts", fpts: { yds: 1, td: 20 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["att", "ATT"], ["yds", "YDS"], ["td", "TD"], ["fum", "FUM"]] } },
-      { key: "WR", from: "receiving", pos: "WR", sort: "yds", columns: [["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"], ["lng", "LNG"]],
+      { key: "WR", from: "receiving", pos: "WR", sort: "fpts", columns: [["fpts", "FPTS"], ["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"], ["lng", "LNG"]],
         allTime: { sort: "fpts", fpts: { yds: 0.1, td: 6 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"]] } },
-      { key: "TE", from: "receiving", pos: "TE", sort: "yds", columns: [["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"], ["lng", "LNG"]],
+      { key: "TE", from: "receiving", pos: "TE", sort: "fpts", columns: [["fpts", "FPTS"], ["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"], ["lng", "LNG"]],
         allTime: { sort: "fpts", fpts: { yds: 0.1, td: 6 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["tgt", "TGT"], ["rec", "REC"], ["yds", "YDS"], ["td", "TD"], ["drop", "DROP"]] } },
       { key: "Tackles", from: "defense", sort: "tak", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["pbu", "PBU"], ["int", "INT"]],
         allTime: { sort: "fpts", fpts: { tak: 1, tfl: 2 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["tak", "TAK"], ["tfl", "TFL"]] } },
-      { key: "DE", from: "defense", pos: "DE", sort: "sck", columns: [["sck", "SCK"], ["tfl", "TFL"], ["pre", "PRE"], ["saf", "SAF"], ["tak", "TAK"], ["swat", "SWAT"]],
+      { key: "DE", from: "defense", pos: "DE", sort: "fpts", columns: [["fpts", "FPTS"], ["sck", "SCK"], ["tfl", "TFL"], ["pre", "PRE"], ["saf", "SAF"], ["tak", "TAK"], ["swat", "SWAT"]],
         allTime: { sort: "fpts", fpts: { sck: 1, saf: 2 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["sck", "SCK"], ["saf", "SAF"]] } },
-      { key: "DB", from: "defense", pos: "DB", sort: "int", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"], ["yda", "YDA"], ["tda", "TDA"]],
+      { key: "DB", from: "defense", pos: "DB", sort: "fpts", columns: [["fpts", "FPTS"], ["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"], ["yda", "YDA"], ["tda", "TDA"]],
         allTime: { sort: "fpts", fpts: { int: 1, pbu: 0.5 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["int", "INT"], ["pbu", "PBU"]] } },
       // The old LB sheet's FPTS used stats it didn't show, so this season's LB points are a best guess
-      { key: "LB", from: "defense", pos: "LB", sort: "tak", columns: [["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"], ["yda", "YDA"], ["tda", "TDA"]],
+      { key: "LB", from: "defense", pos: "LB", sort: "fpts", columns: [["fpts", "FPTS"], ["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["saf", "SAF"], ["swat", "SWAT"], ["int", "INT"], ["pbu", "PBU"], ["pre", "PRE"], ["td", "TD"], ["yda", "YDA"], ["tda", "TDA"]],
         allTime: { sort: "fpts", fpts: { tak: 1, tfl: 2, sck: 1, saf: 2, int: 1, pbu: 0.5 }, columns: [["fpts", "FPTS"], ["gp", "GP"], ["tak", "TAK"], ["tfl", "TFL"], ["sck", "SCK"], ["int", "INT"]] } }
     ],
     season: { QB: [], RB: [], WR: [], TE: [], Tackles: [], DE: [], DB: [], LB: [] },

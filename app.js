@@ -1094,8 +1094,7 @@
       if (lines.passing) set.add("QB");
       if (lines.rushing) set.add("RB");
       if (lines.receiving) set.add(positionOf(name, "receiving"));
-      if (lines.defense) set.add(positionOf(name, "defense"));
-      if (lines.defense && hasPos(lines.defense, "defense", "DE")) set.add("DE");
+      if (lines.defense) defensePositions(BOX_TOTALS.defense[name.toLowerCase()] || { ...lines.defense, player: name }).forEach((p) => set.add(p));
     });
     return POS_ORDER.filter((p) => set.has(p));
   }
@@ -1708,21 +1707,29 @@
     });
   });
 
-  function positionOf(player, from) {
+  function listedPositions(player) {
     const map = LEAGUE.stats.positions || {};
     const found = Object.keys(map).find((n) => n.toLowerCase() === player.toLowerCase());
-    const list = [].concat(found ? map[found] : []).map((p) => p.toUpperCase());
+    return [].concat(found ? map[found] : []).map((p) => p.toUpperCase());
+  }
+  function positionOf(player, from) {
+    const list = listedPositions(player);
     if (from === "receiving") return list.find((p) => p === "WR" || p === "TE") || "WR";
     if (from === "defense") return list.find((p) => p === "DB" || p === "LB") || "DB";
     return null;
   }
-  // A defense line counts as DE when the player is listed as DE or got after the passer (sack, TFL, safety or pressure)
+  // A defender plays only the spot(s) they're listed at (DE, DB or LB). Someone not listed counts as DE when
+  // most of their points came from getting after the passer (sack, TFL, safety, pressure), otherwise DB.
+  function defensePositions(r) {
+    const listed = listedPositions(r.player).filter((p) => p === "DE" || p === "DB" || p === "LB");
+    if (listed.length) return listed;
+    const w = (LEAGUE.fantasy || {}).defense || {};
+    const pts = (keys) => keys.reduce((n, k) => n + (r[k] || 0) * (w[k] || 0), 0);
+    return [pts(["sck", "tfl", "saf", "pre"]) > pts(["int", "pbu", "swat"]) ? "DE" : "DB"];
+  }
   function hasPos(r, from, pos) {
-    if (pos !== "DE") return positionOf(r.player, from) === pos;
-    const map = LEAGUE.stats.positions || {};
-    const found = Object.keys(map).find((n) => n.toLowerCase() === r.player.toLowerCase());
-    const listed = [].concat(found ? map[found] : []).some((p) => p.toUpperCase() === "DE");
-    return from === "defense" && (listed || !!(r.sck || r.tfl || r.saf || r.pre));
+    if (from === "defense") return defensePositions(r).includes(pos);
+    return positionOf(r.player, from) === pos;
   }
 
   // ---- Season leaders & award candidates (from this season's box scores) ----
@@ -1848,9 +1855,11 @@
       }, r))
       // All-Time tabs only list players who have something in that tab's columns
       .filter((r) => scope === "season" || shown.some((k) => typeof r[k] === "number" && r[k] !== 0))
-      .map((r) => (cat.fpts
-        ? { ...r, fpts: Object.entries(cat.fpts).reduce((sum, [k, w]) => sum + (r[k] || 0) * w, 0) }
-        : r));
+      // Season tabs score fantasy points the same way Award Candidates do, so the two always agree
+      .map((r) => {
+        const fw = cat.fpts || (scope === "season" && (LEAGUE.fantasy || {})[cat.from]);
+        return fw ? { ...r, fpts: Object.entries(fw).reduce((sum, [k, w]) => sum + (r[k] || 0) * w, 0) } : r;
+      });
     const manual = ((scope === "season" ? LEAGUE.stats.season : LEAGUE.stats.allTime) || {})[cat.key] || [];
     const merged = new Map();
     [...manual, ...fromBox].forEach((r) => {
