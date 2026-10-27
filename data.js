@@ -113,8 +113,8 @@ const LEAGUE = {
       COTY: ["n4w", "discoversoul", "jvkethings", "xjupp"]
     },
     2: {
-      MVP: "dictator 10", OPOTY: "lord 9", DPOTY: "breakxu", UFB_MVP: "glockyinmywaist",
-      QBOTY: "dictator 10", TEOTY: "shazamzq", WROTY: "glockyinmywaist", DBOTY: "depthacfler",
+      MVP: "dictator 10", OPOTY: "lord 9", DPOTY: "breakxu", UFB_MVP: "lord 9",
+      QBOTY: "dictator 10", TEOTY: "shazamzq", WROTY: "lord 9", DBOTY: "depthacfler",
       LBOTY: "N/A", DEOTY: "shazamzq", RBOTY: "fooge",
       ROTY: "1021Juice", HCOTY: "firmy", EOTY: "MarDimes", TOTY: { team: "Deltabay Dolphins", record: "7-0" },
       COTY: ["130kami", "zach"]
