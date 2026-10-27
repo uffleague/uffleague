@@ -4522,7 +4522,7 @@
     "lord 9": { WR: 99 }, n4w: { WR: 95 }, splndd: { WR: 93 }, kamil08: { WR: 92 }, coaserh: { WR: 90 }, "2kaiju": { WR: 89 },
     curfaw: { WR: 89 }, hurdle: { WR: 88 }, "130kami": { WR: 88 }, mr_devy1122: { WR: 87 }, xjupp: { WR: 86 }, yavientt: { WR: 86 },
     ast1: { WR: 86 }, fraeology: { WR: 85 }, kevskiiiiiii: { WR: 85 }, rosewood: { WR: 85 }, pravings: { WR: 85 },
-    vboppppppppppp: { WR: 85 }, rcbkailer: { WR: 84 }, synappseuser: { WR: 83 }, stunaaaaaaaaaaaaa: { WR: 83 }, fooge: { WR: 82 },
+    vboppppppppppp: { WR: 85 }, rcbkailer: { WR: 94 }, synappseuser: { WR: 83 }, stunaaaaaaaaaaaaa: { WR: 83 }, fooge: { WR: 82 },
     superkarbfulboy9999: { WR: 82 }, vampviolences: { WR: 80 }, gabe08130: { WR: 79 }, seaboy: { WR: 79 }, knql: { WR: 78 },
     jadnlations: { WR: 76 }, goatnotgood: { WR: 72 }, ewikoro: { WR: 70 }, galan: { WR: 65 },
     uufaailen: { WR: 64 }, lynnvxd: { WR: 64 }, descended: { WR: 64 }, "10": { WR: 64 }, "130": { WR: 64 }, bloodhill: { WR: 64 },

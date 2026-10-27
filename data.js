@@ -188,7 +188,7 @@ const LEAGUE = {
   },
   // Same person, shown under the second name. Applied after the Discord bot's renames (like Admin -> Players renames),
   // so a bot roster sync under the first name still lands on the second.
-  renames: { "bloodhownd": "i56gwe", "vcoostwash": "nichelarpers" },
+  renames: { "bloodhownd": "i56gwe", "vcoostwash": "nichelarpers", "Marauderpress": "rcbkailer" },
   // Old Discord nicknames -> the name used on the site. Applied when pasting stats or transactions.
   // A player's site name is the Roblox account on their Bloxlink (from the ZevoraV2 bot) where the bot has one.
   aliases: {
@@ -210,7 +210,7 @@ const LEAGUE = {
     "jaylenyagami": "rosewood", "✴ 2223007": "n4w", "2223007": "n4w",
     "Nxstalgjc": "PPspecialist", "Made Her Suffer.": "PPspecialist", "Made Her Suffer": "PPspecialist", "hey": "2kaiju", "romance": "galan", "Galan101dragon20": "galan",
     "Lance6i": "Shyne6712", "5kaiju": "freebloodhill", "Dear Diary": "130liar", "coldview": "hurdle", "1021juice": "sk8erboy111", "vBopYuYt": "roblox_user_2363107116",
-    "Lobstirz": "Marauderpress", "bcra n6kj": "n6kj",
+    "Lobstirz": "rcbkailer", "bcra n6kj": "n6kj",
     // Head coaches' usernames (from the Season 7 coaches list)
     "loverloverlover": "loverIoverlover",
     // Names the site used before -> the Roblox account on their Bloxlink
@@ -218,7 +218,7 @@ const LEAGUE = {
     "CountTo5": "f84d", "day": "nichelarpers", "dictator 10": "SparkyFaceIsPunched", "goatnotgood": "perkialtacc",
     "hellraiser": "Hellraiser000", "hellraiser000": "Hellraiser000", "jvkethings": "JvkeThingz", "Kevskiiiiiii": "Kevskiiiiiiii",
     "liarliarliar": "130liar", "lord 9": "IlIIIllIllIIllIlI", "msuede": "marmersie", "phentric": "sIicur",
-    "rcbkailer": "Marauderpress", "rekid": "bloodhownd", "ripburied": "KrxticalLag", "sec": "sec2v", "shazam": "shazamzq",
+    "rekid": "bloodhownd", "ripburied": "KrxticalLag", "sec": "sec2v", "shazam": "shazamzq",
     "Sigma": "goodnoob9870", "soto": "dreamfolds", "splndd": "jumpbaI", "vboppppppppppp": "roblox_user_2363107116",
     "Vljla6i": "LighttExe", "xjupp": "xJupp", "Yavientt": "PPspecialist", "youngvtee": "zqju1"
   },
@@ -453,7 +453,7 @@ const LEAGUE = {
     // bonus = extra points on top of their roles (for totals set by the league).
     players: [
       { name: "n4w", honors: { COTY: 3, UFB_CHAMP: 2, UFB_MVP: 1, MVP: 1, OPOTY: 1, DPOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 2, SECOND_TEAM: 3 } },
-      { name: "lord 9", honors: { COTY: 1, UFB_CHAMP: 3, MVP: 1, OPOTY: 1, DEOTY: 1, DBOTY: 1, CROWN: 2, FLAG_TITLE: 5, FIRST_TEAM: 4 } },
+      { name: "lord 9", honors: { COTY: 1, UFB_CHAMP: 3, MVP: 1, OPOTY: 1, WROTY: 1, DEOTY: 1, DBOTY: 1, CROWN: 2, FLAG_TITLE: 5, FIRST_TEAM: 4 } },
       { name: "dictator 10", honors: { UFB_CHAMP: 2, MVP: 2, QBOTY: 1, CROWN: 1, FIRST_TEAM: 2, SECOND_TEAM: 2, HCOTY: 1 } },
       { name: "shazam", honors: { UFB_CHAMP: 2, TEOTY: 2, DEOTY: 2, CROWN: 2, FIRST_TEAM: 4 } },
       { name: "mr_devy1122", honors: { COTY: 1, UFB_CHAMP: 1, DPOTY: 1, DBOTY: 1, FLAG_TITLE: 5, FIRST_TEAM: 3, SECOND_TEAM: 2 } },
