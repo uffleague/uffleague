@@ -124,14 +124,14 @@ const LEAGUE = {
       QBOTY: "hellraiser000", TEOTY: "day", WROTY: "splndd", DBOTY: "mr_devy1122",
       LBOTY: "ast1", DEOTY: "lord 9", RBOTY: "breakxu",
       ROTY: "spacemakin", HCOTY: "biglester", EOTY: "Davivibez", TOTY: { team: "Shiroishi Samurai", record: "7-1" },
-      COTY: ["fraeology", "mr_devy1122", "rcbkailer"]
+      COTY: ["fraeology", "mr_devy1122", "rcbkailer", "ast1"]
     },
     4: {
       MVP: "lord 9", OPOTY: "wery", DPOTY: "knqq", UFB_MVP: "N/A",
       QBOTY: "JvkeThingz", TEOTY: "day", WROTY: "SolaceInPerishing", DBOTY: "lord 9",
       LBOTY: "Galan101dragon20", DEOTY: "knqq", RBOTY: "N/A",
       ROTY: "Conaments", HCOTY: "JvkeThingz", EOTY: "Ccore", TOTY: { team: "Seminola Spartians", record: "6-0" },
-      COTY: ["n4w", "xjupp", "rcbkailer"]
+      COTY: ["n4w", "xjupp", "rcbkailer", "ast1"]
     },
     5: {
       MVP: "breakxu", OPOTY: "biglester", DPOTY: "knqq", UFB_MVP: "n4w",
@@ -460,8 +460,8 @@ const LEAGUE = {
       { name: "BIGGIECHEESE", honors: { OPOTY: 2, QBOTY: 1, RBOTY: 1, FLAG_TITLE: 4, FIRST_TEAM: 2, SECOND_TEAM: 2 } },
       { name: "Kamil08", honors: { UFB_CHAMP: 3, UFB_MVP: 1, OPOTY: 1 } },
       { name: "day", honors: { TEOTY: 2, DEOTY: 1, CROWN: 3, FIRST_TEAM: 3, EXEOTY: 1 } },
-      { name: "rcbkailer", honors: { UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2 }, bonus: 38 },
-      { name: "ast1", honors: { UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2 } },
+      { name: "rcbkailer", honors: { COTY: 2, UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 3, SECOND_TEAM: 1 }, bonus: 38 },
+      { name: "ast1", honors: { COTY: 2, UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 3, SECOND_TEAM: 1 } },
       { name: "splndd", honors: { COTY: 1, UFB_CHAMP: 1, WROTY: 1, FLAG_TITLE: 5, FIRST_TEAM: 4 } },
       { name: "breakxu", honors: { MVP: 2, DPOTY: 1, RBOTY: 1, LBOTY: 1, HCOTY: 1 }, bonus: 258 },
       { name: "jvkethings", honors: { COTY: 2, QBOTY: 1, RBOTY: 1, CROWN: 2, FIRST_TEAM: 3, SECOND_TEAM: 2 }, bonus: 125 },
