@@ -9,7 +9,8 @@
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
-  renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, primetime: null, activity: [] };
+  renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, primetime: null, activity: [],
+  fantasy: null }; // fantasy: points per stat set on Admin -> Fantasy Points (null = the site's defaults)
 const RENAMES_MAX = 3000;
 const PEOPLE_MAX = 3000;
 const SYNCS_MAX = 200;
@@ -1071,6 +1072,23 @@ export default {
       const gone = data.updates.find((x) => x.id === body.id);
       data.updates = data.updates.filter((x) => x.id !== body.id);
       log = gone ? `Removed transaction: ${gone.player} (${gone.type}, ${gone.team})` : "Removed a transaction";
+    } else if (body.action === "saveFantasy") {
+      // { passing: { yds: 0.04, ... }, ... } or null to go back to the defaults
+      if (!body.fantasy) {
+        data.fantasy = null;
+        log = "Reset the fantasy points to the defaults";
+      } else {
+        const out = {};
+        Object.entries(STAT_FIELDS).forEach(([g, fields]) => {
+          out[g] = {};
+          fields.filter((f) => f !== "lng").forEach((f) => {
+            const v = Number(((body.fantasy || {})[g] || {})[f]);
+            if (Number.isFinite(v) && v !== 0) out[g][f] = Math.max(-100, Math.min(100, Math.round(v * 1000) / 1000));
+          });
+        });
+        data.fantasy = out;
+        log = "Changed the fantasy points";
+      }
     } else if (body.action === "setPosition") {
       const name = String(body.name || "").trim();
       const list = [].concat(body.list || []).filter((p) => ["TE", "LB"].includes(p));

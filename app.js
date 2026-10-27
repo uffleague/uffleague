@@ -128,6 +128,9 @@
     });
   })();
 
+  // Fantasy points set on Admin -> Fantasy Points replace the defaults in data.js
+  if (SAVED.fantasy) LEAGUE.fantasy = SAVED.fantasy;
+
   (function mergeSaved() {
     // Position changes replace whatever data.js lists for that player
     const posMap = (LEAGUE.stats.positions = LEAGUE.stats.positions || {});
@@ -2869,6 +2872,31 @@
       </section>`;
   }
 
+  // ---- Admin -> Fantasy Points: what each stat is worth (Season FPTS and Award Candidates) ----
+
+  const FANTASY_GROUPS = [["passing", "Passing"], ["rushing", "Rushing"], ["receiving", "Receiving"], ["defense", "Defense"]];
+
+  function fantasyAdminSection() {
+    const w = LEAGUE.fantasy || {};
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Fantasy Points</h2></div>
+        <form class="card admin-card" id="fantasyForm" autocomplete="off">
+          <p class="muted small admin-note">Points a player gets for each one of a stat (0.1 on YDS = a point every 10 yards). Use a minus for bad plays, like -2 for an INT thrown or -0.02 on YDA (a point lost every 50 yards allowed). This sets the FPTS on the Season ${LEAGUE.season} stat tabs and the Award Candidates for everyone. All-Time FPTS keep the old stat sheets' scoring.${SAVED.fantasy ? "" : " <strong>These are the defaults right now.</strong>"}</p>
+          ${FANTASY_GROUPS.map(([g, label]) => `
+            <div class="admin-subhead">${label}</div>
+            <div class="admin-fields">
+              ${STAT_EDIT[g].filter(([f]) => f !== "lng").map(([f, h]) => `
+                <label class="field"><span>${h}</span><input name="${g}.${f}" type="number" step="any" inputmode="decimal" value="${(w[g] || {})[f] || 0}"></label>`).join("")}
+            </div>`).join("")}
+          <div class="admin-actions">
+            <button class="btn btn-primary" type="submit">Save</button>
+            ${SAVED.fantasy ? `<button type="button" class="btn btn-ghost" id="fantasyReset">Reset to defaults</button>` : ""}
+          </div>
+        </form>
+      </section>`;
+  }
+
   // ---- Admin -> Players: how a player's name shows, and the team they're on ----
 
   function playersAdminSection() {
@@ -3555,7 +3583,8 @@
     ["playoffs", "Playoffs", "playoff", () => playoffsAdminSection()],
     ["bowls", "Bowl History", "bowl", () => bowlsAdminSection()],
     ["allflag", "All-Flag", "star", () => allFlagAdminSection()],
-    ["positions", "Positions", "compare", () => positionsSection()]
+    ["positions", "Positions", "compare", () => positionsSection()],
+    ["fantasy", "Fantasy Points", "trend", () => fantasyAdminSection()]
   ];
   let adminTab = "overview";
 
@@ -5259,6 +5288,14 @@
       return adminSave(e.target.querySelector("button[type=submit]"), body, () =>
         reloadWithFlash(id === "gameLineAdd" ? `Added a stat line for ${statsEditName}. Fill it in below.` : `Saved ${statsEditName}'s line for ${d.game}. Everyone sees it now.`));
     }
+    if (id === "fantasyForm") {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const fantasy = Object.fromEntries(FANTASY_GROUPS.map(([g]) => [g,
+        Object.fromEntries(STAT_EDIT[g].filter(([f]) => f !== "lng").map(([f]) => [f, Number(form.get(`${g}.${f}`)) || 0]))]));
+      return adminSave(e.target.querySelector("button[type=submit]"), { action: "saveFantasy", fantasy }, () =>
+        reloadWithFlash("Saved the fantasy points. Everyone's FPTS and the Award Candidates use them now."));
+    }
     if (!["posForm", "adminLogin", "streamForm", "teamForm", "statPick", "statForm", "vodForm", "playerForm", "awardForm", "recordForm"].includes(id)) return;
     e.preventDefault();
     const form = new FormData(e.target);
@@ -5431,6 +5468,11 @@
       teamEditKey = t.id === "teamNew" ? "+new" : t.dataset.teamPick;
       teamLogoDraft = null;
       return renderKeepScroll();
+    }
+    if (t.id === "fantasyReset") {
+      if (!confirm("Go back to the default fantasy points?")) return;
+      return adminSave(t, { action: "saveFantasy", fantasy: null }, () =>
+        reloadWithFlash("The fantasy points are back to the defaults."));
     }
     if (t.id === "teamReset") {
       const current = TEAMS.find((x) => x.key === teamEditKey);

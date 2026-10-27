@@ -222,12 +222,14 @@ const LEAGUE = {
     "Sigma": "goodnoob9870", "soto": "dreamfolds", "splndd": "jumpbaI", "vboppppppppppp": "roblox_user_2363107116",
     "Vljla6i": "LighttExe", "xjupp": "xJupp", "Yavientt": "PPspecialist", "youngvtee": "zqju1"
   },
-  // Fantasy points per stat, used to rank Award Candidates. Change these to match your league.
+  // Fantasy points per stat: the FPTS on the Season stat tabs and the Award Candidates ranking. These are the defaults;
+  // Admin -> Fantasy Points changes them for everyone. Defenders lose points for yards (YDA) and TDs (TDA) allowed
+  // in coverage, so a DB who gives up a lot doesn't outrank one who shuts receivers down.
   fantasy: {
-    passing: { yds: 0.04, td: 4, int: -2 },
+    passing: { yds: 0.04, td: 4, int: -2, sacked: -1 },
     rushing: { yds: 0.1, td: 6, fum: -2, pre: 0.5 },
-    receiving: { rec: 1, yds: 0.1, td: 6 },
-    defense: { tak: 1, tfl: 1, sck: 2, saf: 2, swat: 1, int: 3, pbu: 1, pre: 0.5, td: 6 }
+    receiving: { rec: 1, yds: 0.1, td: 6, drop: -1 },
+    defense: { tak: 1, tfl: 1.5, sck: 3, saf: 2, swat: 1, int: 4, pbu: 1.5, pre: 0.5, td: 6, yda: -0.02, tda: -2 }
   },
   // Award Candidates: which box score sections count for each award, and (optional) position.
   candidates: [
