@@ -1675,6 +1675,7 @@
   let statsPos = LEAGUE.stats.categories[0].key;
   let statsRows = [];
   let statsCat = null;
+  let statsSortBy = ""; // a column picked by clicking its header ("-" in front = lowest first)
 
   // Add one stat line into a running total (yards etc. add up, LNG keeps the biggest)
   function addLine(acc, line) {
@@ -1907,7 +1908,12 @@
           <table class="standings">
             <thead><tr>
               <th class="rank">#</th><th class="team-col">Player</th><th class="team-col">Team</th>
-              ${statsCat.columns.map(([k, h]) => `<th class="${k === statsCat.sort ? "sorted" : ""}">${h}</th>`).join("")}
+              ${statsCat.columns.map(([k, h]) => {
+                // Click a header to rank by it (most first); click it again for fewest first
+                const on = k === statsCat.sort;
+                const next = on && !statsCat.asc ? `-${k}` : k;
+                return `<th class="${on ? "sorted" : ""}"><a class="th-sort" href="#/stats/${statsScope}/${statsCat.key}/${next}" title="Rank by ${h}">${h}${on ? `<span class="th-arrow">${statsCat.asc ? "&#9650;" : "&#9660;"}</span>` : ""}</a></th>`;
+              }).join("")}
             </tr></thead>
             <tbody>
               ${rows.map((r) => `
@@ -1929,13 +1935,16 @@
   function stats() {
     const baseCat = LEAGUE.stats.categories.find((c) => c.key === statsPos) || LEAGUE.stats.categories[0];
     statsCat = statsScope === "alltime" && baseCat.allTime ? { ...baseCat, ...baseCat.allTime } : baseCat;
+    const picked = statsSortBy.replace(/^-/, "");
+    if (statsCat.columns.some(([k]) => k === picked)) statsCat = { ...statsCat, sort: picked, asc: statsSortBy.startsWith("-") };
+    const val = (r) => Number(r[statsCat.sort]) || 0; // CMP% and YPC are text
     // Show the team each player is on now (old sheet teams aren't current, so they show as UFF)
     statsRows = statRowsFor(statsCat, statsScope)
       .map((r) => {
         const t = currentTeam(r.player);
         return { ...r, t, team: t ? t.name : "" };
       })
-      .sort((a, b) => (b[statsCat.sort] || 0) - (a[statsCat.sort] || 0) || a.player.localeCompare(b.player))
+      .sort((a, b) => (statsCat.asc ? val(a) - val(b) : val(b) - val(a)) || a.player.localeCompare(b.player))
       .map((r, i) => ({ ...r, rank: i + 1 }));
     const scopes = [["season", `Season ${LEAGUE.season}`], ["alltime", "All-Time"]];
     return `
@@ -5119,6 +5128,7 @@
   ).join("");
 
   let lastTeamOpen = null;
+  let lastStatsView = null;
   function render() {
     gfxClose();
     const parts = location.hash.replace(/^#\/?/, "").split("/");
@@ -5134,6 +5144,8 @@
       statsScope = sub === "alltime" ? "alltime" : "season";
       const pos = parts[2] && LEAGUE.stats.categories.find((c) => c.key.toLowerCase() === parts[2].toLowerCase());
       if (pos) statsPos = pos.key;
+      // #/stats/season/DB/int = ranked by INT; "-yda" = lowest YDA first; none = the tab's usual order
+      statsSortBy = pos && parts[3] ? decodeURIComponent(parts[3]) : "";
     }
     if (section === "awards") {
       const s = Number(sub);
@@ -5163,8 +5175,12 @@
     closeMenu();
     // Switching tabs on a team page keeps your place
     const teamOpen = section === "teams" && sub ? sub : null;
-    if (!teamOpen || teamOpen !== lastTeamOpen) window.scrollTo(0, 0);
+    // So does ranking a stat tab by another column
+    const statsView = section === "stats" ? `${statsScope}/${statsPos}` : null;
+    const sameStats = statsView && statsView === lastStatsView;
+    if (!sameStats && (!teamOpen || teamOpen !== lastTeamOpen)) window.scrollTo(0, 0);
     lastTeamOpen = teamOpen;
+    lastStatsView = statsView;
     if (section === "admin" && getAdmin()) loadActivity();
     if (section === "admin" && adminTab === "honors") recordPicked();
   }

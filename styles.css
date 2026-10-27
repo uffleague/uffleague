@@ -716,6 +716,9 @@ button.box-toggle.open::after { content: " ▴"; }
 .segmented a.active { background: var(--accent); color: var(--cream); }
 .search--wide { max-width: none; margin-top: 20px; }
 .standings th.sorted { color: var(--heading); }
+.th-sort { color: inherit; display: inline-flex; align-items: center; gap: 3px; }
+.th-sort:hover { color: var(--heading); text-decoration: underline; text-underline-offset: 3px; }
+.th-arrow { font-size: 8px; }
 .standings td.sorted { font-weight: 700; color: var(--heading); }
 .stat-player { color: var(--heading); }
 
