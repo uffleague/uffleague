@@ -1498,17 +1498,15 @@
     const e = avatarCache[String(name).toLowerCase()];
     return e && Date.now() - e.at < AVATAR_KEEP_MS ? e : null;
   };
-  // The profile picture: their Roblox headshot in front of their current team's logo. No avatar (yet)
-  // = the team logo alone like before; no team or no logo = the avatar alone. Until the avatar is known it's
-  // marked data-avatar, and fillAvatars() swaps it in once the Worker answers.
-  function playerArt(name, t) {
+  // The profile picture: their Roblox headshot (the team logo sits beside their name). No avatar (yet) = the UFF
+  // logo. Until the avatar is known it's marked data-avatar, and fillAvatars() swaps it in once the Worker answers.
+  function playerArt(name) {
     const known = avatarKnown(name);
-    const logo = t && t.logo ? teamLogo(t, "xl") : "";
     if (known && known.url) {
-      return `<div class="player-art has-avatar">${logo}<img class="player-avatar" src="${esc(known.url)}" alt="${esc(name)}'s Roblox avatar"></div>`;
+      return `<div class="player-art has-avatar"><img class="player-avatar" src="${esc(known.url)}" alt="${esc(name)}'s Roblox avatar"></div>`;
     }
-    const wait = known ? "" : ` data-avatar="${esc(name)}" data-team="${t ? t.slug : ""}"`;
-    return `<div class="player-art"${wait}>${t ? teamLogo(t, "xl") : `<img class="team-logo xl" src="logo.png" alt="">`}</div>`;
+    const wait = known ? "" : ` data-avatar="${esc(name)}"`;
+    return `<div class="player-art"${wait}><img class="team-logo xl" src="logo.png" alt=""></div>`;
   }
   async function fillAvatars() {
     const spots = [...document.querySelectorAll("#app [data-avatar]")];
@@ -1522,7 +1520,7 @@
     } catch (e) {}
     spots.forEach((el) => {
       const e = avatarKnown(el.dataset.avatar);
-      if (e && e.url && el.isConnected) el.outerHTML = playerArt(el.dataset.avatar, TEAMS.find((t) => t.slug === el.dataset.team));
+      if (e && e.url && el.isConnected) el.outerHTML = playerArt(el.dataset.avatar);
     });
   }
   // An avatar that won't load (or a team logo file that's missing) drops out instead of showing a broken picture
@@ -1564,9 +1562,9 @@
       <div class="wrap">
         <a href="javascript:history.back()" class="link back">&larr; Back</a>
         <div class="team-head">
-          ${playerArt(name, t)}
+          ${playerArt(name)}
           <div>
-            <h1 class="player-title">${name}
+            <h1 class="player-title">${name}${t && t.logo ? `<a href="#/teams/${t.slug}" title="${esc(t.name)}">${teamLogo(t, "lg")}</a>` : ""}
               ${leg ? `<span class="legacy-rank-badge" title="Legacy ranking">${icon("legacy")}Legacy #${leg.rank} &middot; ${leg.score} pts</span>` : ""}
               ${leg && leg.hof ? hofBadge : leg && leg.tier ? tierBadge(leg.tier) : ""}
             </h1>
@@ -2906,6 +2904,51 @@
       </section>`;
   }
 
+  // ---- Admin -> Build a Team: each player's overall at QB / WR / TE ----
+
+  const BT_POS = ["QB", "WR", "TE"];
+
+  function btAdminSection() {
+    const list = [...legendRatings().values()]
+      .map((l) => ({ ...l, best: Math.max(...BT_POS.map((p) => l.ratings[p] || 0)) }))
+      .sort((a, b) => b.best - a.best || a.name.localeCompare(b.name));
+    const out = Object.entries(SAVED.btRatings || {}).filter(([, set]) => !set).map(([n]) => n);
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Build a Team Overalls</h2></div>
+        <form class="card admin-card" id="btForm" autocomplete="off">
+          <p class="muted small admin-note">Set a player's overall (40-99) at each spot. Leave a spot empty to work it out from their stats, awards and Legacy points (never above their best overall here). Typing a player already in Build a Team fills in what they have now. Everyone sees the change once you save.</p>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Player</span><input name="player" id="btPlayer" list="playerNames" required></label>
+            ${BT_POS.map((p) => `<label class="field"><span>${p}</span><input name="${p}" id="bt${p}" type="number" min="40" max="99" step="1" placeholder="auto"></label>`).join("")}
+            <button class="btn btn-primary" type="submit">Save</button>
+          </div>
+          <datalist id="playerNames">${knownPlayers().map((n) => `<option value="${n}">`).join("")}</datalist>
+        </form>
+        <div class="card list-card admin-list">
+          <div class="admin-subhead">In Build a Team<span class="muted small">${list.length} players &middot; hand-set overalls in bold</span></div>
+          ${list.map((l) => `
+            <div class="list-row">
+              <span>${playerLink(l.name)}${l.edited ? ` <span class="pill">Edited</span>` : ""}</span>
+              <span class="muted small">${BT_POS.map((p) => p in l.set ? `<strong>${p} ${l.ratings[p]}</strong>` : `${p} ${l.ratings[p]}`).join(" &middot; ")}</span>
+              <span>
+                ${l.edited ? `<button type="button" class="btn btn-ghost btn-sm" data-bt-reset="${esc(l.name)}">Undo edit</button>` : ""}
+                <button type="button" class="btn btn-ghost btn-sm" data-bt-remove="${esc(l.name)}">Remove</button>
+              </span>
+            </div>`).join("")}
+        </div>
+        ${out.length ? `
+          <div class="card list-card admin-list">
+            <div class="admin-subhead">Taken out</div>
+            ${out.map((n) => `
+              <div class="list-row">
+                <span>${playerLink(aliasName(n))}</span>
+                <button type="button" class="btn btn-ghost btn-sm" data-bt-reset="${esc(n)}">Put back</button>
+              </div>`).join("")}
+          </div>` : ""}
+      </section>`;
+  }
+
   // ---- Admin -> Players: how a player's name shows, and the team they're on ----
 
   function playersAdminSection() {
@@ -3593,7 +3636,8 @@
     ["bowls", "Bowl History", "bowl", () => bowlsAdminSection()],
     ["allflag", "All-Flag", "star", () => allFlagAdminSection()],
     ["positions", "Positions", "compare", () => positionsSection()],
-    ["fantasy", "Fantasy Points", "trend", () => fantasyAdminSection()]
+    ["fantasy", "Fantasy Points", "trend", () => fantasyAdminSection()],
+    ["buildteam", "Build a Team", "star", () => btAdminSection()]
   ];
   let adminTab = "overview";
 
@@ -4596,7 +4640,18 @@
   const BT_BEST_KEY = "uffBuildBest3";
   try { ["uffBuildBestOff9", "uffBuildBest2"].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
 
-  // Each BT_ROSTER player's 60-99 rating at each position group, worked out once
+  // BT_ROSTER with the overalls set on Admin -> Build a Team on top (null there = left out): Map(key -> { raw, set, edited })
+  function btRoster() {
+    const out = new Map(Object.entries(BT_ROSTER).map(([raw, set]) => [aliasName(raw).toLowerCase(), { raw, set, edited: false }]));
+    Object.entries(SAVED.btRatings || {}).forEach(([raw, set]) => {
+      const key = aliasName(raw).toLowerCase();
+      if (!set) out.delete(key);
+      else out.set(key, { raw, set, edited: true });
+    });
+    return out;
+  }
+
+  // Each Build a Team player's 60-99 rating at each position group, worked out once
   let btLegends = null;
   function legendRatings() {
     if (btLegends) return btLegends;
@@ -4610,8 +4665,7 @@
     });
     const legacyOf = new Map(legacy.map((p) => [aliasName(p.name).toLowerCase(), p]));
     btLegends = new Map();
-    Object.entries(BT_ROSTER).forEach(([raw, set]) => {
-      const key = aliasName(raw).toLowerCase();
+    btRoster().forEach(({ raw, set, edited }, key) => {
       const p = legacyOf.get(key); // players who aren't on the Legacy list get no Legacy points
       const name = p ? p.name : aliasName(raw);
       const honors = Object.fromEntries(playerHonors(name, p).map((h) => [h.code, h.n]));
@@ -4625,7 +4679,7 @@
         const sidePart = Math.min(3, 1.5 * ((honors.MVP || 0) + (def.side === "off" ? honors.OPOTY || 0 : honors.DPOTY || 0)));
         ratings[g] = Math.min(top || 99, Math.round(60 + statPart + awardPart + legacyPart + sidePart));
       });
-      btLegends.set(key, { name, hof: p ? p.hof : false, tier: p && p.tier, ratings });
+      btLegends.set(key, { name, hof: p ? p.hof : false, tier: p && p.tier, ratings, set, edited });
     });
     return btLegends;
   }
@@ -5304,6 +5358,15 @@
       return adminSave(e.target.querySelector("button[type=submit]"), body, () =>
         reloadWithFlash(id === "gameLineAdd" ? `Added a stat line for ${statsEditName}. Fill it in below.` : `Saved ${statsEditName}'s line for ${d.game}. Everyone sees it now.`));
     }
+    if (id === "btForm") {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const typed = String(form.get("player") || "").trim();
+      const name = knownPlayers().find((n) => n.toLowerCase() === aliasName(typed).toLowerCase()) || aliasName(typed);
+      const ratings = Object.fromEntries(BT_POS.filter((p) => String(form.get(p) || "").trim()).map((p) => [p, Number(form.get(p))]));
+      return adminSave(e.target.querySelector("button[type=submit]"), { action: "setRating", name, ratings }, () =>
+        reloadWithFlash(`Saved ${name}'s Build a Team overall. Everyone sees it now.`));
+    }
     if (id === "fantasyForm") {
       e.preventDefault();
       const form = new FormData(e.target);
@@ -5484,6 +5547,12 @@
       teamEditKey = t.id === "teamNew" ? "+new" : t.dataset.teamPick;
       teamLogoDraft = null;
       return renderKeepScroll();
+    }
+    if (t.dataset && (t.dataset.btReset || t.dataset.btRemove)) {
+      const name = t.dataset.btReset || t.dataset.btRemove;
+      if (t.dataset.btRemove && !confirm(`Take ${name} out of Build a Team?`)) return;
+      return adminSave(t, { action: "setRating", name, [t.dataset.btRemove ? "remove" : "reset"]: true }, () =>
+        reloadWithFlash(t.dataset.btRemove ? `${name} is out of Build a Team.` : `${name}'s Build a Team overall is back to the original.`));
     }
     if (t.id === "fantasyReset") {
       if (!confirm("Go back to the default fantasy points?")) return;
@@ -5733,6 +5802,12 @@
     if (e.target.id === "txPaste") {
       updateTxDraft(e.target.value);
       document.getElementById("txPreview").innerHTML = txPreview();
+      return;
+    }
+    if (e.target.id === "btPlayer") {
+      // Fill in the overalls a Build a Team player has now (hand-set ones; formula spots stay empty)
+      const l = legendRatings().get(aliasName(e.target.value.trim()).toLowerCase());
+      if (l) BT_POS.forEach((p) => { document.getElementById(`bt${p}`).value = p in l.set ? l.set[p] : ""; });
       return;
     }
     if (e.target.id === "posPlayer") {

@@ -10,7 +10,8 @@
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
   renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, primetime: null, activity: [],
-  fantasy: null }; // fantasy: points per stat set on Admin -> Fantasy Points (null = the site's defaults)
+  fantasy: null, // fantasy: points per stat set on Admin -> Fantasy Points (null = the site's defaults)
+  btRatings: {} }; // btRatings: Build a Team overalls set on Admin -> Build a Team ({ name: { QB, WR, TE } }, null = left out)
 const RENAMES_MAX = 3000;
 const PEOPLE_MAX = 3000;
 const SYNCS_MAX = 200;
@@ -1089,6 +1090,27 @@ export default {
         data.fantasy = out;
         log = "Changed the fantasy points";
       }
+    } else if (body.action === "setRating") {
+      // One player's Build a Team overalls. reset = back to the site's own list; remove = left out of Build a Team
+      const name = str(body.name, 60);
+      if (!name) return json({ error: "Pick a player." }, 400);
+      const ratings = { ...data.btRatings };
+      Object.keys(ratings).filter((n) => n.toLowerCase() === name.toLowerCase()).forEach((n) => delete ratings[n]);
+      if (body.remove) {
+        ratings[name] = null;
+        log = `Took ${name} out of Build a Team`;
+      } else if (!body.reset) {
+        const set = {};
+        ["QB", "WR", "TE"].forEach((p) => {
+          const v = Math.round(Number((body.ratings || {})[p]));
+          if (Number.isFinite(v) && v >= 40 && v <= 99) set[p] = v;
+        });
+        ratings[name] = set;
+        log = `Set ${name}'s Build a Team overall: ${Object.entries(set).map(([p, v]) => `${p} ${v}`).join(", ") || "all from the formula"}`;
+      } else {
+        log = `Reset ${name}'s Build a Team overall`;
+      }
+      data.btRatings = ratings;
     } else if (body.action === "setPosition") {
       const name = String(body.name || "").trim();
       const list = [].concat(body.list || []).filter((p) => ["TE", "LB"].includes(p));
