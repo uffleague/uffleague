@@ -220,6 +220,17 @@
       (g.box || []).forEach((side) => Object.values(side || {}).forEach((rows) => [].concat(rows).forEach((r) => {
         if (r && r.player) r.player = rawAlias((r.robloxId && byRobloxId.get(String(r.robloxId))) || r.player);
       })));
+      // Two accounts merged into one player can leave them with two lines in one game: add those into one line
+      (g.box || []).forEach((side) => Object.keys(side || {}).forEach((k) => {
+        if (!Array.isArray(side[k])) return;
+        const seen = new Map();
+        side[k] = side[k].filter((r) => {
+          const first = r && r.player && seen.get(r.player.toLowerCase());
+          if (!first) { if (r && r.player) seen.set(r.player.toLowerCase(), r); return true; }
+          addLine(first, r);
+          return false;
+        });
+      }));
     });
     allDivs().forEach(({ d }) => d.teams.forEach((t) => { if (t.coach) t.coach = rawAlias(t.coach); }));
     // An entry under an old name moves to the current one, unless the current name already has its own
