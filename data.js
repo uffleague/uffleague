@@ -161,7 +161,7 @@ const LEAGUE = {
     // "knqq": "DE". A listed defender only shows at their listed spot; one not listed counts as DE when most
     // of their points came from sacks, TFLs, safeties and pressures, otherwise DB.
     // A player who plays both sides can have two: "breakxu": ["TE", "LB"].
-    positions: {},
+    positions: { "ast1": "LB" },
     // `allTime` = how the All-Time tab looks (same layout as the old stat sheets). Its rows come from the
     // stats-alltime-*.js sheets plus this season's box scores; `fpts` scores this season's games the way the sheets did.
     categories: [
@@ -461,6 +461,7 @@ const LEAGUE = {
       { name: "Kamil08", honors: { UFB_CHAMP: 3, UFB_MVP: 1, OPOTY: 1 } },
       { name: "day", honors: { TEOTY: 2, DEOTY: 1, CROWN: 3, FIRST_TEAM: 3, EXEOTY: 1 } },
       { name: "rcbkailer", honors: { COTY: 2, UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 3, SECOND_TEAM: 1 }, bonus: 38 },
+      { name: "ast1", honors: { COTY: 2, UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 3, SECOND_TEAM: 1 } },
       { name: "splndd", honors: { COTY: 1, UFB_CHAMP: 1, WROTY: 1, FLAG_TITLE: 5, FIRST_TEAM: 4 } },
       { name: "breakxu", honors: { MVP: 2, DPOTY: 1, RBOTY: 1, LBOTY: 1, HCOTY: 1 }, bonus: 258 },
       { name: "jvkethings", honors: { COTY: 2, QBOTY: 1, RBOTY: 1, CROWN: 2, FIRST_TEAM: 3, SECOND_TEAM: 2 }, bonus: 125 },

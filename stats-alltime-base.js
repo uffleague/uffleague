@@ -792,7 +792,6 @@ ALL_TIME_SHEETS.push({
       ["xTenoke", "AUR", 1, 5, 1, 0]
     ] },
     DB: { cols: ["player","abbr","fpts","gp","int","pbu"], rows: [
-      ["ast1", "CC", 34, 8, 28, 12],
       ["splndd", "SEA", 19, 21, 8, 22],
       ["n4w", "VIR", 16, 25, 15, 2],
       ["xv89r12azk74m3a4", "CC", 13, 8, 10, 6],
@@ -982,6 +981,8 @@ ALL_TIME_SHEETS.push({
       ["1sht9", "SHI", 0.5, 1, 0, 1]
     ] },
     LB: { cols: ["player","abbr","fpts","gp","tak","tfl","sck","int"], rows: [
+      // ast1 moved here from the DB sheet (28 INT, 12 PBU) with their 75 tackles and 1 safety; FPTS = the LB formula
+      ["ast1", "CC", 111, 8, 75, 0, 0, 28],
       ["Drivxon", "CC", 75.8, 9, 31, 0, 0, 13],
       ["knql", "SEM", 38.3, 6, 13, 2, 2, 2],
       ["soto1s", "SUV", 24.8, 10, 19, 1, 1, 1],
