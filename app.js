@@ -3049,7 +3049,7 @@
   const RECAP_FIELDS = {
     passing: { YDS: "yds", TD: "td", INT: "int", RTG: "rtg", CMP: "cmpPct", AVG: "avg", LNG: "lng", SCKED: "sacked", SCKD: "sacked", SACKED: "sacked" },
     rushing: { ATT: "att", YDS: "yds", TD: "td", YPC: "ypc", FUM: "fum", "20+": "plus20", LNG: "lng", PRE: "pre", PRS: "pre", PRESSURE: "pre", PRESSURES: "pre" },
-    receiving: { TGT: "tgt", REC: "rec", YDS: "yds", TD: "td", DROP: "drop", LNG: "lng" },
+    receiving: { TGT: "tgt", T: "tgt", REC: "rec", YDS: "yds", TD: "td", DROP: "drop", LNG: "lng" },
     defense: { TAK: "tak", TKL: "tak", TFL: "tfl", SCK: "sck", SAF: "saf", SFTY: "saf", SWAT: "swat", INT: "int", PBU: "pbu", PRE: "pre", TD: "td", YDA: "yda", TDA: "tda" }
   };
   // Kept as text so they aren't added up across games
