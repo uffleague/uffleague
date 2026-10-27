@@ -1211,7 +1211,11 @@ export default {
         log = `Added a ${group} line for ${player} to ${r.id}`;
       } else {
         const line = Number.isInteger(index) ? list[index] : null;
-        if (!line) return json({ error: "That stat line changed since you loaded it. Reload and try again." }, 409);
+        // was = the name the page saw at that spot, so a list that changed since can't edit someone else's line
+        const was = str(body.was, 60);
+        if (!line || (was && String(line.player).toLowerCase() !== was.toLowerCase())) {
+          return json({ error: "That stat line changed since you loaded it. Reload and try again." }, 409);
+        }
         if (!body.stats) {
           list.splice(index, 1);
           if (!list.length) delete box[group];

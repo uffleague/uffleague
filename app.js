@@ -221,9 +221,15 @@
     games.forEach((g) => {
       if (g.potg) g.potg = rawAlias(g.potg);
       (g.box || []).forEach((side) => Object.values(side || {}).forEach((rows) => [].concat(rows).forEach((r) => {
-        if (r && r.player) r.player = rawAlias((r.robloxId && byRobloxId.get(String(r.robloxId))) || r.player);
+        if (!r || !r.player) return;
+        r.savedAs = r.savedAs || r.player; // the name it's saved under (Admin -> Player Stats checks it before editing)
+        r.player = rawAlias((r.robloxId && byRobloxId.get(String(r.robloxId))) || r.player);
       })));
-      // Two accounts merged into one player can leave them with two lines in one game: add those into one line
+      // Two accounts merged into one player can leave them with two lines in one game: add those into one line.
+      // That's done on a copy, so the saved box score (what Admin -> Player Stats edits by position) stays as saved.
+      const dup = (g.box || []).some((side) => Object.values(side || {}).some((rows) => Array.isArray(rows) &&
+        new Set(rows.map((r) => String(r && r.player).toLowerCase())).size < rows.length));
+      if (dup) g.box = g.box.map((side) => side && Object.fromEntries(Object.entries(side).map(([k, v]) => [k, Array.isArray(v) ? v.map((r) => ({ ...r })) : v])));
       (g.box || []).forEach((side) => Object.keys(side || {}).forEach((k) => {
         if (!Array.isArray(side[k])) return;
         const seen = new Map();
@@ -4249,17 +4255,38 @@
   let statsEditName = "";
   try { statsEditName = sessionStorage.getItem("uffStatsEdit") || ""; sessionStorage.removeItem("uffStatsEdit"); } catch (e) {}
 
-  // Every box score line this player has in a final game, with where it's saved so one line can be fixed
+  // Every box score line this player has in a final game, with where it's saved so one line can be fixed.
+  // spots = their places in the saved list (two or more when merged accounts both have a line in that game).
   function playerGameLines(name) {
     const out = [];
+    const key = name.toLowerCase();
     playerGames(name).forEach(({ g, wk, i, lines }) => {
-      const saved = SAVED.results.find((r) => r.id === g.id && r.box === g.box);
+      const saved = SAVED.results.find((r) => r.id === g.id && Array.isArray(r.box));
       Object.entries(lines).forEach(([group, line]) => {
-        const list = saved && saved.box[i] && saved.box[i][group];
-        out.push({ g, wk, i, group, line, index: list ? list.indexOf(line) : -1 });
+        const list = (saved && saved.box[i] && saved.box[i][group]) || [];
+        const spots = list.map((r, ix) => (r && String(r.player).toLowerCase() === key ? ix : -1)).filter((ix) => ix >= 0);
+        out.push({ g, wk, i, group, line, index: spots.length ? spots[0] : -1, spots, was: spots.map((ix) => list[ix].savedAs || list[ix].player) });
       });
     });
     return out;
+  }
+  // Save (or remove, stats = null) one of those lines: the first saved spot gets it, any others are taken out
+  async function saveGameLine(btn, d, stats) {
+    const spots = d.spots.split(",").map(Number);
+    const was = JSON.parse(d.was || "[]");
+    if (btn) btn.disabled = true;
+    adminError = adminFlash = "";
+    try {
+      // Highest spot first so taking one out doesn't move the ones still to do
+      for (let n = spots.length - 1; n >= 0; n--) {
+        await adminCall({ action: "editGameLine", id: d.game, side: Number(d.side), group: d.group, index: spots[n], was: was[n], stats: n ? null : stats });
+      }
+      return true;
+    } catch (err) {
+      adminError = err.message;
+      render();
+      return false;
+    }
   }
 
   function gameLinesSection(name) {
@@ -4270,8 +4297,8 @@
       <div class="card admin-card admin-list">
         <div class="admin-subhead">Game by Game<span class="muted small">${lines.length} stat line${lines.length === 1 ? "" : "s"}</span></div>
         <p class="muted small admin-note">Fix one game's box score line (the season totals, leaders and records add up from these).${statSeasonEdited(name) ? " <strong>This player's season totals are edited by hand above, so those still win until you undo them.</strong>" : ""}</p>
-        ${lines.length ? lines.map(({ g, wk, i, group, line, index }) => `
-          <form class="game-line-form" data-game="${esc(g.id)}" data-side="${i}" data-group="${group}" data-index="${index}" autocomplete="off">
+        ${lines.length ? lines.map(({ g, wk, i, group, line, index, spots, was }) => `
+          <form class="game-line-form" data-game="${esc(g.id)}" data-side="${i}" data-group="${group}" data-spots="${spots.join(",")}" data-was="${esc(JSON.stringify(was))}" autocomplete="off">
             <div class="admin-subhead admin-subhead--small">Week ${wk.week} &middot; ${i === 0 ? "vs" : "@"} ${esc(g.teams[1 - i])} &middot; ${BOX[group].label}<span class="muted small">${esc(g.id)} &middot; ${g.score[i]}-${g.score[1 - i]}</span></div>
             <div class="stat-edit-group">
               ${STAT_EDIT[group].map(([f, h]) => `<label class="field"><span>${h}</span><input name="${f}" value="${line[f] || 0}" inputmode="decimal" ${index < 0 ? "disabled" : ""}></label>`).join("")}
@@ -5352,11 +5379,12 @@
         body = { action: "editGameLine", id: gameId, side: Number(side), group, index: -1, player: statsEditName,
           stats: Object.fromEntries(STAT_EDIT[group].map(([f]) => [f, 0])) };
       } else {
-        body = { action: "editGameLine", id: d.game, side: Number(d.side), group: d.group, index: Number(d.index),
-          stats: Object.fromEntries(STAT_EDIT[d.group].map(([f]) => [f, Number(form.get(f)) || 0])) };
+        const stats = Object.fromEntries(STAT_EDIT[d.group].map(([f]) => [f, Number(form.get(f)) || 0]));
+        if (await saveGameLine(e.target.querySelector("button[type=submit]"), d, stats)) reloadWithFlash(`Saved ${statsEditName}'s line for ${d.game}. Everyone sees it now.`);
+        return;
       }
       return adminSave(e.target.querySelector("button[type=submit]"), body, () =>
-        reloadWithFlash(id === "gameLineAdd" ? `Added a stat line for ${statsEditName}. Fill it in below.` : `Saved ${statsEditName}'s line for ${d.game}. Everyone sees it now.`));
+        reloadWithFlash(`Added a stat line for ${statsEditName}. Fill it in below.`));
     }
     if (id === "btForm") {
       e.preventDefault();
@@ -5569,8 +5597,8 @@
     if (t.dataset && "delLine" in t.dataset) {
       const d = t.closest(".game-line-form").dataset;
       if (!confirm(`Remove ${statsEditName}'s ${BOX[d.group].label.toLowerCase()} line from ${d.game}?`)) return;
-      return adminSave(t, { action: "editGameLine", id: d.game, side: Number(d.side), group: d.group, index: Number(d.index), stats: null }, () =>
-        reloadWithFlash(`Removed ${statsEditName}'s line from ${d.game}.`));
+      if (await saveGameLine(t, d, null)) reloadWithFlash(`Removed ${statsEditName}'s line from ${d.game}.`);
+      return;
     }
     if (t.dataset.statLoad) { statsEditName = t.dataset.statLoad; return renderKeepScroll(); }
     if (t.id === "statReset") {
