@@ -3253,6 +3253,39 @@
     };
   }
 
+  // A recap for a game that already has stats only adds what's new: players who aren't in that game yet are added,
+  // players whose numbers changed are updated, and lines that are already in (or players left out of this paste) stay.
+  // → { box, added: [names], updated: [names], same: count }
+  function mergeBox(savedBox, newBox) {
+    const key = (n) => rawAlias(String(n)).toLowerCase();
+    // The saved lines as the server has them (the page renames players and notes savedAs while loading)
+    const box = [0, 1].map((i) => Object.fromEntries(Object.entries((savedBox && savedBox[i]) || {})
+      .map(([g, rows]) => [g, Array.isArray(rows) ? rows.map(({ savedAs, ...r }) => ({ ...r, player: savedAs || r.player })) : rows])));
+    const out = { box, added: [], updated: [], same: 0 };
+    [0, 1].forEach((i) => Object.entries((newBox && newBox[i]) || {}).forEach(([g, rows]) => {
+      const list = (box[i][g] = Array.isArray(box[i][g]) ? box[i][g] : []);
+      rows.forEach((row) => {
+        const have = list.find((r) => key(r.player) === key(row.player));
+        if (!have) { list.push(row); out.added.push(`${row.player} (${g})`); return; }
+        // "114" and "114.0", or 0 and a stat the saved line doesn't have, are the same
+        const differs = (a, b) => (isNaN(Number(a)) || isNaN(Number(b || 0)) ? String(a) !== String(b) : Number(a) !== Number(b || 0));
+        const changed = Object.entries(row).some(([f, v]) => f !== "player" && differs(v, have[f]));
+        if (!changed) { out.same++; return; }
+        Object.assign(have, row, { player: have.player });
+        out.updated.push(`${row.player} (${g})`);
+      });
+    }));
+    return out;
+  }
+  // The result to save for the picked game: the recap merged into any stats the game already has
+  function draftResult(g) {
+    const r = recapResult(resDraft.recap, g);
+    const saved = SAVED.results.find((x) => x.id === g.id && Array.isArray(x.box) && statLines(x.box));
+    if (!saved) return { r, merge: null };
+    const merge = mergeBox(saved.box, r.box);
+    return { r: { ...r, box: merge.box, potg: r.potg || saved.potg, date: r.date || saved.date }, merge, saved };
+  }
+
   let resDraft = null; // { text, recap, gameId }
 
   function resultPreview() {
@@ -3266,12 +3299,20 @@
     (recap.teams || []).forEach((t) => {
       if (!teamNames.includes(normTeam(t))) notes.push(`"${t}" isn't a team in the league, so pick the game below.`);
     });
-    if (g && Array.isArray(g.score)) notes.push(`${g.id} already has a final score. Saving will replace it.`);
+    const draft = g && recap.score ? draftResult(g) : null;
+    const m = draft && draft.merge;
+    // Nothing new: every line is already in and the score is the same
+    const nothingNew = m && !m.added.length && !m.updated.length && draft.saved.score.join("-") === draft.r.score.join("-");
+    if (m) {
+      notes.push(`<strong>${g.id} already has stats, so only what's new gets saved.</strong> ${m.same} line${m.same === 1 ? " is" : "s are"} already in and won't be added again.`);
+      if (m.added.length) notes.push(`<span class="ok-text">Adds:</span> ${m.added.map(esc).join(", ")}`);
+      if (m.updated.length) notes.push(`<span class="warn-text">Updates (numbers changed):</span> ${m.updated.map(esc).join(", ")}`);
+      if (draft.saved.score.join("-") !== draft.r.score.join("-")) notes.push(`The score changes from ${draft.saved.score.join("-")} to ${draft.r.score.join("-")}.`);
+      if (nothingNew) notes.push("<strong>Nothing new to add.</strong>");
+    } else if (g && Array.isArray(g.score)) notes.push(`${g.id} already has a final score. Saving will replace it.`);
     recap.renamed.forEach(([a, b]) => notes.push(`${a} will be saved as ${b}.`));
     recap.problems.forEach((p) => notes.push(p));
-    const preview = g && recap.score
-      ? gameCard({ ...g, ...recapResult(recap, g) }, true)
-      : "";
+    const preview = draft ? gameCard({ ...g, ...draft.r }, true) : "";
     return `
       <div class="admin-fields admin-game-pick">
         <label class="field admin-grow"><span>Game</span>
@@ -3287,7 +3328,7 @@
       ${notes.length ? `<ul class="admin-notes">${notes.map((n) => `<li>${n}</li>`).join("")}</ul>` : ""}
       ${preview ? `<div class="admin-preview">${preview}</div>` : ""}
       <div class="admin-actions">
-        <button class="btn btn-primary" id="resSave" ${preview && !resDraft.dupOf ? "" : "disabled"}>Save result</button>
+        <button class="btn btn-primary" id="resSave" ${preview && !resDraft.dupOf && !nothingNew ? "" : "disabled"}>${m ? "Save what's new" : "Save result"}</button>
         <button class="btn btn-ghost" id="resClear">Clear</button>
       </div>`;
   }
@@ -5796,10 +5837,12 @@
           reloadWithFlash(`Removed the result for ${del}.`);
         } else {
           const g = allGames().find(({ g }) => g.id === resDraft.gameId).g;
-          const r = recapResult(resDraft.recap, g);
+          const { r, merge } = draftResult(g);
           await adminCall({ action: "saveResult", result: r, source: resDraft.text, label: resultLabel(g, r.score) });
           resDraft = null;
-          reloadWithFlash(`Saved ${g.id}: ${g.teams[0]} ${r.score[0]}-${r.score[1]} ${g.teams[1]}. Everyone sees it now.`);
+          reloadWithFlash(merge
+            ? `Updated ${g.id}: added ${merge.added.length} and updated ${merge.updated.length} stat line${merge.updated.length === 1 ? "" : "s"}; ${merge.same} already in were left alone.`
+            : `Saved ${g.id}: ${g.teams[0]} ${r.score[0]}-${r.score[1]} ${g.teams[1]}. Everyone sees it now.`);
         }
       } catch (err) {
         adminFlash = "";
