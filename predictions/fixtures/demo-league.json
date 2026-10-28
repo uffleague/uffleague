@@ -1,0 +1,27 @@
+{
+  "label": "SAMPLE DATA: these games, times, scores and stat lines are made up for local testing. They are not on the UFF schedule.",
+  "games": [
+    { "id": "SAMPLE-1", "week": 0, "teams": ["Olympia Owls", "Costa Rica Pumas"], "kickoffInHours": 3 },
+    { "id": "SAMPLE-2", "week": 0, "teams": ["New Orleans Raiders", "Toronto Maples"], "kickoffInHours": 26 },
+    { "id": "SAMPLE-3", "week": 0, "teams": ["Long Beach Pirates", "Rose City Reapers"], "kickoffInHours": 50 },
+    { "id": "SAMPLE-4", "week": 0, "teams": ["San Francisco Miners", "Shiroishi Samurai"], "kickoffInHours": 74 },
+    {
+      "id": "SAMPLE-0A", "week": 0, "teams": ["New Orleans Raiders", "Seattle Skyclaws"], "kickoffInHours": -50, "score": [30, 24],
+      "box": [
+        { "passing": [{ "player": "biglester1", "comp": 21, "att": 27, "yds": 512, "td": 4, "int": 1 }],
+          "receiving": [{ "player": "97ISP", "tgt": 6, "rec": 5, "yds": 140, "td": 2 }] },
+        { "passing": [{ "player": "bricking", "comp": 18, "att": 30, "yds": 410, "td": 3, "int": 2 }],
+          "receiving": [{ "player": "Missingspray", "tgt": 7, "rec": 5, "yds": 120, "td": 1 }] }
+      ]
+    },
+    {
+      "id": "SAMPLE-0B", "week": 0, "teams": ["Baltimore Bluejays", "New Orleans Raiders"], "kickoffInHours": -26, "score": [38, 28],
+      "box": [
+        { "passing": [{ "player": "breakxu", "comp": 24, "att": 29, "yds": 601, "td": 5, "int": 0 }],
+          "receiving": [{ "player": "hurdle", "tgt": 8, "rec": 7, "yds": 210, "td": 2 }] },
+        { "passing": [{ "player": "biglester1", "comp": 20, "att": 26, "yds": 468, "td": 3, "int": 2 }],
+          "receiving": [{ "player": "97ISP", "tgt": 4, "rec": 3, "yds": 88, "td": 1 }] }
+      ]
+    }
+  ]
+}

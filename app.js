@@ -51,6 +51,11 @@
     { path: "legacy", label: "Legacy", icon: "legacy" },
     { path: "records", label: "Records", icon: "records" }
   ];
+  // UFF Predictions is a local test build: it's only listed when the site is opened from this computer
+  // (npm run predictions), where its local server is
+  if (/^(localhost|127.0.0.1)$/.test(location.hostname)) {
+    NAV.splice(NAV.findIndex((n) => n.path === "predictions") + 1, 0, { path: "uff-predictions", label: "UFF Predictions", icon: "trend", top: true });
+  }
 
   const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
@@ -4075,6 +4080,689 @@
       </div>`;
   }
 
+  // ---- UFF Predictions (local test build) ----
+  // Player Over/Under and Game Winner picks for virtual points (no cash value). Markets, picks and points live on
+  // the local predictions server (predictions/server.js, npm run predictions), so the section only shows up when
+  // the site is opened from this computer. The browser only ever sends a choice; the server works out everything else.
+
+  const PM_LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  const PM_API = "/api/predictions";
+  const PM_STATUS = [["", "All"], ["upcoming", "Upcoming"], ["open", "Open"], ["locked", "Locked"], ["completed", "Completed"]];
+  const PM_SORTS = [["closing", "Closing soonest"], ["kickoff", "Kickoff"], ["popular", "Most picks"], ["newest", "Newest"]];
+  const PM_STATUS_LABEL = { upcoming: "Upcoming", open: "Open", locked: "Locked", resolved: "Completed", void: "Void" };
+  const PM_RESULT = { won: "Correct", lost: "Incorrect", push: "Push", void: "Void", pending: "Pending" };
+  const pm = { data: {}, kind: "player_ou", status: "", q: "", sort: "closing", view: "", id: null,
+    confirm: null, msg: "", err: "", busy: false, auth: false, preview: null, form: { kind: "player_ou" } };
+
+  async function pmFetch(path, body) {
+    const res = await fetch(PM_API + path, body === undefined ? { cache: "no-store" }
+      : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) throw Object.assign(new Error(data.error || `The local predictions server answered ${res.status}.`), { status: res.status });
+    return data;
+  }
+  // Loads into pm.data[key] once and redraws the page when it arrives
+  function pmLoad(key, path) {
+    if (pm.data[key]) return pm.data[key];
+    const slot = (pm.data[key] = { loading: true });
+    pmFetch(path).then((data) => { slot.data = data; }, (err) => { slot.error = err.message; slot.status = err.status; })
+      .then(() => { slot.loading = false; if (pm.data[key] === slot) pmRedraw(); });
+    return slot;
+  }
+  // Everything but the server settings is loaded again (after a pick, an admin change or a new page)
+  const pmFresh = () => Object.keys(pm.data).forEach((k) => { if (k !== "config") delete pm.data[k]; });
+  function pmRedraw() {
+    if (location.hash.replace(/^#\/?/, "").split("/")[0] !== "uff-predictions") return;
+    const y = window.scrollY;
+    const el = document.activeElement;
+    const focus = el && el.id && app.contains(el) ? { id: el.id, at: el.selectionStart } : null;
+    app.innerHTML = uffPredictionsPage();
+    fillAvatars();
+    window.scrollTo(0, y);
+    const back = focus && document.getElementById(focus.id);
+    if (back) { back.focus(); if (focus.at != null && back.setSelectionRange) back.setSelectionRange(focus.at, focus.at); }
+  }
+
+  const pmWhen = (ms) => new Date(ms).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const pmPts = (n) => `${Number(n).toLocaleString("en-US")} pts`;
+  const pmPct = (o) => (o.pct == null ? "&ndash;" : `${o.pct}%`);
+  const pmLine = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  const pmPicks = (n) => (n ? `${n} pick${n === 1 ? "" : "s"}` : "No picks yet");
+  const pmLocalInput = (ms) => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 6e4); return d.toISOString().slice(0, 16); };
+  const pmFromInput = (v) => (v ? new Date(v).getTime() : null);
+  const pmTeamLogo = (t, size = "") => (TEAMS.some((x) => x.name === t.name) || !t.logo ? anyTeamLogo(t.name, size)
+    : `<img class="team-logo custom ${size}" src="${esc(t.logo)}" alt="${esc(t.name)} logo">`);
+  const pmShort = (t) => (TEAMS.some((x) => x.name === t.name) ? teamShort(t.name) : t.code || t.name);
+  const pmStatus = (m) => `<span class="pm-status pm-status--${m.status}">${PM_STATUS_LABEL[m.status]}${m.hold ? ` &middot; ${m.hold === "postponed" ? "Postponed" : "Disputed"}` : ""}</span>`;
+  const pmSample = (m) => (m.sample ? `<span class="pm-sample">Sample</span>` : "");
+  const pmTitle = (m) => (m.kind === "game_winner" ? `${m.teams[0].name} vs ${m.teams[1].name}` : `${m.player}: ${m.stat.label} ${pmLine(m.line)}`);
+  const pmChoice = (m, key) => {
+    const o = m.options.find((x) => x.key === key);
+    return m.kind === "game_winner" ? (o ? o.label : key) : `${key === "over" ? "Over" : "Under"} ${pmLine(m.line)}`;
+  };
+  function pmWhenText(m) {
+    if (m.status === "open") return `Closes <b data-kickoff="${m.closesAt}">${untilKickoff(m.closesAt) || "now"}</b>`;
+    if (m.status === "upcoming") return `Opens ${pmWhen(m.opensAt)}`;
+    if (m.status === "locked") return m.hold === "disputed" ? "Result disputed" : m.hold === "postponed" ? "Game postponed" : `Closed ${pmWhen(m.closesAt)}`;
+    if (m.status === "void") return "Void: points returned";
+    return m.resolution ? `Result: ${pmOutcome(m)}` : "Settled";
+  }
+  function pmOutcome(m) {
+    const r = m.resolution;
+    if (!r) return "";
+    if (r.outcome === "void") return "Void";
+    if (r.outcome === "push") return m.kind === "game_winner" ? "Tie (push)" : `Push at ${pmLine(r.value)}`;
+    return m.kind === "game_winner" ? `${pmChoice(m, r.outcome)} won${r.score ? ` ${r.score[0]}-${r.score[1]}` : ""}`
+      : `${r.outcome === "over" ? "Over" : "Under"} (${pmLine(r.value)})`;
+  }
+  const pmBar = (m) => `<div class="pm-bar" role="img" aria-label="${m.total ? `${m.options[0].pct}% ${esc(m.options[0].label)}` : "No picks yet"}">${m.total ? `<span style="width:${m.options[0].pct}%"></span>` : ""}</div>`;
+  const pmMine = (m) => m.mine ? `<span class="pm-mine pm-mine--${m.mine.result}">You: ${esc(m.kind === "game_winner" ? pmShort(m.teams[m.mine.selection === "a" ? 0 : 1]) : m.mine.selection === "over" ? "Over" : "Under")}${m.mine.result !== "pending" ? ` &middot; ${PM_RESULT[m.mine.result]}` : ""}</span>` : "";
+  const pmAvatar = (name) => `<span class="pm-av">${playerArt(name)}</span>`;
+
+  function pmCard(m) {
+    const opp = m.playerTeam && m.teams.find((t) => t.name !== m.playerTeam.name);
+    const body = m.kind === "game_winner"
+      ? m.teams.map((t, i) => `
+          <div class="pm-team-row">
+            <span class="pm-team">${pmTeamLogo(t, "md")}<span><b>${esc(t.name)}</b>${t.record ? `<span class="muted small">${pmRecord(t)}</span>` : ""}</span></span>
+            <span class="pm-pct">${pmPct(m.options[i])}</span>
+          </div>`).join("")
+      : `
+          <div class="pm-player">
+            ${pmAvatar(m.player)}
+            <span class="pm-player-who"><b>${esc(m.player)}</b><span class="muted small">${m.playerTeam ? `${pmTeamLogo(m.playerTeam)} ${esc(pmShort(m.playerTeam))}` : ""}${opp ? ` vs ${esc(pmShort(opp))}` : ""}</span></span>
+            <span class="pm-line"><span class="eyebrow">${esc(m.stat.short)}</span><b>${pmLine(m.line)}</b></span>
+          </div>
+          <div class="pm-ou"><span>Over <b>${pmPct(m.options[0])}</b></span><span>Under <b>${pmPct(m.options[1])}</b></span></div>`;
+    return `
+      <a class="card pm-card" href="#/uff-predictions/m/${m.id}">
+        <div class="pm-card-top">${pmStatus(m)}${pmSample(m)}<span class="muted small">${m.week ? `Week ${m.week} &middot; ` : ""}${esc(m.gameId)}</span></div>
+        ${body}
+        ${pmBar(m)}
+        <div class="pm-card-foot"><span>${pmPicks(m.total)} &middot; ${m.stake} pts per pick</span>${pmMine(m) || `<span>${pmWhenText(m)}</span>`}</div>
+      </a>`;
+  }
+  const pmRecord = (t) => (t.record ? `${t.record.w}-${t.record.l}` : "");
+
+  // A step line of the first choice's share of picks after each pick
+  function pmChart(m) {
+    const h = m.history || [];
+    if (h.length < 2) return `<p class="muted small">The chart starts after the second pick.</p>`;
+    const W = 560, H = 170, L = 34, R = 10, T = 10, B = 24;
+    const t0 = h[0].at, t1 = Math.max(h[h.length - 1].at, t0 + 1);
+    const x = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R);
+    const y = (p) => T + (1 - p / 100) * (H - T - B);
+    let d = `M${x(h[0].at).toFixed(1)} ${y(h[0].pct[0]).toFixed(1)}`;
+    h.slice(1).forEach((s) => { d += ` H${x(s.at).toFixed(1)} V${y(s.pct[0]).toFixed(1)}`; });
+    const grid = [0, 50, 100].map((p) => `<line x1="${L}" x2="${W - R}" y1="${y(p)}" y2="${y(p)}" class="pm-grid"/><text x="${L - 6}" y="${y(p) + 4}" text-anchor="end">${p}%</text>`).join("");
+    const last = h[h.length - 1];
+    return `
+      <svg class="pm-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(m.options[0].label)} share of picks over time, now ${last.pct[0]}%">
+        ${grid}
+        <path d="${d}" class="pm-line-path"/>
+        <circle cx="${x(last.at)}" cy="${y(last.pct[0])}" r="4" class="pm-dot"/>
+        <text x="${L}" y="${H - 6}">${esc(pmWhen(h[0].at))}</text>
+        <text x="${W - R}" y="${H - 6}" text-anchor="end">${esc(pmWhen(last.at))}</text>
+      </svg>
+      <p class="muted small">${esc(m.options[0].label)}'s share of picks after each of the ${h.length} picks. It shows what people picked, not how likely it is to happen.</p>`;
+  }
+
+  // Balance after each change, as a small line
+  function pmBalanceChart(ledger) {
+    if (ledger.length < 2) return "";
+    const W = 560, H = 120, P = 8;
+    const vals = ledger.map((l) => l.balance);
+    const lo = Math.min(...vals), hi = Math.max(...vals), span = Math.max(1, hi - lo);
+    const pts = vals.map((v, i) => `${(P + (i / (vals.length - 1)) * (W - 2 * P)).toFixed(1)},${(P + (1 - (v - lo) / span) * (H - 2 * P)).toFixed(1)}`).join(" ");
+    return `
+      <svg class="pm-chart pm-chart--small" viewBox="0 0 ${W} ${H}" role="img" aria-label="Virtual points over time, from ${vals[0]} to ${vals[vals.length - 1]}">
+        <polyline points="${pts}" class="pm-line-path"/>
+      </svg>
+      <p class="muted small">Low ${pmPts(lo)} &middot; high ${pmPts(hi)} &middot; ${ledger.length} changes</p>`;
+  }
+
+  const pmState = (slot, what) => slot.loading ? `<div class="card pm-state"><span class="pm-spin"></span>Loading ${what}&hellip;</div>`
+    : slot.error ? `<div class="card pm-state pm-state--error"><b>Couldn't load ${what}.</b><span>${esc(slot.error)}</span><button type="button" class="btn btn-ghost btn-sm" data-pm="retry">Try again</button></div>` : "";
+
+  function pmAccount(cfg) {
+    const u = cfg.user;
+    if (u) return `
+      <div class="pm-account">
+        <span class="pill">${esc(u.username)}${u.isAdmin ? " &middot; Admin" : ""}</span>
+        ${u.isAdmin ? "" : `<span class="pill pill-navy">${pmPts(u.balance)}</span>`}
+        <button type="button" class="btn btn-ghost btn-sm" data-pm="logout">Sign out</button>
+      </div>`;
+    return `<div class="pm-account"><button type="button" class="btn btn-primary btn-sm" data-pm="auth">Sign in to pick</button></div>`;
+  }
+  function pmAuthCard() {
+    return `
+      <form class="card admin-card pm-auth" id="pmAuth">
+        <div class="admin-subhead">Sign in or make a test account</div>
+        <p class="muted small">Test accounts live only in this computer's local database. New accounts start with ${((pmCfg() || {}).startBalance || 0).toLocaleString("en-US")} virtual points.</p>
+        <div class="pm-fields">
+          <label class="field">Username<input name="username" autocomplete="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+"></label>
+          <label class="field">Password<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+        </div>
+        <div class="admin-actions">
+          <button class="btn btn-primary btn-sm" data-mode="login" ${pm.busy ? "disabled" : ""}>Sign in</button>
+          <button class="btn btn-ghost btn-sm" data-mode="signup" ${pm.busy ? "disabled" : ""}>Create test account</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-pm="auth">Cancel</button>
+        </div>
+      </form>`;
+  }
+  const pmCfg = () => (pm.data.config && pm.data.config.data) || null;
+
+  function uffPredictionsPage() {
+    const head = (sub) => `
+      <div class="page-head page-head--row">
+        <div>
+          <h1>UFF Predictions</h1>
+          <p class="muted">${sub}</p>
+        </div>
+        ${pmCfg() ? pmAccount(pmCfg()) : ""}
+      </div>`;
+    if (!PM_LOCAL) {
+      return `<div class="wrap">${head("Pick player stat lines and game winners.")}${empty("Not available here", "UFF Predictions is being tested and isn't on the live site yet.")}</div>`;
+    }
+    const cs = pmLoad("config", "/config");
+    if (!cs.data) {
+      return `<div class="wrap">${head("Pick player stat lines and game winners for virtual points.")}${cs.loading ? pmState(cs, "UFF Predictions")
+        : `<div class="card pm-state pm-state--error"><b>The local predictions server isn't answering.</b><span>Start it with <code>npm run predictions</code> and open the address it prints (this page has to come from that server).</span><button type="button" class="btn btn-ghost btn-sm" data-pm="retry">Try again</button></div>`}</div>`;
+    }
+    const cfg = cs.data;
+    const admin = cfg.user && cfg.user.isAdmin;
+    const tabs = [["", "Markets"], ["me", "My Predictions"], ["leaders", "Leaderboard"], ...(admin ? [["manage", "Manage"]] : [])];
+    const section = pm.view === "m" ? "" : pm.view;
+    const banners = `
+      ${cfg.mode === "demo" ? `<div class="pm-banner pm-banner--demo"><b>Demo mode.</b> ${esc(cfg.label)}</div>` : ""}
+      ${!cfg.league.ok ? `<div class="pm-banner pm-banner--error"><b>UFF league data isn't loading</b> (${esc(cfg.league.error || "no answer")}). Markets can be viewed, but new ones can't be made or settled until it's back.</div>` : ""}
+      <div class="pm-banner">Virtual points only: they have no cash value and can't be bought, traded, transferred or redeemed. Percentages show what the community picked, not how likely anything is.</div>`;
+    let body;
+    if (pm.view === "m") body = pmMarketPage(cfg);
+    else if (pm.view === "me") body = pmMePage(cfg);
+    else if (pm.view === "leaders") body = pmLeadersPage(cfg);
+    else if (pm.view === "manage") body = admin ? pmManagePage(cfg) : empty("Admins only", "Sign in with the local admin account to manage markets.");
+    else body = pmMarketsPage(cfg);
+    return `
+      <div class="wrap pm-page">
+        ${head("Pick player stat lines and game winners for virtual points, then see how your picks stack up.")}
+        ${banners}
+        <nav class="segmented pm-tabs" aria-label="UFF Predictions">${tabs.map(([k, label]) =>
+          `<a href="#/uff-predictions${k ? `/${k}` : ""}" class="${section === k ? "active" : ""}">${label}</a>`).join("")}</nav>
+        ${pm.auth && !cfg.user ? pmAuthCard() : ""}
+        ${pm.msg ? `<div class="admin-flash">${esc(pm.msg)}</div>` : ""}
+        ${pm.err ? `<p class="login-error pm-err">${esc(pm.err)}</p>` : ""}
+        ${body}
+        ${pm.confirm ? pmConfirm() : ""}
+      </div>`;
+  }
+
+  function pmMarketsPage() {
+    const key = `list:${pm.kind}|${pm.status}|${pm.q}|${pm.sort}`;
+    const params = new URLSearchParams({ kind: pm.kind, status: pm.status, q: pm.q, sort: pm.sort });
+    const slot = pmLoad(key, `/markets?${params}`);
+    const list = slot.data ? slot.data.markets : [];
+    const what = pm.kind === "game_winner" ? "Game Winner" : "Player Over/Under";
+    return `
+      <div class="pm-filters">
+        <div class="segmented">${[["player_ou", "Player Over/Under"], ["game_winner", "Game Winner"]].map(([k, l]) =>
+          `<a href="#" data-pm-kind="${k}" class="${pm.kind === k ? "active" : ""}">${l}</a>`).join("")}</div>
+        <div class="filter-row pm-status-row">${PM_STATUS.map(([k, l]) =>
+          `<button type="button" class="filter ${pm.status === k ? "active" : ""}" data-pm-status="${k}">${l}</button>`).join("")}</div>
+        <div class="pm-search-row">
+          <label class="search">${icon("search")}<input id="pmSearch" type="search" aria-label="Search markets" placeholder="${pm.kind === "game_winner" ? "Search teams or game" : "Search players, teams or stats"}" value="${esc(pm.q)}"></label>
+          <select class="select" id="pmSort" aria-label="Sort">${PM_SORTS.map(([k, l]) => `<option value="${k}" ${pm.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+        </div>
+      </div>
+      ${pmState(slot, "markets")}
+      ${slot.data ? list.length ? `<div class="pm-grid">${list.map(pmCard).join("")}</div>`
+        : empty(`No ${what} markets${pm.status || pm.q ? " match" : " yet"}`, pm.status || pm.q ? "Try another filter or search." : "Admins add markets for upcoming UFF games. Check back soon.") : ""}`;
+  }
+
+  function pmMarketPage(cfg) {
+    const slot = pmLoad(`market:${pm.id}`, `/markets/${pm.id}`);
+    const back = `<a class="link pm-back" href="#/uff-predictions">&larr; All markets</a>`;
+    if (!slot.data) return back + (slot.status === 404 ? empty("Market not found", "It may have been removed.") : pmState(slot, "this market"));
+    const m = slot.data.market;
+    const admin = cfg.user && cfg.user.isAdmin;
+    const canPick = m.status === "open" && !m.mine && !admin;
+    const opp = m.playerTeam && m.teams.find((t) => t.name !== m.playerTeam.name);
+    const hero = m.kind === "game_winner" ? `
+      <div class="pm-hero pm-hero--teams">
+        ${m.teams.map((t, i) => `
+          <div class="pm-hero-team">
+            ${pmTeamLogo(t, "lg")}
+            <div><b>${esc(t.name)}</b><span class="muted small">${t.record ? `Record ${pmRecord(t)}` : "No record yet"}</span></div>
+          </div>${i === 0 ? `<span class="pm-vs">vs</span>` : ""}`).join("")}
+      </div>` : `
+      <div class="pm-hero">
+        ${pmAvatar(m.player)}
+        <div class="pm-hero-who">
+          <a class="link-strong pm-hero-name" href="#/players/${encodeURIComponent(m.player)}">${esc(m.player)}</a>
+          <span class="muted">${m.playerTeam ? `${pmTeamLogo(m.playerTeam)} ${esc(m.playerTeam.name)}` : ""}${opp ? ` vs ${pmTeamLogo(opp)} ${esc(opp.name)}` : ""}</span>
+          <span class="pm-hero-stat"><span class="eyebrow">${esc(m.stat.label)}</span><b>${pmLine(m.line)}</b></span>
+        </div>
+      </div>`;
+    const choices = m.options.map((o) => {
+      const picked = m.mine && m.mine.selection === o.key;
+      const won = m.resolution && m.resolution.outcome === o.key;
+      const t = m.kind === "game_winner" ? m.teams[o.key === "a" ? 0 : 1] : null;
+      return `
+        <button type="button" class="pm-choice ${picked ? "picked" : ""} ${won ? "won" : ""}" data-pm-pick="${o.key}" ${canPick ? "" : "disabled"}>
+          <span class="pm-choice-name">${t ? pmTeamLogo(t, "md") : ""}<span>${m.kind === "game_winner" ? `${esc(t.name)} win` : `${o.key === "over" ? "Over" : "Under"} ${pmLine(m.line)}`}</span></span>
+          <span class="pm-choice-pct">${pmPct(o)}<span class="muted small">${o.count} pick${o.count === 1 ? "" : "s"}</span></span>
+          ${picked ? `<span class="pm-choice-tag">Your pick</span>` : won ? `<span class="pm-choice-tag">Result</span>` : ""}
+        </button>`;
+    }).join("");
+    const why = admin ? "Admin accounts run the markets, so they don't make picks."
+      : m.mine ? `You picked <b>${esc(pmChoice(m, m.mine.selection))}</b> on ${pmWhen(m.mine.createdAt)} for ${m.mine.stake} pts${m.mine.result !== "pending" ? ` &middot; <b>${PM_RESULT[m.mine.result]}</b>` : ". Picks can't be changed."}`
+      : m.status === "open" ? (cfg.user ? `Each pick uses ${m.stake} virtual points (you have ${pmPts(cfg.user.balance)}). Correct picks get ${m.stake * 2} back.` : `<a href="#" class="link-strong" data-pm="auth">Sign in</a> to make a pick.`)
+      : m.status === "upcoming" ? `Picks open ${pmWhen(m.opensAt)}.` : "Picks are closed.";
+    const stats = m.kind === "player_ou" ? pmPlayerStats(m) : pmTeamStats(m);
+    return `
+      ${back}
+      <div class="card pm-detail">
+        <div class="pm-card-top">${pmStatus(m)}${pmSample(m)}<span class="muted small">${esc(m.kindLabel)} &middot; ${m.week ? `Week ${m.week} &middot; ` : ""}Game ${esc(m.gameId)}</span></div>
+        ${hero}
+        <div class="pm-facts">
+          <span><span class="eyebrow">Kickoff</span>${m.kickoffAt ? pmWhen(m.kickoffAt) : esc(m.gameTime || "Not set yet")}</span>
+          <span><span class="eyebrow">Picks close</span>${pmWhen(m.closesAt)}</span>
+          <span><span class="eyebrow">Points per pick</span>${m.stake}</span>
+          <span><span class="eyebrow">Community</span>${pmPicks(m.total)}</span>
+        </div>
+        ${m.resolution ? `<div class="pm-result pm-result--${m.status}"><b>${esc(pmOutcome(m))}</b><span class="muted small">${m.resolution.source === "manual" ? "Settled by hand: " : m.resolution.source === "void" ? "" : m.resolution.source === "demo_result" ? "From a sample result: " : "From the official result: "}${esc(m.resolution.note || "")} &middot; ${pmWhen(m.resolution.at)}</span></div>` : ""}
+        <div class="pm-choices">${choices}</div>
+        ${pmBar(m)}
+        <p class="muted small pm-why">${why}</p>
+      </div>
+      <div class="pm-cols">
+        <div class="card admin-card"><div class="admin-subhead">Community picks over time</div>${pmChart(m)}</div>
+        <div class="card admin-card">${stats}</div>
+      </div>
+      <div class="card admin-card pm-rules">
+        <div class="admin-subhead">How this settles</div>
+        <ul>${m.rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
+      </div>
+      ${admin ? pmAdminPanel(m) : ""}`;
+  }
+
+  function pmPlayerStats(m) {
+    const s = m.stats;
+    if (!s.played) return `<div class="admin-subhead">${esc(m.stat.label)} this season</div><p class="muted small">No box scores with ${esc(m.player)} in them yet.</p>`;
+    return `
+      <div class="admin-subhead">${esc(m.stat.label)} this season</div>
+      <div class="stat-chips pm-chips">
+        <div class="card stat-chip"><span class="eyebrow">Average</span><span class="num">${pmLine(Math.round(s.average * 10) / 10)}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Best</span><span class="num">${s.high}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Over ${pmLine(m.line)}</span><span class="num">${s.over}/${s.played}</span></div>
+      </div>
+      <table class="pm-log">
+        <thead><tr><th>Game</th><th>Opponent</th><th class="pm-n">${esc(m.stat.short)}</th><th></th></tr></thead>
+        <tbody>${s.games.slice().reverse().map((g) => `
+          <tr><td>${g.week ? `Wk ${g.week}` : esc(g.gameId)}</td><td>${g.opponent ? `${anyTeamLogo(g.opponent)} ${esc(teamShort(g.opponent))}` : ""}</td>
+          <td class="pm-n">${g.value}</td><td>${g.value > m.line ? `<span class="pm-ou-tag over">Over</span>` : g.value < m.line ? `<span class="pm-ou-tag">Under</span>` : `<span class="pm-ou-tag">Push</span>`}</td></tr>`).join("")}</tbody>
+      </table>
+      <p class="muted small">From UFF box scores (last ${s.games.length} of ${s.played} games), against this market's line.</p>`;
+  }
+  function pmTeamStats(m) {
+    return `
+      <div class="admin-subhead">Recent results</div>
+      ${m.stats.teams.map((games, i) => `
+        <div class="pm-recent">
+          <span class="pm-team">${pmTeamLogo(m.teams[i])}<b>${esc(pmShort(m.teams[i]))}</b></span>
+          ${games.length ? games.map((g) => `<span class="pm-wl pm-wl--${g.result}" title="${esc(`${g.result} ${g.score[0]}-${g.score[1]} vs ${g.opponent}`)}">${g.result}</span>`).join("") : `<span class="muted small">No games played yet</span>`}
+        </div>`).join("")}
+      <p class="muted small">Last five finals for each team (hover for the score).</p>`;
+  }
+
+  function pmConfirm() {
+    const slot = pm.data[`market:${pm.confirm.id}`];
+    const m = slot && slot.data && slot.data.market;
+    if (!m) return "";
+    const what = m.kind === "game_winner" ? `<b>${esc(pmChoice(m, pm.confirm.selection))}</b> to beat ${esc(m.teams[pm.confirm.selection === "a" ? 1 : 0].name)}`
+      : `<b>${esc(m.player)}</b> to finish <b>${pm.confirm.selection === "over" ? "over" : "under"} ${pmLine(m.line)}</b> ${esc(m.stat.label.toLowerCase())}`;
+    return `
+      <div class="pm-modal" role="dialog" aria-modal="true" aria-labelledby="pmConfirmTitle">
+        <div class="card pm-modal-card">
+          <h2 id="pmConfirmTitle">Confirm your pick</h2>
+          <p>You're picking ${what} in game ${esc(m.gameId)}.</p>
+          <ul class="pm-modal-facts">
+            <li>Uses <b>${m.stake}</b> of your ${pmPts(pmCfg().user ? pmCfg().user.balance : 0)}. A correct pick returns ${m.stake * 2}.</li>
+            ${m.pushPossible ? `<li>Exactly ${pmLine(m.line)} is a push: your ${m.stake} points come back.</li>` : ""}
+            <li>Picks can't be changed or taken back once made.</li>
+            <li>Virtual points only: no cash value.</li>
+          </ul>
+          <div class="admin-actions">
+            <button type="button" class="btn btn-primary" data-pm="confirm" ${pm.busy ? "disabled" : ""}>${pm.busy ? "Saving&hellip;" : "Confirm pick"}</button>
+            <button type="button" class="btn btn-ghost" data-pm="cancel">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function pmMePage(cfg) {
+    if (!cfg.user) return empty("Sign in to see your predictions", `<a href="#" class="link-strong" data-pm="auth">Sign in or make a test account</a>.`);
+    if (cfg.user.isAdmin) return empty("Admins don't make picks", "Sign in with a test account to play.");
+    const slot = pmLoad("me", "/me");
+    if (!slot.data) return pmState(slot, "your predictions");
+    const d = slot.data, r = d.record;
+    const row = (m) => `
+      <a class="pm-row" href="#/uff-predictions/m/${m.id}">
+        <span class="pm-row-main"><b>${esc(pmTitle(m))}</b><span class="muted small">${esc(m.kindLabel)} &middot; Game ${esc(m.gameId)}${m.sample ? " &middot; Sample" : ""}</span></span>
+        <span class="pm-row-pick">${esc(pmChoice(m, m.mine.selection))}<span class="muted small">${m.mine.stake} pts &middot; ${pmWhen(m.mine.createdAt)}</span></span>
+        <span class="pm-row-state">${m.mine.result === "pending" ? `${pmStatus(m)}<span class="muted small">${pmWhenText(m)}</span>`
+          : `<span class="pm-mine pm-mine--${m.mine.result}">${PM_RESULT[m.mine.result]}</span><span class="muted small">${esc(pmOutcome(m))}</span>`}</span>
+      </a>`;
+    return `
+      <div class="stat-chips pm-chips">
+        <div class="card stat-chip"><span class="eyebrow">Virtual points</span><span class="num">${d.user.balance.toLocaleString("en-US")}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Accuracy</span><span class="num">${r.accuracy == null ? "&ndash;" : `${Math.round(r.accuracy * 100)}%`}</span><span class="muted small">${r.won} correct &middot; ${r.lost} incorrect</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Streak</span><span class="num">${r.streak ? `${r.streak.type}${r.streak.n}` : "&ndash;"}</span><span class="muted small">Best: ${r.bestStreak} correct in a row</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Leaderboard</span><span class="num">${d.rank ? `#${d.rank.rank}` : "&ndash;"}</span><span class="muted small">${d.rank ? `of ${d.rank.of}` : `after ${d.minSettled} decided picks`}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Active</span><span class="num">${r.pending}</span><span class="muted small">${r.push} push &middot; ${r.void} void</span></div>
+      </div>
+      <p class="muted small">Accuracy counts only correct and incorrect picks; pushes and voids don't count. It's kept apart from your points.</p>
+      <div class="pm-cols">
+        <div class="card admin-card"><div class="admin-subhead">Active picks<span class="muted small">${d.active.length}</span></div>
+          ${d.active.length ? `<div class="pm-rows">${d.active.map(row).join("")}</div>` : `<p class="muted small">No active picks. <a class="link-strong" href="#/uff-predictions">Find a market</a>.</p>`}</div>
+        <div class="card admin-card"><div class="admin-subhead">Virtual points over time</div>${pmBalanceChart(d.ledger) || `<p class="muted small">Your balance history shows up after your first pick.</p>`}</div>
+      </div>
+      <div class="card admin-card"><div class="admin-subhead">Results<span class="muted small">${d.completed.length}</span></div>
+        ${d.completed.length ? `<div class="pm-rows">${d.completed.map(row).join("")}</div>` : `<p class="muted small">Settled picks show up here.</p>`}</div>`;
+  }
+
+  function pmLeadersPage(cfg) {
+    const slot = pmLoad("leaders", "/leaderboard");
+    if (!slot.data) return pmState(slot, "the leaderboard");
+    const d = slot.data;
+    const me = cfg.user && cfg.user.username;
+    return `
+      <div class="pm-cols">
+        <div class="card table-card">
+          <div class="table-title">Accuracy<span class="muted small">at least ${d.minSettled} decided picks</span></div>
+          ${d.accuracy.length ? `<table class="pm-log pm-board"><thead><tr><th>#</th><th>Player</th><th class="pm-n">Accuracy</th><th class="pm-n">Record</th></tr></thead><tbody>
+            ${d.accuracy.map((r) => `<tr class="${r.username === me ? "pm-me" : ""}"><td>${r.rank}</td><td>${esc(r.username)}</td><td class="pm-n">${Math.round(r.accuracy * 1000) / 10}%</td><td class="pm-n">${r.won}-${r.lost}</td></tr>`).join("")}
+          </tbody></table>` : `<p class="muted small pm-pad">Nobody has ${d.minSettled} decided picks yet.</p>`}
+        </div>
+        <div class="card table-card">
+          <div class="table-title">Virtual points<span class="muted small">separate from accuracy</span></div>
+          ${d.points.length ? `<table class="pm-log pm-board"><thead><tr><th>#</th><th>Player</th><th class="pm-n">Points</th><th class="pm-n">In play</th><th class="pm-n">Picks</th></tr></thead><tbody>
+            ${d.points.map((r) => `<tr class="${r.username === me ? "pm-me" : ""}"><td>${r.rank}</td><td>${esc(r.username)}</td><td class="pm-n">${r.total.toLocaleString("en-US")}</td><td class="pm-n">${r.inPlay}</td><td class="pm-n">${r.picks}</td></tr>`).join("")}
+          </tbody></table><p class="muted small pm-pad">Points = balance plus points riding on picks that haven't settled.</p>` : `<p class="muted small pm-pad">No picks yet.</p>`}
+        </div>
+      </div>
+      <p class="muted small">Only usernames and totals are shown here; nobody else can see which side you picked.</p>`;
+  }
+
+  /* -- Admin -- */
+
+  function pmAdminPanel(m) {
+    const done = m.status === "resolved" || m.status === "void";
+    const auditSlot = pmLoad(`audit:${m.id}`, `/admin/audit?market=${m.id}`);
+    const p = pm.preview && pm.preview.id === m.id ? pm.preview : null;
+    const btn = (action, label, ok = true) => ok ? `<button type="button" class="btn btn-ghost btn-sm" data-pm-admin="${action}" ${pm.busy ? "disabled" : ""}>${label}</button>` : "";
+    return `
+      <div class="card admin-card pm-admin">
+        <div class="admin-subhead">Manage this market<span class="muted small">admin</span></div>
+        ${done && m.status === "void" ? `<p class="muted small">This market is void. It can't be changed.</p>` : `
+        <div class="admin-actions">
+          ${btn("open", "Open picks", !done && m.status !== "open" && m.hold !== "disputed")}
+          ${btn("lock", "Lock picks", !done && m.storedStatus !== "locked")}
+          ${btn("postpone", "Game postponed", !done && m.hold !== "postponed")}
+          ${btn("clearHold", "Clear hold", !done && !!m.hold)}
+          ${btn("preview", "Check result", !done)}
+          ${btn("dispute", m.status === "resolved" ? "Dispute (reverse points)" : "Mark disputed", m.status !== "void" && m.hold !== "disputed")}
+        </div>
+        ${p ? `<div class="pm-preview ${p.ready ? "" : "pm-preview--wait"}"><b>${!p.ready ? "Not ready" : p.outcome === "void" ? "Would void (points back)" : p.outcome === "push" ? "Would settle: Push (points back)" : `Would settle: ${esc(pmChoice(m, p.outcome))}`}</b><span>${esc(p.reason)}</span>
+          ${p.ready && m.status === "locked" ? `<button type="button" class="btn btn-primary btn-sm" data-pm-admin="resolve">Settle from this result</button>` : p.ready ? `<span class="muted small">Lock picks first, then settle.</span>` : ""}</div>` : ""}
+        ${done ? "" : `
+        <form class="pm-admin-form" id="pmClose">
+          <label class="field">Picks close<input type="datetime-local" name="closesAt" value="${pmLocalInput(m.closesAt)}" required></label>
+          <button class="btn btn-ghost btn-sm">Save closing time</button>
+        </form>
+        <form class="pm-admin-form" id="pmManual">
+          ${m.kind === "player_ou"
+            ? `<label class="field">${esc(m.stat.label)} (final)<input name="value" type="number" min="0" step="any" required></label>`
+            : `<label class="field">${esc(pmShort(m.teams[0]))} score<input name="scoreA" type="number" min="0" step="1" required></label><label class="field">${esc(pmShort(m.teams[1]))} score<input name="scoreB" type="number" min="0" step="1" required></label>`}
+          <label class="field pm-grow">Where the result came from<input name="note" required minlength="5" maxlength="300" placeholder="e.g. Corrected box score from the league office"></label>
+          <button class="btn btn-ghost btn-sm" ${m.status === "locked" ? "" : "disabled title=\"Lock picks first\""}>Settle by hand</button>
+        </form>`}
+        <form class="pm-admin-form" id="pmReason">
+          <label class="field pm-grow">Reason (needed to void or dispute)<input name="note" id="pmNote" maxlength="300" placeholder="e.g. Game canceled"></label>
+          ${m.status === "void" ? "" : `<button type="button" class="btn btn-ghost btn-sm pm-danger" data-pm-admin="void">Void &amp; refund everyone</button>`}
+        </form>`}
+        <div class="admin-subhead admin-subhead--small">History</div>
+        ${auditSlot.data ? pmAuditRows(auditSlot.data.audit) : pmState(auditSlot, "history")}
+      </div>`;
+  }
+  function pmAuditRows(rows) {
+    if (!rows.length) return `<p class="muted small">Nothing yet.</p>`;
+    const show = (d) => Object.entries(d).filter(([, v]) => v !== null && v !== "" && v !== undefined).map(([k, v]) =>
+      `${k}: ${v && typeof v === "object" && "from" in v ? `${fmtAudit(k, v.from)} &rarr; ${fmtAudit(k, v.to)}` : fmtAudit(k, v)}`).join(" &middot; ");
+    return `<div class="pm-audit">${rows.map((r) => `
+      <div class="activity-row"><span class="activity-text"><b>${esc(r.action)}</b>${r.marketId ? ` <a class="link" href="#/uff-predictions/m/${r.marketId}">#${r.marketId}</a>` : ""} by ${esc(r.by || "?")} <span class="muted small">${show(r.detail)}</span></span>
+      <span class="activity-time">${pmWhen(r.at)}</span></div>`).join("")}</div>`;
+  }
+  const fmtAudit = (k, v) => esc(/At$|_at$/.test(k) && Number(v) > 1e12 ? pmWhen(Number(v)) : typeof v === "object" ? JSON.stringify(v) : String(v));
+
+  function pmManagePage(cfg) {
+    const gs = pmLoad("admin:games", "/admin/games");
+    const ls = pmLoad("admin:list", "/markets?sort=newest");
+    const au = pmLoad("admin:audit", "/admin/audit");
+    const f = pm.form;
+    let form = pmState(gs, "the schedule");
+    if (gs.data) {
+      const games = gs.data.games;
+      const g = games.find((x) => x.id === f.gameId) || null;
+      const team = g && (g.teams.find((t) => t.name === f.playerTeam) || null);
+      // Players for the picker: the team's roster on the site plus everyone in its box scores
+      const tSite = team && TEAMS.find((t) => t.name === team.name);
+      const players = team ? [...new Set([...(tSite ? [...(ROSTERS[tSite.slug] || new Map()).values()] : []), ...team.players])].sort((a, b) => a.localeCompare(b)) : [];
+      const closeDefault = g && g.at ? g.at : Date.now() + 24 * 3600 * 1000;
+      form = !cfg.league.ok ? `<p class="muted small">League data isn't loading, so markets can't be made right now.</p>` : !games.length ? `<p class="muted small">There are no unplayed games on the schedule.</p>` : `
+        <form class="pm-create" id="pmCreate">
+          <div class="pm-fields">
+            <label class="field">Type<select class="select" name="kind" data-pm-form>${[["player_ou", "Player Over/Under"], ["game_winner", "Game Winner"]].map(([k, l]) => `<option value="${k}" ${f.kind === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+            <label class="field pm-grow">Game<select class="select" name="gameId" data-pm-form required>
+              <option value="">Pick a scheduled game</option>
+              ${games.map((x) => `<option value="${esc(x.id)}" ${x.id === f.gameId ? "selected" : ""}>${x.sample ? "[SAMPLE] " : ""}${x.week ? `Wk ${x.week} &middot; ` : ""}${esc(x.id)}: ${esc(x.teams[0].name)} vs ${esc(x.teams[1].name)}${x.at ? ` &middot; ${esc(pmWhen(x.at))}` : " &middot; no kickoff time"}${x.markets ? ` (${x.markets} market${x.markets === 1 ? "" : "s"})` : ""}</option>`).join("")}
+            </select></label>
+          </div>
+          ${f.kind === "player_ou" ? `
+          <div class="pm-fields">
+            <label class="field">Player's team<select class="select" name="playerTeam" data-pm-form ${g ? "" : "disabled"}><option value="">Team</option>${g ? g.teams.map((t) => `<option ${t.name === f.playerTeam ? "selected" : ""}>${esc(t.name)}</option>`).join("") : ""}</select></label>
+            <label class="field pm-grow">Player<input name="player" list="pmPlayers" data-pm-input value="${esc(f.player || "")}" placeholder="${team ? "Type or pick a player" : "Pick the team first"}" ${team ? "" : "disabled"} required maxlength="40"></label>
+            <datalist id="pmPlayers">${players.map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
+            <label class="field">Stat<select class="select" name="statKey" data-pm-form>${gs.data.stats.map((s) => `<option value="${s.key}" ${(f.statKey || "pass_yds") === s.key ? "selected" : ""}>${esc(s.label)}</option>`).join("")}</select></label>
+            <label class="field">Line<input name="line" type="number" min="0" step="0.5" required data-pm-input value="${esc(f.line ?? "")}" placeholder="e.g. 499.5"></label>
+          </div>
+          <p class="muted small">A whole-number line can land exactly on it (a push: points back). Use .5 for no pushes.</p>` : ""}
+          <div class="pm-fields">
+            <label class="field">Points per pick<input name="stake" type="number" min="1" max="${gs.data.maxStake}" step="1" data-pm-input value="${esc(f.stake ?? gs.data.defaultStake)}"></label>
+            <label class="field">Opens (blank = now)<input name="opensAt" type="datetime-local" data-pm-input value="${esc(f.opensAt || "")}"></label>
+            <label class="field">Picks close<input name="closesAt" type="datetime-local" required data-pm-input value="${esc(f.closesAt || pmLocalInput(closeDefault))}"></label>
+          </div>
+          ${g && g.at ? `<p class="muted small">Kickoff ${pmWhen(g.at)}. Picks have to close by then.</p>` : g ? `<p class="muted small">This game has no kickoff time on the schedule, so set the closing time carefully.</p>` : ""}
+          <div class="admin-actions"><button class="btn btn-primary btn-sm" ${pm.busy ? "disabled" : ""}>Create market</button></div>
+        </form>`;
+    }
+    const list = ls.data ? ls.data.markets : [];
+    return `
+      <div class="card admin-card"><div class="admin-subhead">New market</div>${form}</div>
+      ${cfg.mode === "demo" ? pmDemoResults(gs) : ""}
+      <div class="card admin-card"><div class="admin-subhead">All markets<span class="muted small">${list.length}</span></div>
+        ${pmState(ls, "markets")}
+        ${ls.data ? list.length ? `<div class="pm-rows">${list.map((m) => `
+          <a class="pm-row" href="#/uff-predictions/m/${m.id}">
+            <span class="pm-row-main"><b>#${m.id} ${esc(pmTitle(m))}</b><span class="muted small">${esc(m.kindLabel)} &middot; Game ${esc(m.gameId)}${m.sample ? " &middot; Sample" : ""}</span></span>
+            <span class="pm-row-pick">${pmPicks(m.total)}<span class="muted small">${m.stake} pts per pick</span></span>
+            <span class="pm-row-state">${pmStatus(m)}<span class="muted small">${pmWhenText(m)}</span></span>
+          </a>`).join("")}</div>` : `<p class="muted small">No markets yet.</p>` : ""}
+      </div>
+      <div class="card admin-card"><div class="admin-subhead">Audit history</div>${au.data ? pmAuditRows(au.data.audit) : pmState(au, "history")}</div>`;
+  }
+
+  function pmDemoResults(gs) {
+    if (!gs.data) return "";
+    const games = gs.data.sampleGames;
+    return `
+      <div class="card admin-card">
+        <div class="admin-subhead">Post a sample final<span class="pm-sample">Demo only</span></div>
+        <p class="muted small">Sample games only. This stands in for a real box score so settling can be tested; it never touches the real schedule.</p>
+        <form class="pm-create" id="pmDemo">
+          <div class="pm-fields">
+            <label class="field pm-grow">Sample game<select class="select" name="gameId" required>${games.map((g) => `<option value="${esc(g.id)}">${esc(g.id)}: ${esc(g.teams[0])} vs ${esc(g.teams[1])}${g.final ? ` (final ${g.score[0]}-${g.score[1]})` : ""}</option>`).join("")}</select></label>
+            <label class="field">First team score<input name="scoreA" type="number" min="0" step="1" required></label>
+            <label class="field">Second team score<input name="scoreB" type="number" min="0" step="1" required></label>
+          </div>
+          <label class="field">Stat lines (one per line: player, stat, number, team a or b)<textarea class="admin-textarea" name="lines" rows="4" placeholder="biglester1, pass_yds, 512, a&#10;97ISP, rec_yds, 140, a"></textarea></label>
+          <p class="muted small">Stats: ${gs.data.stats.map((s) => `${s.key}`).join(", ")}. A player left out counts as not having played.</p>
+          <div class="admin-actions"><button class="btn btn-primary btn-sm" ${pm.busy ? "disabled" : ""}>Post sample final</button></div>
+        </form>
+      </div>`;
+  }
+
+  // Every alias that leads to this player, so their box score lines are found under any old name
+  const pmAliasesOf = (name) => [...ALIASES.keys()].filter((k) => rawAlias(k).toLowerCase() === name.toLowerCase());
+
+  async function pmDo(work, okMsg) {
+    pm.busy = true; pm.err = ""; pm.msg = "";
+    pmRedraw();
+    try {
+      const out = await work();
+      pm.msg = typeof okMsg === "function" ? okMsg(out) : okMsg || "";
+      pmFresh();
+      delete pm.data.config; // balance and sign-in may have changed
+      return out;
+    } catch (err) {
+      pm.err = err.message;
+      if (err.status === 401) delete pm.data.config;
+      return null;
+    } finally {
+      pm.busy = false;
+      pmRedraw();
+    }
+  }
+
+  // Called by render() for #/uff-predictions[/m/<id> | /me | /leaders | /manage]
+  function pmRoute(parts) {
+    const view = parts[1] || "";
+    const id = view === "m" ? Number(parts[2]) : null;
+    if (view !== pm.view || id !== pm.id) { pm.msg = pm.err = ""; pm.preview = null; pm.confirm = null; }
+    pm.view = view; pm.id = id;
+    pmFresh();
+    // Who's signed in and their balance can change elsewhere (a settled market, another tab): check again,
+    // keeping the last answer on screen until the new one comes
+    if (pm.data.config && pm.data.config.data) {
+      pmFetch("/config").then((data) => { pm.data.config = { data }; pmRedraw(); }, () => {});
+    }
+  }
+
+  let pmSearchWait = null;
+  document.addEventListener("input", (e) => {
+    if (e.target.id === "pmSearch") {
+      clearTimeout(pmSearchWait);
+      pmSearchWait = setTimeout(() => { pm.q = e.target.value.trim(); pmRedraw(); }, 250);
+    }
+    if (e.target.matches("[data-pm-input]")) pm.form[e.target.name] = e.target.value;
+  });
+  document.addEventListener("change", (e) => {
+    if (e.target.id === "pmSort") { pm.sort = e.target.value; pmRedraw(); }
+    if (e.target.matches("[data-pm-form]")) {
+      pm.form[e.target.name] = e.target.value;
+      if (e.target.name === "gameId" || e.target.name === "kind") { pm.form.playerTeam = ""; pm.form.player = ""; pm.form.closesAt = ""; }
+      if (e.target.name === "playerTeam") pm.form.player = "";
+      pmRedraw();
+    }
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pm.confirm && !pm.busy) { pm.confirm = null; pmRedraw(); } });
+
+  document.addEventListener("click", async (e) => {
+    const t = e.target.closest("[data-pm], [data-pm-kind], [data-pm-status], [data-pm-pick], [data-pm-admin]");
+    if (!t || !app.contains(t)) {
+      if (pm.confirm && e.target.classList && e.target.classList.contains("pm-modal") && !pm.busy) { pm.confirm = null; pmRedraw(); }
+      return;
+    }
+    e.preventDefault();
+    const d = t.dataset;
+    if (d.pmKind) { pm.kind = d.pmKind; return pmRedraw(); }
+    if (d.pmStatus !== undefined) { pm.status = d.pmStatus; return pmRedraw(); }
+    if (d.pmPick) {
+      if (!pmCfg().user) { pm.auth = true; return pmRedraw(); }
+      pm.confirm = { id: pm.id, selection: d.pmPick };
+      pmRedraw();
+      const ok = document.querySelector("[data-pm='confirm']");
+      if (ok) ok.focus();
+      return;
+    }
+    if (d.pm === "retry") { pm.data = {}; return pmRedraw(); }
+    if (d.pm === "auth") { pm.auth = !pm.auth; pm.err = ""; return pmRedraw(); }
+    if (d.pm === "cancel") { pm.confirm = null; return pmRedraw(); }
+    if (d.pm === "logout") { pm.auth = false; return pmDo(() => pmFetch("/auth/logout", {}), "Signed out."); }
+    if (d.pm === "confirm" && pm.confirm) {
+      const { id, selection } = pm.confirm;
+      // Saved or refused (closed, already picked, not enough points), the dialog closes and the page says which
+      await pmDo(() => pmFetch(`/markets/${id}/predict`, { selection }), "Pick saved. It's on My Predictions.");
+      pm.confirm = null;
+      return pmRedraw();
+    }
+    if (d.pmAdmin) {
+      const id = pm.id, a = d.pmAdmin;
+      const note = (document.getElementById("pmNote") || {}).value || "";
+      if (a === "preview") {
+        pm.busy = true; pm.err = ""; pmRedraw();
+        try { pm.preview = { id, ...(await pmFetch(`/admin/markets/${id}/preview`)) }; } catch (err) { pm.err = err.message; }
+        pm.busy = false;
+        return pmRedraw();
+      }
+      if (a === "void" && !confirm("Void this market and give every pick its points back? This can't be undone.")) return;
+      if (a === "dispute" && !note.trim()) { pm.err = "Write what's disputed in the Reason box first."; return pmRedraw(); }
+      if (a === "void" && !note.trim()) { pm.err = "Write why it's void in the Reason box first (for example: game canceled)."; return pmRedraw(); }
+      if (a === "dispute" && pm.data[`market:${id}`] && pm.data[`market:${id}`].data.market.status === "resolved" &&
+        !confirm("Disputing takes back every payout from this market until it's settled again. Go ahead?")) return;
+      pm.preview = null;
+      const labels = { open: "Picks are open.", lock: "Picks are locked.", postpone: "Marked postponed: picks stay, no new ones.", clearHold: "Hold cleared.",
+        dispute: "Marked disputed.", void: "Market void: everyone got their points back.", resolve: "Settled." };
+      return pmDo(() => pmFetch(`/admin/markets/${id}`, { action: a, note }), (out) => (out && out.already ? "That was already settled; nothing changed." : labels[a]));
+    }
+  });
+
+  document.addEventListener("submit", async (e) => {
+    const f = e.target;
+    if (!["pmAuth", "pmCreate", "pmClose", "pmManual", "pmDemo"].includes(f.id)) return;
+    e.preventDefault();
+    const v = Object.fromEntries(new FormData(f));
+    if (f.id === "pmAuth") {
+      const mode = (e.submitter && e.submitter.dataset.mode) || "login";
+      const out = await pmDo(() => pmFetch(`/auth/${mode}`, { username: v.username, password: v.password }),
+        (o) => (mode === "signup" ? `Welcome, ${o.user.username}! You start with ${pmPts(o.user.balance)}.` : `Signed in as ${o.user.username}.`));
+      if (out) { pm.auth = false; pmRedraw(); }
+      return;
+    }
+    if (f.id === "pmCreate") {
+      const body = { kind: pm.form.kind || "player_ou", gameId: v.gameId, stake: v.stake === "" ? null : Number(v.stake),
+        opensAt: pmFromInput(v.opensAt), closesAt: pmFromInput(v.closesAt) };
+      if (body.kind === "player_ou") Object.assign(body, { player: v.player, playerTeam: v.playerTeam, statKey: v.statKey || "pass_yds",
+        line: v.line === "" ? null : Number(v.line), playerNames: pmAliasesOf(String(v.player || "")) });
+      const out = await pmDo(() => pmFetch("/admin/markets", body), (o) => `Market #${o.id} created.`);
+      if (out) { pm.form = { kind: body.kind, gameId: body.gameId, playerTeam: v.playerTeam || "" }; pmRedraw(); }
+      return;
+    }
+    if (f.id === "pmClose") return pmDo(() => pmFetch(`/admin/markets/${pm.id}`, { action: "edit", changes: { closesAt: pmFromInput(v.closesAt) } }), "Closing time saved.");
+    if (f.id === "pmManual") {
+      if (!confirm("Settle this market by hand with these numbers? Points are paid right away.")) return;
+      return pmDo(() => pmFetch(`/admin/markets/${pm.id}`, { action: "resolve", mode: "manual", ...v }), (o) => (o.already ? "That was already settled; nothing changed." : "Settled by hand."));
+    }
+    if (f.id === "pmDemo") {
+      const lines = String(v.lines || "").split(/\r?\n/).map((l) => l.split(",").map((s) => s.trim())).filter((p) => p[0])
+        .map(([player, statKey, value, side]) => ({ player, statKey, value: Number(value), side: /^b$/i.test(side || "") ? 1 : 0 }));
+      const out = await pmDo(() => pmFetch("/admin/demo-result", { gameId: v.gameId, scoreA: Number(v.scoreA), scoreB: Number(v.scoreB), lines }),
+        (o) => `Sample final posted for ${o.gameId}. Lock its markets, then use Check result.`);
+      if (out) f.reset();
+    }
+  });
+
   // ---- Past United Flag Bowls ----
 
   const roman = (n) => [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]].reduce((out, [v, s]) => { while (n >= v) { out += s; n -= v; } return out; }, "");
@@ -5234,6 +5922,7 @@
     allflag: allFlagPage,
     playoff: playoffPage,
     predictions: predictionsPage,
+    "uff-predictions": uffPredictionsPage,
     vods: vodsPage,
     gfx: gfxPage,
     build: buildPage,
@@ -5274,6 +5963,7 @@
       cmp.scope = sub === "alltime" ? "alltime" : "season";
       try { cmp.a = decodeURIComponent(parts[2] || ""); cmp.b = decodeURIComponent(parts[3] || ""); } catch (e) {}
     }
+    if (section === "uff-predictions") pmRoute(parts);
     if (section === "updates") updatesFilter = UPDATE_TYPES[sub] ? sub : "all";
     if (section === "stats") {
       statsScope = sub === "alltime" ? "alltime" : "season";
@@ -5983,7 +6673,7 @@
   // When a score, transaction, stream or anything else changed, the page reloads where you were. If that would
   // interrupt you (typing, a video playing, Admin, a game of Build a Team), a "New updates" button shows instead.
   const LIVE_EVERY = 30 * 1000;
-  const NO_RELOAD = ["admin", "build", "predictions", "compare"];
+  const NO_RELOAD = ["admin", "build", "predictions", "uff-predictions", "compare"];
   let liveBusy = false, updateWaiting = false;
 
   const interrupts = () => {
