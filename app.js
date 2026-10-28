@@ -115,6 +115,9 @@
     renames.filter((r) => !r.admin).concat(renames.filter((r) => r.admin), siteRenames).forEach(({ from: sent, to, id, admin }) => {
       if (!sent || !to) return;
       (admin ? [String(sent)] : discordNames(sent)).forEach((from) => {
+        // A Discord name with no letters or numbers ("᲼", "✴") can be several people's at once, so the bot's link
+        // for one only counts when it matched them by id
+        if (!id && !admin && !/[\p{L}\p{N}]/u.test(from)) return;
         const was = rawAlias(from);
         // Someone else's Roblox username isn't taken over just because it matches this person's Discord name
         // (a match by id, or an admin's rename, is always the same person)
