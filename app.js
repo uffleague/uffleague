@@ -4270,6 +4270,8 @@
     });
     return out;
   }
+  const HAND_TOTALS_NOTE = (name) => `${name}'s season totals are typed in by hand, so they'd ignore this line. ` +
+    "This also switches them back to adding up the box scores (the totals above go away). Continue?";
   // Save (or remove, stats = null) one of those lines: the first saved spot gets it, any others are taken out
   async function saveGameLine(btn, d, stats) {
     const spots = d.spots.split(",").map(Number);
@@ -4281,6 +4283,9 @@
       for (let n = spots.length - 1; n >= 0; n--) {
         await adminCall({ action: "editGameLine", id: d.game, side: Number(d.side), group: d.group, index: spots[n], was: was[n], stats: n ? null : stats });
       }
+      // Season totals typed in by hand win over the box scores, so a fixed line wouldn't show anywhere:
+      // go back to adding up the box scores (the caller asked first)
+      if (statSeasonEdited(statsEditName)) await adminCall({ action: "setStats", name: statsEditName, stats: null });
       return true;
     } catch (err) {
       adminError = err.message;
@@ -4296,7 +4301,7 @@
     return `
       <div class="card admin-card admin-list">
         <div class="admin-subhead">Game by Game<span class="muted small">${lines.length} stat line${lines.length === 1 ? "" : "s"}</span></div>
-        <p class="muted small admin-note">Fix one game's box score line (the season totals, leaders and records add up from these).${statSeasonEdited(name) ? " <strong>This player's season totals are edited by hand above, so those still win until you undo them.</strong>" : ""}</p>
+        <p class="muted small admin-note">Fix one game's box score line (the season totals, leaders and records add up from these).${statSeasonEdited(name) ? " <strong>This player's season totals are typed in by hand above, so they ignore these lines. Saving or removing a line switches them back to adding up the box scores.</strong>" : ""}</p>
         ${lines.length ? lines.map(({ g, wk, i, group, line, index, spots, was }) => `
           <form class="game-line-form" data-game="${esc(g.id)}" data-side="${i}" data-group="${group}" data-spots="${spots.join(",")}" data-was="${esc(JSON.stringify(was))}" autocomplete="off">
             <div class="admin-subhead admin-subhead--small">Week ${wk.week} &middot; ${i === 0 ? "vs" : "@"} ${esc(g.teams[1 - i])} &middot; ${BOX[group].label}<span class="muted small">${esc(g.id)} &middot; ${g.score[i]}-${g.score[1 - i]}</span></div>
@@ -5380,6 +5385,7 @@
           stats: Object.fromEntries(STAT_EDIT[group].map(([f]) => [f, 0])) };
       } else {
         const stats = Object.fromEntries(STAT_EDIT[d.group].map(([f]) => [f, Number(form.get(f)) || 0]));
+        if (statSeasonEdited(statsEditName) && !confirm(HAND_TOTALS_NOTE(statsEditName))) return;
         if (await saveGameLine(e.target.querySelector("button[type=submit]"), d, stats)) reloadWithFlash(`Saved ${statsEditName}'s line for ${d.game}. Everyone sees it now.`);
         return;
       }
@@ -5596,7 +5602,8 @@
     }
     if (t.dataset && "delLine" in t.dataset) {
       const d = t.closest(".game-line-form").dataset;
-      if (!confirm(`Remove ${statsEditName}'s ${BOX[d.group].label.toLowerCase()} line from ${d.game}?`)) return;
+      if (!confirm(`Remove ${statsEditName}'s ${BOX[d.group].label.toLowerCase()} line from ${d.game}?` +
+        (statSeasonEdited(statsEditName) ? `\n\n${HAND_TOTALS_NOTE(statsEditName)}` : ""))) return;
       if (await saveGameLine(t, d, null)) reloadWithFlash(`Removed ${statsEditName}'s line from ${d.game}.`);
       return;
     }
