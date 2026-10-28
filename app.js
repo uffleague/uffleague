@@ -112,7 +112,10 @@
     // Renames made on Admin -> Players come last, so they win over the bot's; data.js renames after those
     const renames = SAVED.renames || [];
     const siteRenames = Object.entries(LEAGUE.renames || {}).map(([from, to]) => ({ from, to, admin: true }));
-    renames.filter((r) => !r.admin).concat(renames.filter((r) => r.admin), siteRenames).forEach(({ from: sent, to, id, admin }) => {
+    // The bot sometimes sends a Discord name as someone's new name ("影影影影 (@shroudedpercs)"): use the handle, or drop the ®
+    const botNewName = (s) => (String(s).match(/\(@([^)\s]+)\)/) || [])[1] || String(s).replace(/®/g, "").trim();
+    renames.filter((r) => !r.admin).concat(renames.filter((r) => r.admin), siteRenames).forEach(({ from: sent, to: sentTo, id, admin }) => {
+      const to = admin ? sentTo : botNewName(sentTo);
       if (!sent || !to) return;
       (admin ? [String(sent)] : discordNames(sent)).forEach((from) => {
         // A Discord name with no letters or numbers ("᲼", "✴") can be several people's at once, so the bot's link
