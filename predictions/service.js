@@ -1,7 +1,6 @@
-// UFF Predictions on the local database: accounts, picks, settlement, the points ledger and admin actions.
+// UFF Predictions on the local database: picks, settlement, the points ledger and admin actions.
 // Every balance change is a ledger row written in the same transaction as the change itself, and the client
 // never sends a balance, an outcome or a stat: those come from the database and the league data (league.js).
-import { scryptSync, randomBytes, timingSafeEqual, createHash } from "node:crypto";
 import { tx } from "./db.js";
 import * as core from "./core.js";
 
@@ -10,19 +9,9 @@ export class HttpError extends Error {
 }
 const fail = (status, message) => { throw new HttpError(status, message); };
 
-const USERNAME = /^[A-Za-z0-9_]{3,20}$/;
 const text = (v, max) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : "");
-const sha = (s) => createHash("sha256").update(s).digest("hex");
 
-export function hashPassword(password, salt = randomBytes(16).toString("hex")) {
-  return { salt, hash: scryptSync(String(password), salt, 32).toString("hex") };
-}
-function passwordMatches(password, salt, hash) {
-  const got = Buffer.from(hashPassword(password, salt).hash, "hex");
-  const want = Buffer.from(hash, "hex");
-  return got.length === want.length && timingSafeEqual(got, want);
-}
-
+// Accounts and sign-in are in auth.js; this only reads the users table
 export function createService({ db, league, config, now = Date.now }) {
   const stmts = new Map();
   const st = (sql) => { if (!stmts.has(sql)) stmts.set(sql, db.prepare(sql)); return stmts.get(sql); };
@@ -43,40 +32,7 @@ export function createService({ db, league, config, now = Date.now }) {
     return after;
   }
 
-  /* ---------- Accounts ---------- */
-
-  function createUser({ username, password, isAdmin = false }) {
-    const name = String(username || "").trim();
-    if (!USERNAME.test(name)) fail(400, "Usernames are 3-20 letters, numbers or underscores.");
-    if (typeof password !== "string" || password.length < 8 || password.length > 200) fail(400, "Passwords need at least 8 characters.");
-    if (get("SELECT id FROM users WHERE username = ?", name)) fail(409, "That username is taken.");
-    const { salt, hash } = hashPassword(password);
-    return tx(db, () => {
-      const { lastInsertRowid: id } = run("INSERT INTO users (username, pass_hash, pass_salt, is_admin, balance, created_at) VALUES (?, ?, ?, ?, 0, ?)",
-        name, hash, salt, isAdmin ? 1 : 0, now());
-      // Admins run the markets and don't play, so they get no points
-      if (!isAdmin) addLedger(Number(id), config.startBalance, "grant", { note: "Starting virtual points (no cash value)" });
-      return publicUser(get("SELECT * FROM users WHERE id = ?", id));
-    });
-  }
-  const publicUser = (u) => u && { id: u.id, username: u.username, isAdmin: !!u.is_admin, balance: u.balance };
-
-  function login({ username, password }) {
-    const u = get("SELECT * FROM users WHERE username = ?", String(username || "").trim());
-    // Same work and answer whether or not the name exists
-    const ok = u ? passwordMatches(String(password || ""), u.pass_salt, u.pass_hash) : (hashPassword(String(password || "")), false);
-    if (!ok) fail(401, "Wrong username or password.");
-    const token = randomBytes(32).toString("hex");
-    run("DELETE FROM sessions WHERE expires_at < ?", now());
-    run("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)", sha(token), u.id, now() + config.sessionDays * 86400000);
-    return { token, user: publicUser(u) };
-  }
-  function sessionUser(token) {
-    if (!token || !/^[0-9a-f]{64}$/.test(token)) return null;
-    const s = get("SELECT user_id FROM sessions WHERE token_hash = ? AND expires_at > ?", sha(token), now());
-    return s ? publicUser(get("SELECT * FROM users WHERE id = ?", s.user_id)) : null;
-  }
-  const logout = (token) => { if (token) run("DELETE FROM sessions WHERE token_hash = ?", sha(String(token))); };
+  const publicUser = (u) => u && { id: u.id, accountId: u.account_id, username: u.username, isAdmin: !!u.is_admin, balance: u.balance, createdAt: u.created_at };
   const needAdmin = (u) => { if (!u || !u.isAdmin) fail(403, "Only admins can do that."); };
 
   /* ---------- Market views ---------- */
@@ -532,6 +488,6 @@ export function createService({ db, league, config, now = Date.now }) {
     };
   }
 
-  return { createUser, login, logout, sessionUser, listMarkets, getMarket, predict, createMarket, editMarket, setState, preview, resolve,
+  return { listMarkets, getMarket, predict, createMarket, editMarket, setState, preview, resolve,
     voidMarket, postDemoResult, leaderboard, dashboard, auditLog, games };
 }

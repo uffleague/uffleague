@@ -1,5 +1,7 @@
-// Local settings. Each can be changed with an environment variable; none of them are secrets.
+// Local settings. Each can be changed with an environment variable. The only secret is the PIN pepper (loadPepper).
 import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
@@ -21,7 +23,26 @@ export const CONFIG = {
   // Read-only: the same public GET the site makes on every page load. Nothing is ever written to it.
   liveUrl: "https://uff-admin.uffleague.workers.dev",
   liveCacheMs: 60 * 1000,
-  sessionDays: 7
+  sessionDays: 7,        // a session ends a week after sign-in...
+  sessionIdleHours: 24,  // ...or after a day unused
+  // Set PRED_SECURE_COOKIES=1 when serving over HTTPS (any production use): cookies then only travel over HTTPS
+  secureCookies: process.env.PRED_SECURE_COOKIES === "1"
 };
 
 export const dbPath = (demo) => process.env.PRED_DB || join(LOCAL_DIR, demo ? "predictions-demo.db" : "predictions.db");
+
+// The PIN pepper: a secret mixed into every PIN hash and kept outside the database, so a copy of the database alone
+// can't be used to try all 100,000 PINs. Made once in predictions/.local/pepper.key (git-ignored) or set as PRED_PEPPER
+// (64 hex characters). Losing it means every PIN has to be set again (node predictions/accounts.js set-pin).
+export function loadPepper() {
+  if (process.env.PRED_PEPPER) {
+    if (!/^[0-9a-f]{64}$/i.test(process.env.PRED_PEPPER)) throw new Error("PRED_PEPPER has to be 64 hex characters.");
+    return Buffer.from(process.env.PRED_PEPPER, "hex");
+  }
+  const file = join(LOCAL_DIR, "pepper.key");
+  if (!existsSync(file)) {
+    mkdirSync(LOCAL_DIR, { recursive: true });
+    writeFileSync(file, randomBytes(32).toString("hex"), { mode: 0o600 });
+  }
+  return Buffer.from(readFileSync(file, "utf8").trim(), "hex");
+}

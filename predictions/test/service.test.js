@@ -361,17 +361,3 @@ test("list: filters by category, status and search, and sorts", async () => {
   assert.deepEqual(await ids({ status: "open" }), [gw.id]);
   assert.deepEqual(await ids({ status: "completed" }), []);
 });
-
-test("usernames and passwords are checked; login is wrong-password safe", () => {
-  const s = setup();
-  assert.throws(() => s.user("a"), (e) => e.status === 400);
-  assert.throws(() => s.service.createUser({ username: "okname", password: "short" }), (e) => e.status === 400);
-  s.user("alice");
-  assert.throws(() => s.user("ALICE"), (e) => e.status === 409);
-  assert.throws(() => s.service.login({ username: "alice", password: "wrongpass" }), (e) => e.status === 401);
-  assert.throws(() => s.service.login({ username: "ghost", password: "whatever1" }), (e) => e.status === 401);
-  const { token } = s.service.login({ username: "alice", password: "password123" });
-  assert.equal(s.service.sessionUser(token).username, "alice");
-  s.service.logout(token);
-  assert.equal(s.service.sessionUser(token), null);
-});

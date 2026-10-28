@@ -12,6 +12,11 @@
     legacy: '<path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8Z"/>',
     records: '<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5v-15Z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9 7.5h6M9 11h4"/>',
     arrow: '<path d="m9 6 6 6-6 6"/>',
+    arrowR: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c.8-4 3.8-6.5 7.5-6.5s6.7 2.5 7.5 6.5"/>',
+    lock: '<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><path d="M12 14.5v2.5"/>',
+    eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="M4 4l16 16"/><path d="M9.9 5.8A9.7 9.7 0 0 1 12 5.5C18 5.5 21.5 12 21.5 12a17.8 17.8 0 0 1-3 3.8M6.6 6.6C3.9 8.4 2.5 12 2.5 12S6 18.5 12 18.5c1.6 0 3-.4 4.2-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     updates: '<path d="M4 10v4a1 1 0 0 0 1 1h2l5 4V5L7 9H5a1 1 0 0 0-1 1Z"/><path d="M16 9a3.5 3.5 0 0 1 0 6M18.5 6.5a7 7 0 0 1 0 11"/>',
     search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
@@ -53,8 +58,11 @@
   ];
   // UFF Predictions is a local test build: it's only listed when the site is opened from this computer
   // (npm run predictions), where its local server is
-  if (/^(localhost|127.0.0.1)$/.test(location.hostname)) {
+  // Accounts too: the header's Log In button becomes Sign In / your account, and the league staff login moves to the menu
+  const LOCAL_SITE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  if (LOCAL_SITE) {
     NAV.splice(NAV.findIndex((n) => n.path === "predictions") + 1, 0, { path: "uff-predictions", label: "UFF Predictions", icon: "trend", top: true });
+    NAV.push({ path: "admin", label: "League Admin", icon: "shield" });
   }
 
   const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -4080,12 +4088,385 @@
       </div>`;
   }
 
+  // ---- UFF accounts (local test build) ----
+  // Optional: everything on the site can be browsed without one. An account (username + 5-digit PIN) is only for
+  // things that need one, like making picks. The local server (predictions/server.js) checks every PIN and keeps
+  // the session in an HttpOnly cookie; this page never stores a PIN and only asks the server who's signed in.
+
+  const ACCT = { ready: false, user: null, error: "" };
+  const AUTH_FEATURES = [
+    { href: "#/stats", icon: "stats", title: "Track Stats", text: "Real game stats & leaderboards" },
+    { href: "#/uff-predictions", icon: "predict", title: "Make Predictions", text: "Test your knowledge and earn points" },
+    { href: "#/uff-predictions/leaders", icon: "awards", title: "Compete", text: "See how you rank in the community" },
+    { href: "#/teams", icon: "football", title: "Be Part of UFF", text: "The ultimate flag football experience" }
+  ];
+  const signin = { step: 1, username: "", error: "", busy: false };
+  const signup = { username: "", error: "", busy: false };
+  let staffSignin = { username: "", error: "", busy: false };
+
+  // Every POST carries the CSRF token the server put in a readable cookie
+  const csrfToken = () => (document.cookie.match(/(?:^|;\s*)uffp_csrf=([0-9a-f]{32})/) || [])[1] || "";
+  async function localApi(url, body) {
+    const res = await fetch(url, body === undefined ? { cache: "no-store", credentials: "same-origin" }
+      : { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-csrf-token": csrfToken() }, body: JSON.stringify(body) });
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) throw Object.assign(new Error(data.error || `The local server answered ${res.status}.`), { status: res.status });
+    return data;
+  }
+
+  // Who's signed in, from the server (never from anything saved in the browser)
+  async function loadAccount() {
+    if (!LOCAL_SITE) return;
+    try {
+      ACCT.user = (await localApi("/api/auth/session")).user;
+      ACCT.error = "";
+    } catch (e) {
+      ACCT.user = null;
+      ACCT.error = "The account server isn't answering. Start it with npm run predictions and open the address it prints.";
+    }
+    ACCT.ready = true;
+    drawAccount();
+  }
+  // After signing in or out: everything that depends on who's signed in loads again
+  function accountChanged(user) {
+    ACCT.user = user;
+    pm.data = {};
+    accountData = null;
+    drawAccount();
+  }
+
+  // Where to go after signing in: a page on this site, never a sign-in page
+  const safeNext = (enc) => {
+    let n = "";
+    try { n = decodeURIComponent(enc || ""); } catch (e) {}
+    return /^#\/(?!sign-in|create-account|admin-sign-in)[\w\-/%.]*$/.test(n) ? n : "";
+  };
+  const nextPart = (next) => (next ? `/${encodeURIComponent(next)}` : "");
+  const here = () => location.hash || "#/";
+
+  // The header: Sign In, or the username with Profile / My Predictions / Sign Out
+  function drawAccount() {
+    const box = document.getElementById("acctBox");
+    if (!box) return;
+    const u = ACCT.user;
+    if (!ACCT.ready) { box.innerHTML = ""; return; }
+    if (!u) {
+      const onAuth = /^#\/(sign-in|create-account)/.test(location.hash);
+      box.innerHTML = `<a href="#/sign-in${onAuth ? "" : nextPart(here())}" class="head-login ${onAuth ? "active" : ""}">Sign In</a>`;
+      return;
+    }
+    box.innerHTML = `
+      <button type="button" class="head-login acct-btn" id="acctBtn" aria-haspopup="true" aria-expanded="false" aria-controls="acctMenu" aria-label="Account menu: ${esc(u.username)}">
+        ${icon("user", "sm")}<span class="acct-name">${esc(u.username)}</span>
+      </button>
+      <div class="acct-menu" id="acctMenu" hidden>
+        <div class="acct-menu-head"><b>${esc(u.username)}</b><span>${u.isAdmin ? "Predictions admin" : `${Number(u.balance).toLocaleString("en-US")} virtual points`}</span></div>
+        <a href="#/account">${icon("user", "sm")}Profile</a>
+        ${u.isAdmin ? `<a href="#/uff-predictions/manage">${icon("shield", "sm")}Manage predictions</a>` : `<a href="#/uff-predictions/me">${icon("predict", "sm")}My Predictions</a>`}
+        <button type="button" data-acct="signout">${icon("arrowR", "sm")}Sign Out</button>
+      </div>`;
+  }
+  const acctMenuOpen = (open) => {
+    const btn = document.getElementById("acctBtn"), menu = document.getElementById("acctMenu");
+    if (!btn || !menu) return;
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    if (open) { const first = menu.querySelector("a, button"); if (first) first.focus(); }
+  };
+
+  async function signOut() {
+    try { await localApi("/api/auth/logout", {}); } catch (e) {}
+    accountChanged(null);
+    render(); // the page you're on stays; anything that needs an account asks you to sign in again
+  }
+
+  const authFeatures = () => `
+    <nav class="auth-features" aria-label="What you can do with UFF">
+      ${AUTH_FEATURES.map((f) => `
+        <a class="auth-feature" href="${f.href}">
+          <span class="auth-feature-ico">${icon(f.icon)}</span>
+          <span><b>${f.title}</b><span>${f.text}</span></span>
+        </a>`).join("")}
+    </nav>`;
+  const authShell = (card) => `
+    <div class="auth-page">
+      <div class="wrap auth-wrap">${card}</div>
+      <div class="wrap">${authFeatures()}</div>
+    </div>`;
+  const authBrand = (title, sub) => `
+    <div class="auth-brand">
+      <img src="${LEAGUE.brandLogo}" alt="">
+      <span><span class="auth-brand-name">UFF</span><span class="auth-brand-sub">United Flag Football</span></span>
+    </div>
+    <h1 class="auth-title">${title}</h1>
+    <p class="auth-sub">${sub}</p>`;
+  const authError = (msg) => `<p class="auth-error" role="alert" id="authError" ${msg ? "" : "hidden"}>${esc(msg)}</p>`;
+  const pinField = (id, label, placeholder, autocomplete, describedBy = "") => `
+    <div class="auth-field">
+      <label for="${id}">${label}</label>
+      <div class="auth-input">
+        ${icon("lock", "auth-ico")}
+        <input id="${id}" name="${id}" type="password" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" minlength="5"
+          autocomplete="${autocomplete}" placeholder="${placeholder}" required data-pin ${describedBy ? `aria-describedby="${describedBy}"` : ""}>
+        <button type="button" class="auth-eye" data-show-pin="${id}" aria-pressed="false" aria-label="Show PIN">${icon("eye", "sm")}</button>
+      </div>
+    </div>`;
+  const usernameField = (value, autocomplete, focusFirst = true) => `
+    <div class="auth-field">
+      <label for="authUser">Username</label>
+      <div class="auth-input">
+        ${icon("user", "auth-ico")}
+        <input id="authUser" name="username" type="text" value="${esc(value)}" placeholder="Type in user" autocomplete="${autocomplete}"
+          autocapitalize="none" spellcheck="false" maxlength="20" required pattern="[A-Za-z0-9_]{3,20}" ${focusFirst ? "data-autofocus" : ""}>
+      </div>
+    </div>`;
+  const spinOr = (busy, label) => (busy ? `<span class="pm-spin"></span>Checking&hellip;` : `${label}${icon("arrowR", "sm")}`);
+  const authUnavailable = () => `<div class="auth-unavailable" role="alert"><b>Accounts aren't available right now.</b> ${esc(ACCT.error || "Accounts are being tested and aren't on the live site yet.")} You can still browse everything.</div>`;
+
+  function signInPage(parts) {
+    const next = safeNext(parts[1]);
+    if (!LOCAL_SITE || ACCT.error) return authShell(`<div class="card auth-card">${authBrand("Account Access", "Sign in is optional: you can browse UFF without an account.")}${authUnavailable()}</div>`);
+    if (ACCT.user) return authShell(`
+      <div class="card auth-card">
+        ${authBrand("You're signed in", `Signed in as <b>${esc(ACCT.user.username)}</b>.`)}
+        <a class="btn btn-primary auth-submit" href="${esc(next || "#/uff-predictions")}">Continue${icon("arrowR", "sm")}</a>
+        <div class="auth-or"><span>or</span></div>
+        <a class="auth-alt" href="#/account">Go to your profile${icon("arrow", "sm")}</a>
+      </div>`);
+    const step2 = signin.step === 2;
+    return authShell(`
+      <form class="card auth-card" id="signInForm" novalidate>
+        ${authBrand("Account Access", step2 ? "Enter your 5-digit PIN." : "Enter your details to continue.")}
+        ${step2 ? `
+          <div class="auth-who"><span>${icon("user", "sm")}${esc(signin.username)}</span><button type="button" class="auth-link" data-auth="change">Not you?</button></div>
+          <input type="text" name="username" value="${esc(signin.username)}" autocomplete="username" hidden aria-hidden="true" tabindex="-1">
+          ${pinField("authPin", "5-Digit PIN", "Enter your 5 digit pin", "current-password")}`
+        : usernameField(signin.username, "username")}
+        ${authError(signin.error)}
+        <button class="btn btn-primary auth-submit" id="authSubmit" ${signin.busy ? "disabled aria-busy=\"true\"" : ""}>${spinOr(signin.busy, "Continue")}</button>
+        <div class="auth-or"><span>or</span></div>
+        <a class="auth-alt" href="#/create-account${nextPart(next)}">Create an account${icon("arrow", "sm")}</a>
+      </form>`);
+  }
+
+  function createAccountPage(parts) {
+    const next = safeNext(parts[1]);
+    if (!LOCAL_SITE || ACCT.error) return authShell(`<div class="card auth-card">${authBrand("Create Account", "Accounts are optional.")}${authUnavailable()}</div>`);
+    if (ACCT.user) return signInPage(parts);
+    return authShell(`
+      <form class="card auth-card" id="signUpForm" novalidate>
+        ${authBrand("Create Account", "Pick a username and a 5-digit PIN. No email needed.")}
+        ${usernameField(signup.username, "username")}
+        <p class="auth-hint" id="userHint">3-20 letters, numbers or underscores. This is your UFF account name; it isn't linked to a player profile.</p>
+        ${pinField("newPin", "5-Digit PIN", "Enter your 5 digit pin", "new-password", "pinHint")}
+        ${pinField("newPin2", "Confirm PIN", "Enter it again", "new-password")}
+        <p class="auth-hint" id="pinHint">Exactly 5 digits. Avoid easy ones like 11111 or 12345. There's no PIN reset by email yet, so keep it somewhere safe.</p>
+        ${authError(signup.error)}
+        <button class="btn btn-primary auth-submit" id="authSubmit" ${signup.busy ? "disabled aria-busy=\"true\"" : ""}>${signup.busy ? `<span class="pm-spin"></span>Creating&hellip;` : `Create Account${icon("arrowR", "sm")}`}</button>
+        <div class="auth-or"><span>or</span></div>
+        <a class="auth-alt" href="#/sign-in${nextPart(next)}">Already have an account? Sign In${icon("arrow", "sm")}</a>
+      </form>`);
+  }
+
+  // Local predictions admins sign in with a long password (a 5-digit PIN is too weak for admin powers)
+  function adminSignInPage() {
+    if (!LOCAL_SITE || ACCT.error) return authShell(`<div class="card auth-card">${authBrand("Admin Access", "")}${authUnavailable()}</div>`);
+    if (ACCT.user) return signInPage([]);
+    return authShell(`
+      <form class="card auth-card" id="staffForm" novalidate>
+        ${authBrand("Admin Access", "For the local UFF Predictions admin. Players sign in with their PIN.")}
+        ${usernameField(staffSignin.username, "username")}
+        <div class="auth-field">
+          <label for="staffPass">Admin password</label>
+          <div class="auth-input">${icon("lock", "auth-ico")}<input id="staffPass" type="password" autocomplete="current-password" required></div>
+        </div>
+        ${authError(staffSignin.error)}
+        <button class="btn btn-primary auth-submit" ${staffSignin.busy ? "disabled" : ""}>${spinOr(staffSignin.busy, "Continue")}</button>
+        <div class="auth-or"><span>or</span></div>
+        <a class="auth-alt" href="#/sign-in">Player sign in${icon("arrow", "sm")}</a>
+      </form>`);
+  }
+
+  // The signed-in person's own account
+  let accountData = null;
+  function accountPage() {
+    const head = pageHead("Your Account");
+    if (!LOCAL_SITE || ACCT.error) return `<div class="wrap">${head}${authUnavailable()}</div>`;
+    if (!ACCT.ready) return `<div class="wrap">${head}<div class="card pm-state"><span class="pm-spin"></span>Loading&hellip;</div></div>`;
+    if (!ACCT.user) return `<div class="wrap">${head}${signInPrompt("Sign in to see your account", "#/account")}</div>`;
+    if (!accountData) {
+      accountData = { loading: true };
+      localApi("/api/account").then((d) => { accountData = d; }, (e) => { accountData = { error: e.message }; if (e.status === 401) accountChanged(null); })
+        .then(() => { if (location.hash.startsWith("#/account")) render(); });
+    }
+    const d = accountData;
+    if (!d.user) return `<div class="wrap">${head}${d.error ? `<div class="card pm-state pm-state--error"><b>Couldn't load your account.</b><span>${esc(d.error)}</span></div>` : `<div class="card pm-state"><span class="pm-spin"></span>Loading&hellip;</div>`}</div>`;
+    const u = d.user;
+    return `
+      <div class="wrap">
+        ${head}
+        <div class="card admin-card acct-profile">
+          <div class="acct-profile-top">
+            <span class="acct-avatar">${icon("user")}</span>
+            <div><h2>${esc(u.username)}</h2><span class="muted small">${u.isAdmin ? "Predictions admin" : "UFF account"} &middot; member since ${fmtDate(new Date(u.createdAt).toISOString().slice(0, 10))}</span></div>
+          </div>
+          ${u.isAdmin ? "" : `
+          <div class="stat-chips pm-chips">
+            <div class="card stat-chip"><span class="eyebrow">Virtual points</span><span class="num">${Number(u.balance).toLocaleString("en-US")}</span></div>
+            <div class="card stat-chip"><span class="eyebrow">Picks</span><span class="num">${d.picks.total}</span><span class="muted small">${d.picks.pending} active</span></div>
+            <div class="card stat-chip"><span class="eyebrow">Record</span><span class="num">${d.picks.won}-${d.picks.lost}</span><span class="muted small">correct-incorrect</span></div>
+          </div>`}
+          <dl class="acct-facts">
+            <div><dt>Account ID</dt><dd><code>${esc(u.accountId)}</code></dd></div>
+            <div><dt>Sign-in</dt><dd>Username + 5-digit PIN${u.isAdmin ? " (admins: password)" : ""}</dd></div>
+            <div><dt>Forgot your PIN?</dt><dd>There's no reset by email or text yet. A league admin can set a new PIN for you.</dd></div>
+            <div><dt>Player profile</dt><dd>Your account isn't linked to a UFF player profile.</dd></div>
+          </dl>
+          <div class="admin-actions">
+            ${u.isAdmin ? `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/manage">Manage predictions</a>` : `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/me">My Predictions</a>`}
+            <button type="button" class="btn btn-ghost btn-sm" data-acct="signout">Sign Out</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Shown in place of anything that needs an account
+  const signInPrompt = (title, next, text = "Accounts are free and optional. Browsing UFF never needs one.") => `
+    <div class="card signin-prompt">
+      <span class="auth-feature-ico">${icon("lock")}</span>
+      <div><b>${esc(title)}</b><p class="muted small">${esc(text)}</p></div>
+      <div class="signin-prompt-actions">
+        <a class="btn btn-primary btn-sm" href="#/sign-in${nextPart(next)}">Sign In${icon("arrowR", "sm")}</a>
+        <a class="btn btn-ghost btn-sm" href="#/create-account${nextPart(next)}">Create an account</a>
+      </div>
+    </div>`;
+
+  // Keeps only digits in a PIN box (a pasted "04 213" becomes "04213") and turns Continue on only when it could work
+  function authReady() {
+    const form = document.querySelector("#signInForm, #signUpForm");
+    const btn = document.getElementById("authSubmit");
+    if (!form || !btn || btn.getAttribute("aria-busy")) return;
+    const user = form.querySelector("#authUser");
+    const pins = [...form.querySelectorAll("[data-pin]")];
+    btn.disabled = !((!user || /^[A-Za-z0-9_]{3,20}$/.test(user.value.trim())) && pins.every((p) => /^\d{5}$/.test(p.value)));
+  }
+  const showAuthError = (msg) => {
+    const el = document.getElementById("authError");
+    if (el) { el.textContent = msg; el.hidden = !msg; }
+  };
+  const focusAuth = () => {
+    const el = document.querySelector("#authPin, [data-autofocus]");
+    if (el && window.matchMedia("(min-width: 700px)").matches) el.focus(); // no surprise keyboard on phones
+    authReady();
+  };
+  const authParts = () => location.hash.replace(/^#\/?/, "").split("/");
+
+  document.addEventListener("input", (e) => {
+    if (e.target.matches && e.target.matches("[data-pin]")) {
+      const digits = e.target.value.replace(/\D/g, "").slice(0, 5);
+      if (digits !== e.target.value) e.target.value = digits;
+    }
+    if (e.target.closest && e.target.closest("#signInForm, #signUpForm")) { showAuthError(""); authReady(); }
+  });
+
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest ? e.target.closest("[data-show-pin], [data-auth], [data-acct], #acctBtn") : null;
+    // Clicking anywhere else closes the account menu
+    if (!t || t.id !== "acctBtn") { const m = document.getElementById("acctMenu"); if (m && !m.hidden && !(e.target.closest && e.target.closest("#acctMenu"))) acctMenuOpen(false); }
+    if (!t) return;
+    if (t.id === "acctBtn") return acctMenuOpen(document.getElementById("acctMenu").hidden);
+    if (t.dataset.showPin) {
+      const input = document.getElementById(t.dataset.showPin);
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      t.setAttribute("aria-pressed", String(show));
+      t.setAttribute("aria-label", show ? "Hide PIN" : "Show PIN");
+      t.innerHTML = icon(show ? "eyeOff" : "eye", "sm");
+      return input.focus();
+    }
+    if (t.dataset.auth === "change") { signin.step = 1; signin.error = ""; render(); return focusAuth(); }
+    if (t.dataset.acct === "signout") { e.preventDefault(); acctMenuOpen(false); return signOut(); }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.getElementById("acctMenu") && !document.getElementById("acctMenu").hidden) {
+      acctMenuOpen(false);
+      document.getElementById("acctBtn").focus();
+    }
+  });
+
+  document.addEventListener("submit", async (e) => {
+    const f = e.target;
+    if (!["signInForm", "signUpForm", "staffForm"].includes(f.id)) return;
+    e.preventDefault();
+    const next = safeNext(authParts()[1]);
+    const go = (user) => {
+      accountChanged(user);
+      signin.step = 1; signin.username = ""; signup.username = "";
+      location.hash = next || (user.isAdmin ? "#/uff-predictions/manage" : "#/uff-predictions");
+    };
+    if (f.id === "signInForm") {
+      if (signin.busy) return;
+      if (signin.step === 1) {
+        // Step 1 only checks the format here: whether the name exists is never revealed
+        const name = f.querySelector("#authUser").value.trim();
+        if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) return showAuthError(name ? "Usernames are 3-20 letters, numbers or underscores." : "Enter your username.");
+        signin.username = name; signin.step = 2; signin.error = "";
+        render();
+        return focusAuth();
+      }
+      const pin = f.querySelector("#authPin").value;
+      if (!/^\d{5}$/.test(pin)) return showAuthError("Your PIN is exactly 5 digits.");
+      signin.busy = true; signin.error = ""; render();
+      try {
+        const { user } = await localApi("/api/auth/login", { username: signin.username, pin });
+        signin.busy = false;
+        return go(user);
+      } catch (err) {
+        signin.busy = false; signin.error = err.message;
+        render();
+        return focusAuth();
+      }
+    }
+    if (f.id === "signUpForm") {
+      if (signup.busy) return;
+      const name = f.querySelector("#authUser").value.trim(), pin = f.querySelector("#newPin").value, pin2 = f.querySelector("#newPin2").value;
+      signup.username = name;
+      const problem = !/^[A-Za-z0-9_]{3,20}$/.test(name) ? "Usernames are 3-20 letters, numbers or underscores."
+        : !/^\d{5}$/.test(pin) ? "Your PIN is exactly 5 digits." : pin !== pin2 ? "The two PINs don't match." : "";
+      if (problem) return showAuthError(problem);
+      signup.busy = true; signup.error = ""; render();
+      try {
+        const { user } = await localApi("/api/auth/signup", { username: name, pin, confirmPin: pin2 });
+        signup.busy = false;
+        return go(user);
+      } catch (err) {
+        signup.busy = false; signup.error = err.message;
+        render();
+        return focusAuth();
+      }
+    }
+    if (f.id === "staffForm") {
+      staffSignin = { username: f.querySelector("#authUser").value.trim(), busy: true, error: "" };
+      const username = f.querySelector("#authUser").value.trim(), password = f.querySelector("#staffPass").value;
+      render();
+      try {
+        const { user } = await localApi("/api/auth/admin-login", { username, password });
+        staffSignin = { username: "", busy: false, error: "" };
+        return go(user);
+      } catch (err) {
+        staffSignin = { username, busy: false, error: err.message };
+        render();
+      }
+    }
+  });
+
   // ---- UFF Predictions (local test build) ----
   // Player Over/Under and Game Winner picks for virtual points (no cash value). Markets, picks and points live on
   // the local predictions server (predictions/server.js, npm run predictions), so the section only shows up when
   // the site is opened from this computer. The browser only ever sends a choice; the server works out everything else.
 
-  const PM_LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  const PM_LOCAL = LOCAL_SITE;
   const PM_API = "/api/predictions";
   const PM_STATUS = [["", "All"], ["upcoming", "Upcoming"], ["open", "Open"], ["locked", "Locked"], ["completed", "Completed"]];
   const PM_SORTS = [["closing", "Closing soonest"], ["kickoff", "Kickoff"], ["popular", "Most picks"], ["newest", "Newest"]];
@@ -4094,14 +4475,7 @@
   const pm = { data: {}, kind: "player_ou", status: "", q: "", sort: "closing", view: "", id: null,
     confirm: null, msg: "", err: "", busy: false, auth: false, preview: null, form: { kind: "player_ou" } };
 
-  async function pmFetch(path, body) {
-    const res = await fetch(PM_API + path, body === undefined ? { cache: "no-store" }
-      : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    let data = {};
-    try { data = await res.json(); } catch (e) {}
-    if (!res.ok) throw Object.assign(new Error(data.error || `The local predictions server answered ${res.status}.`), { status: res.status });
-    return data;
-  }
+  const pmFetch = (path, body) => localApi(PM_API + path, body);
   // Loads into pm.data[key] once and redraws the page when it arrives
   function pmLoad(key, path) {
     if (pm.data[key]) return pm.data[key];
@@ -4225,31 +4599,11 @@
   const pmState = (slot, what) => slot.loading ? `<div class="card pm-state"><span class="pm-spin"></span>Loading ${what}&hellip;</div>`
     : slot.error ? `<div class="card pm-state pm-state--error"><b>Couldn't load ${what}.</b><span>${esc(slot.error)}</span><button type="button" class="btn btn-ghost btn-sm" data-pm="retry">Try again</button></div>` : "";
 
+  // Your points by the page title (your name and Sign Out are in the header's account menu)
   function pmAccount(cfg) {
     const u = cfg.user;
-    if (u) return `
-      <div class="pm-account">
-        <span class="pill">${esc(u.username)}${u.isAdmin ? " &middot; Admin" : ""}</span>
-        ${u.isAdmin ? "" : `<span class="pill pill-navy">${pmPts(u.balance)}</span>`}
-        <button type="button" class="btn btn-ghost btn-sm" data-pm="logout">Sign out</button>
-      </div>`;
-    return `<div class="pm-account"><button type="button" class="btn btn-primary btn-sm" data-pm="auth">Sign in to pick</button></div>`;
-  }
-  function pmAuthCard() {
-    return `
-      <form class="card admin-card pm-auth" id="pmAuth">
-        <div class="admin-subhead">Sign in or make a test account</div>
-        <p class="muted small">Test accounts live only in this computer's local database. New accounts start with ${((pmCfg() || {}).startBalance || 0).toLocaleString("en-US")} virtual points.</p>
-        <div class="pm-fields">
-          <label class="field">Username<input name="username" autocomplete="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+"></label>
-          <label class="field">Password<input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
-        </div>
-        <div class="admin-actions">
-          <button class="btn btn-primary btn-sm" data-mode="login" ${pm.busy ? "disabled" : ""}>Sign in</button>
-          <button class="btn btn-ghost btn-sm" data-mode="signup" ${pm.busy ? "disabled" : ""}>Create test account</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-pm="auth">Cancel</button>
-        </div>
-      </form>`;
+    if (u) return u.isAdmin ? "" : `<div class="pm-account"><span class="pill pill-navy">${pmPts(u.balance)}</span></div>`;
+    return `<div class="pm-account"><a class="btn btn-primary btn-sm" href="#/sign-in${nextPart(here())}">Sign in to pick${icon("arrowR", "sm")}</a></div>`;
   }
   const pmCfg = () => (pm.data.config && pm.data.config.data) || null;
 
@@ -4282,7 +4636,7 @@
     if (pm.view === "m") body = pmMarketPage(cfg);
     else if (pm.view === "me") body = pmMePage(cfg);
     else if (pm.view === "leaders") body = pmLeadersPage(cfg);
-    else if (pm.view === "manage") body = admin ? pmManagePage(cfg) : empty("Admins only", "Sign in with the local admin account to manage markets.");
+    else if (pm.view === "manage") body = admin ? pmManagePage(cfg) : empty("Admins only", `Market management is for the local predictions admin. <a class="link-strong" href="#/admin-sign-in">Admin sign in</a>`);
     else body = pmMarketsPage(cfg);
     return `
       <div class="wrap pm-page">
@@ -4290,11 +4644,11 @@
         ${banners}
         <nav class="segmented pm-tabs" aria-label="UFF Predictions">${tabs.map(([k, label]) =>
           `<a href="#/uff-predictions${k ? `/${k}` : ""}" class="${section === k ? "active" : ""}">${label}</a>`).join("")}</nav>
-        ${pm.auth && !cfg.user ? pmAuthCard() : ""}
         ${pm.msg ? `<div class="admin-flash">${esc(pm.msg)}</div>` : ""}
         ${pm.err ? `<p class="login-error pm-err">${esc(pm.err)}</p>` : ""}
         ${body}
         ${pm.confirm ? pmConfirm() : ""}
+        ${pm.prompt && !cfg.user ? `<div class="pm-modal" role="dialog" aria-modal="true" aria-label="Sign in to make a pick">${signInPrompt("Sign in to make a pick", here(), "Picks use virtual points, so they need a free account. Browsing markets doesn't.")}</div>` : ""}
       </div>`;
   }
 
@@ -4357,7 +4711,7 @@
     }).join("");
     const why = admin ? "Admin accounts run the markets, so they don't make picks."
       : m.mine ? `You picked <b>${esc(pmChoice(m, m.mine.selection))}</b> on ${pmWhen(m.mine.createdAt)} for ${m.mine.stake} pts${m.mine.result !== "pending" ? ` &middot; <b>${PM_RESULT[m.mine.result]}</b>` : ". Picks can't be changed."}`
-      : m.status === "open" ? (cfg.user ? `Each pick uses ${m.stake} virtual points (you have ${pmPts(cfg.user.balance)}). Correct picks get ${m.stake * 2} back.` : `<a href="#" class="link-strong" data-pm="auth">Sign in</a> to make a pick.`)
+      : m.status === "open" ? (cfg.user ? `Each pick uses ${m.stake} virtual points (you have ${pmPts(cfg.user.balance)}). Correct picks get ${m.stake * 2} back.` : `<a href="#/sign-in${nextPart(here())}" class="link-strong">Sign in</a> or <a href="#/create-account${nextPart(here())}" class="link-strong">create an account</a> to make a pick.`)
       : m.status === "upcoming" ? `Picks open ${pmWhen(m.opensAt)}.` : "Picks are closed.";
     const stats = m.kind === "player_ou" ? pmPlayerStats(m) : pmTeamStats(m);
     return `
@@ -4442,7 +4796,7 @@
   }
 
   function pmMePage(cfg) {
-    if (!cfg.user) return empty("Sign in to see your predictions", `<a href="#" class="link-strong" data-pm="auth">Sign in or make a test account</a>.`);
+    if (!cfg.user) return signInPrompt("Sign in to see your predictions", "#/uff-predictions/me", "Your picks, points and accuracy are saved to your account.");
     if (cfg.user.isAdmin) return empty("Admins don't make picks", "Sign in with a test account to play.");
     const slot = pmLoad("me", "/me");
     if (!slot.data) return pmState(slot, "your predictions");
@@ -4634,6 +4988,7 @@
       pm.msg = typeof okMsg === "function" ? okMsg(out) : okMsg || "";
       pmFresh();
       delete pm.data.config; // balance and sign-in may have changed
+      loadAccount(); // the header's points too
       return out;
     } catch (err) {
       pm.err = err.message;
@@ -4649,7 +5004,7 @@
   function pmRoute(parts) {
     const view = parts[1] || "";
     const id = view === "m" ? Number(parts[2]) : null;
-    if (view !== pm.view || id !== pm.id) { pm.msg = pm.err = ""; pm.preview = null; pm.confirm = null; }
+    if (view !== pm.view || id !== pm.id) { pm.msg = pm.err = ""; pm.preview = null; pm.confirm = null; pm.prompt = false; }
     pm.view = view; pm.id = id;
     pmFresh();
     // Who's signed in and their balance can change elsewhere (a settled market, another tab): check again,
@@ -4676,12 +5031,12 @@
       pmRedraw();
     }
   });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pm.confirm && !pm.busy) { pm.confirm = null; pmRedraw(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && (pm.confirm || pm.prompt) && !pm.busy) { pm.confirm = null; pm.prompt = false; pmRedraw(); } });
 
   document.addEventListener("click", async (e) => {
     const t = e.target.closest("[data-pm], [data-pm-kind], [data-pm-status], [data-pm-pick], [data-pm-admin]");
     if (!t || !app.contains(t)) {
-      if (pm.confirm && e.target.classList && e.target.classList.contains("pm-modal") && !pm.busy) { pm.confirm = null; pmRedraw(); }
+      if ((pm.confirm || pm.prompt) && e.target.classList && e.target.classList.contains("pm-modal") && !pm.busy) { pm.confirm = null; pm.prompt = false; pmRedraw(); }
       return;
     }
     e.preventDefault();
@@ -4689,7 +5044,8 @@
     if (d.pmKind) { pm.kind = d.pmKind; return pmRedraw(); }
     if (d.pmStatus !== undefined) { pm.status = d.pmStatus; return pmRedraw(); }
     if (d.pmPick) {
-      if (!pmCfg().user) { pm.auth = true; return pmRedraw(); }
+      // A guest gets a sign-in prompt (and comes back here afterwards)
+      if (!pmCfg().user) { pm.prompt = true; pmRedraw(); const a = document.querySelector(".pm-modal .btn-primary"); if (a) a.focus(); return; }
       pm.confirm = { id: pm.id, selection: d.pmPick };
       pmRedraw();
       const ok = document.querySelector("[data-pm='confirm']");
@@ -4697,9 +5053,7 @@
       return;
     }
     if (d.pm === "retry") { pm.data = {}; return pmRedraw(); }
-    if (d.pm === "auth") { pm.auth = !pm.auth; pm.err = ""; return pmRedraw(); }
     if (d.pm === "cancel") { pm.confirm = null; return pmRedraw(); }
-    if (d.pm === "logout") { pm.auth = false; return pmDo(() => pmFetch("/auth/logout", {}), "Signed out."); }
     if (d.pm === "confirm" && pm.confirm) {
       const { id, selection } = pm.confirm;
       // Saved or refused (closed, already picked, not enough points), the dialog closes and the page says which
@@ -4730,16 +5084,9 @@
 
   document.addEventListener("submit", async (e) => {
     const f = e.target;
-    if (!["pmAuth", "pmCreate", "pmClose", "pmManual", "pmDemo"].includes(f.id)) return;
+    if (!["pmCreate", "pmClose", "pmManual", "pmDemo"].includes(f.id)) return;
     e.preventDefault();
     const v = Object.fromEntries(new FormData(f));
-    if (f.id === "pmAuth") {
-      const mode = (e.submitter && e.submitter.dataset.mode) || "login";
-      const out = await pmDo(() => pmFetch(`/auth/${mode}`, { username: v.username, password: v.password }),
-        (o) => (mode === "signup" ? `Welcome, ${o.user.username}! You start with ${pmPts(o.user.balance)}.` : `Signed in as ${o.user.username}.`));
-      if (out) { pm.auth = false; pmRedraw(); }
-      return;
-    }
     if (f.id === "pmCreate") {
       const body = { kind: pm.form.kind || "player_ou", gameId: v.gameId, stake: v.stake === "" ? null : Number(v.stake),
         opensAt: pmFromInput(v.opensAt), closesAt: pmFromInput(v.closesAt) };
@@ -5923,6 +6270,10 @@
     playoff: playoffPage,
     predictions: predictionsPage,
     "uff-predictions": uffPredictionsPage,
+    "sign-in": () => signInPage(authParts()),
+    "create-account": () => createAccountPage(authParts()),
+    "admin-sign-in": adminSignInPage,
+    account: accountPage,
     vods: vodsPage,
     gfx: gfxPage,
     build: buildPage,
@@ -5951,7 +6302,15 @@
     (n) => `<a href="#/${n.path}" data-path="${n.path}">${icon(n.icon)}<span>${n.label}</span></a>`
   ).join("");
 
+  if (LOCAL_SITE) {
+    const adminLink = document.getElementById("adminLink");
+    adminLink.insertAdjacentHTML("beforebegin", '<div class="acct" id="acctBox"></div>');
+    adminLink.hidden = true;
+  }
+
   let lastTeamOpen = null;
+  let lastSection = null;
+  const AUTH_TITLES = { "sign-in": "Sign In", "create-account": "Create Account", "admin-sign-in": "Admin Sign In", account: "Your Account" };
   let lastStatsView = null;
   function render() {
     gfxClose();
@@ -5964,6 +6323,10 @@
       try { cmp.a = decodeURIComponent(parts[2] || ""); cmp.b = decodeURIComponent(parts[3] || ""); } catch (e) {}
     }
     if (section === "uff-predictions") pmRoute(parts);
+    if (section === "account" && lastSection !== "account") accountData = null;
+    if (section !== "sign-in" && section !== "create-account") { signin.error = signup.error = ""; if (section !== lastSection) signin.step = 1; }
+    if (section !== "admin-sign-in") staffSignin.error = "";
+    lastSection = section;
     if (section === "updates") updatesFilter = UPDATE_TYPES[sub] ? sub : "all";
     if (section === "stats") {
       statsScope = sub === "alltime" ? "alltime" : "season";
@@ -5994,9 +6357,11 @@
     const adminLink = document.getElementById("adminLink");
     adminLink.classList.toggle("active", section === "admin");
     adminLink.textContent = getAdmin() ? "Admin" : "Log In";
+    drawAccount();
     if (section !== "admin") adminError = adminFlash = "";
     const label = NAV.find((n) => n.path === (section || ""));
-    document.title = label && label.path ? `${label.label} | UFF` : "UFF | United Flag Football";
+    document.title = AUTH_TITLES[section] ? `${AUTH_TITLES[section]} | UFF` : label && label.path ? `${label.label} | UFF` : "UFF | United Flag Football";
+    if (AUTH_TITLES[section] && section !== "account") focusAuth();
     closeMenu();
     // Switching tabs on a team page keeps your place
     const teamOpen = section === "teams" && sub ? sub : null;
@@ -6666,6 +7031,7 @@
 
   window.addEventListener("hashchange", render);
   render();
+  loadAccount().then(() => { if (/^#\/(sign-in|create-account|admin-sign-in|account)/.test(location.hash)) render(); });
 
   /* ---------- Live updates ---------- */
 
@@ -6673,7 +7039,7 @@
   // When a score, transaction, stream or anything else changed, the page reloads where you were. If that would
   // interrupt you (typing, a video playing, Admin, a game of Build a Team), a "New updates" button shows instead.
   const LIVE_EVERY = 30 * 1000;
-  const NO_RELOAD = ["admin", "build", "predictions", "uff-predictions", "compare"];
+  const NO_RELOAD = ["admin", "build", "predictions", "uff-predictions", "compare", "sign-in", "create-account", "admin-sign-in", "account"];
   let liveBusy = false, updateWaiting = false;
 
   const interrupts = () => {

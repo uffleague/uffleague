@@ -9,26 +9,32 @@ import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { openDb } from "./db.js";
 import { createLeagueSource } from "./league.js";
 import { createService, HttpError } from "./service.js";
-import { CONFIG, SITE_ROOT, LOCAL_DIR, dbPath } from "./config.js";
+import { createAuth } from "./auth.js";
+import { CONFIG, SITE_ROOT, LOCAL_DIR, dbPath, loadPepper } from "./config.js";
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon" };
 // The site's files, and nothing else in the folder
 const STATIC_OK = /^\/(index\.html|app\.js|data\.js|stats-alltime(-[a-z0-9]+)?\.js|styles\.css|logo(-main)?\.png|(logos|gfx)\/[A-Za-z0-9_\-./ ]+\.(png|jpe?g|webp|svg))$/;
 const BODY_MAX = 64 * 1024;
-const COOKIE = "uffp_session";
+const SESSION = "uffp_session";
+const CSRF = "uffp_csrf";
 
-const send = (res, status, body, headers = {}) => {
-  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...headers });
+const send = (res, status, body, cookies = []) => {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff",
+    ...(cookies.length ? { "set-cookie": cookies } : {}) });
   res.end(JSON.stringify(body));
 };
-const cookieOf = (req) => (String(req.headers.cookie || "").split(/;\s*/).find((c) => c.startsWith(`${COOKIE}=`)) || "").slice(COOKIE.length + 1);
-const sessionCookie = (token, maxAge) => `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
+const cookieOf = (req, name) => (String(req.headers.cookie || "").split(/;\s*/).find((c) => c.startsWith(`${name}=`)) || "").slice(name.length + 1);
+// SameSite=Strict always; Secure whenever the site is served over HTTPS (or PRED_SECURE_COOKIES=1)
+const cookie = (name, value, maxAge, { httpOnly = true, secure = false } = {}) =>
+  `${name}=${value}; ${httpOnly ? "HttpOnly; " : ""}${secure ? "Secure; " : ""}SameSite=Strict; Path=/; Max-Age=${maxAge}`;
+const sameText = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 async function readJson(req) {
   if (!/^application\/json\b/i.test(req.headers["content-type"] || "")) throw new HttpError(415, "Send JSON.");
@@ -42,43 +48,53 @@ async function readJson(req) {
   try { return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {}; } catch (e) { throw new HttpError(400, "That isn't valid JSON."); }
 }
 
-export function createServer({ service, league, config = CONFIG, port }) {
+export function createServer({ service, auth, league, config = CONFIG, port }) {
   const hostOk = (h) => {
     const p = String(port());
     return [`127.0.0.1:${p}`, `localhost:${p}`].includes(String(h || "").toLowerCase());
   };
 
   async function api(req, res, url) {
-    const path = url.pathname.replace(/^\/api\/predictions/, "").replace(/\/+$/, "") || "/";
     const method = req.method;
-    // A page on another site can't post here: the session cookie is SameSite=Strict, the body must be JSON,
-    // and a cross-site Origin is turned away
+    const secure = !!(config.secureCookies || req.socket.encrypted);
+    const cookies = [];
+    // CSRF: the page copies a random value from a readable cookie into an X-CSRF-Token header on every POST.
+    // Another site can't read the cookie, so it can't send the header. (Also: SameSite=Strict, JSON only, Origin checked.)
+    const csrf = cookieOf(req, CSRF);
+    if (!/^[0-9a-f]{32}$/.test(csrf)) cookies.push(cookie(CSRF, randomBytes(16).toString("hex"), 30 * 86400, { httpOnly: false, secure }));
     if (method !== "GET") {
       const origin = req.headers.origin;
       if (origin && !hostOk(origin.replace(/^https?:\/\//i, ""))) throw new HttpError(403, "Requests from other sites aren't allowed.");
+      const sent = String(req.headers["x-csrf-token"] || "");
+      if (!/^[0-9a-f]{32}$/.test(csrf) || !sameText(sent, csrf)) throw new HttpError(403, "This page's security check expired. Reload the page and try again.");
     }
-    const token = cookieOf(req);
-    const user = service.sessionUser(token);
+    const token = cookieOf(req, SESSION);
+    const user = auth.sessionUser(token);
     const body = method === "POST" ? await readJson(req) : {};
+    const ip = req.socket.remoteAddress || "";
+    const signedIn = (s) => send(res, 200, { user: s.user }, [...cookies, cookie(SESSION, s.token, config.sessionDays * 86400, { secure })]);
     let m;
 
+    // Accounts: /api/auth/* and /api/account
+    if (url.pathname.startsWith("/api/auth/") || url.pathname.replace(/\/+$/, "") === "/api/account") {
+      const path = url.pathname.replace(/\/+$/, "");
+      if (method === "GET" && path === "/api/auth/session") return send(res, 200, { user }, cookies);
+      if (method === "POST" && path === "/api/auth/login") return signedIn(auth.signIn({ username: body.username, pin: body.pin, ip }));
+      if (method === "POST" && path === "/api/auth/signup") return signedIn(auth.createAccount({ username: body.username, pin: body.pin, confirmPin: body.confirmPin, ip }));
+      if (method === "POST" && path === "/api/auth/admin-login") return signedIn(auth.adminSignIn({ username: body.username, password: body.password, ip }));
+      if (method === "POST" && path === "/api/auth/logout") {
+        auth.logout(token);
+        return send(res, 200, { ok: true }, [...cookies, cookie(SESSION, "", 0, { secure })]);
+      }
+      if (method === "GET" && path === "/api/account") return send(res, 200, auth.profile(user), cookies);
+      throw new HttpError(404, "Not found.");
+    }
+
+    const path = url.pathname.replace(/^\/api\/predictions/, "").replace(/\/+$/, "") || "/";
     if (method === "GET" && path === "/config") {
       const l = await league.get();
       return send(res, 200, { mode: league.mode, label: league.label || "", league: { ok: l.ok, error: l.error, fetchedAt: l.fetchedAt },
-        startBalance: config.startBalance, minLeaderboard: config.minLeaderboard, user });
-    }
-    if (method === "POST" && path === "/auth/signup") {
-      service.createUser({ username: body.username, password: body.password });
-      const s = service.login({ username: body.username, password: body.password });
-      return send(res, 200, { user: s.user }, { "set-cookie": sessionCookie(s.token, config.sessionDays * 86400) });
-    }
-    if (method === "POST" && path === "/auth/login") {
-      const s = service.login({ username: body.username, password: body.password });
-      return send(res, 200, { user: s.user }, { "set-cookie": sessionCookie(s.token, config.sessionDays * 86400) });
-    }
-    if (method === "POST" && path === "/auth/logout") {
-      service.logout(token);
-      return send(res, 200, { ok: true }, { "set-cookie": sessionCookie("", 0) });
+        startBalance: config.startBalance, minLeaderboard: config.minLeaderboard, user }, cookies);
     }
     if (method === "GET" && path === "/markets") {
       const q = url.searchParams;
@@ -135,7 +151,7 @@ export function createServer({ service, league, config = CONFIG, port }) {
     if (!hostOk(req.headers.host)) { res.writeHead(421, { "content-type": "text/plain" }); return res.end("This server only answers on 127.0.0.1 / localhost."); }
     const url = new URL(req.url, `http://${req.headers.host}`);
     try {
-      if (url.pathname.startsWith("/api/predictions")) return await api(req, res, url);
+      if (/^\/api\/(predictions|auth|account)(\/|$)/.test(url.pathname)) return await api(req, res, url);
       if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, { error: "Method not allowed" });
       return await staticFile(req, res, url);
     } catch (e) {
@@ -148,11 +164,11 @@ export function createServer({ service, league, config = CONFIG, port }) {
 
 // The first time, a local admin account is made. Its password comes from PRED_ADMIN_PASSWORD, or is made up and
 // written to predictions/.local/admin-login.txt (git-ignored). It only exists in this computer's database.
-function ensureAdmin(db, service, demo) {
+function ensureAdmin(db, auth, demo) {
   if (db.prepare("SELECT id FROM users WHERE is_admin = 1").get()) return null;
   const username = process.env.PRED_ADMIN_USERNAME || "localadmin";
   const password = process.env.PRED_ADMIN_PASSWORD || randomBytes(9).toString("base64url");
-  service.createUser({ username, password, isAdmin: true });
+  auth.createAdmin({ username, password });
   mkdirSync(LOCAL_DIR, { recursive: true });
   const file = join(LOCAL_DIR, demo ? "admin-login-demo.txt" : "admin-login.txt");
   if (!process.env.PRED_ADMIN_PASSWORD) writeFileSync(file, `Local UFF Predictions admin (this computer only)\nusername: ${username}\npassword: ${password}\n`);
@@ -164,14 +180,17 @@ async function main() {
   const file = dbPath(demo);
   const db = openDb(file);
   const league = createLeagueSource({ mode: demo ? "demo" : "live", db, startedAt: Date.now() });
-  const service = createService({ db, league, config: CONFIG });
-  const made = ensureAdmin(db, service, demo);
-  const server = createServer({ service, league, port: () => server.address().port });
+  const config = { ...CONFIG, pepper: loadPepper() };
+  const service = createService({ db, league, config });
+  const auth = createAuth({ db, config });
+  const made = ensureAdmin(db, auth, demo);
+  const server = createServer({ service, auth, league, config, port: () => server.address().port });
   server.listen(CONFIG.port, CONFIG.host, async () => {
-    const url = `http://127.0.0.1:${server.address().port}/#/uff-predictions`;
+    const url = `http://127.0.0.1:${server.address().port}/`;
     const l = await league.get();
     console.log(`\nUFF Predictions (local only) - ${demo ? "DEMO mode: sample games" : "live league data, read-only"}`);
     console.log(`  Open:      ${url}`);
+    console.log(`  Sign in:   ${url}#/sign-in   (accounts: node predictions/accounts.js)`);
     console.log(`  Database:  ${file}`);
     console.log(`  League:    ${l.ok ? "loaded" : `NOT available (${l.error})`}`);
     const login = join(LOCAL_DIR, demo ? "admin-login-demo.txt" : "admin-login.txt");
