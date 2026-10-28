@@ -3295,7 +3295,9 @@
     const g = entry && entry.g;
     const teamNames = TEAMS.map((t) => normTeam(t.name));
     const notes = [];
-    if (resDraft.dupOf) notes.push(`<strong>These exact stats were already entered for ${resDraft.dupOf}.</strong> They can't be saved again.`);
+    // The same recap pasted again only matters when it has nothing new for the game (the merge below skips what's in)
+    const sameGameDup = resDraft.dupOf && resDraft.dupOf === resDraft.gameId;
+    if (resDraft.dupOf && !sameGameDup) notes.push(`<strong>These exact stats were already entered for ${resDraft.dupOf}.</strong> They can't be saved again.`);
     (recap.teams || []).forEach((t) => {
       if (!teamNames.includes(normTeam(t))) notes.push(`"${t}" isn't a team in the league, so pick the game below.`);
     });
@@ -3328,7 +3330,7 @@
       ${notes.length ? `<ul class="admin-notes">${notes.map((n) => `<li>${n}</li>`).join("")}</ul>` : ""}
       ${preview ? `<div class="admin-preview">${preview}</div>` : ""}
       <div class="admin-actions">
-        <button class="btn btn-primary" id="resSave" ${preview && !resDraft.dupOf && !nothingNew ? "" : "disabled"}>${m ? "Save what's new" : "Save result"}</button>
+        <button class="btn btn-primary" id="resSave" ${preview && (!resDraft.dupOf || (sameGameDup && m)) && !nothingNew ? "" : "disabled"}>${m ? "Save what's new" : "Save result"}</button>
         <button class="btn btn-ghost" id="resClear">Clear</button>
       </div>`;
   }
@@ -5838,7 +5840,9 @@
         } else {
           const g = allGames().find(({ g }) => g.id === resDraft.gameId).g;
           const { r, merge } = draftResult(g);
-          await adminCall({ action: "saveResult", result: r, source: resDraft.text, label: resultLabel(g, r.score) });
+          // A merge doesn't send the recap text: the server turns away a recap it already has, even one with new lines,
+          // and the merge itself keeps lines from being added twice
+          await adminCall({ action: "saveResult", result: r, ...(merge ? {} : { source: resDraft.text }), label: resultLabel(g, r.score) });
           resDraft = null;
           reloadWithFlash(merge
             ? `Updated ${g.id}: added ${merge.added.length} and updated ${merge.updated.length} stat line${merge.updated.length === 1 ? "" : "s"}; ${merge.same} already in were left alone.`
