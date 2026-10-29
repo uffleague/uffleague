@@ -3776,8 +3776,9 @@
             <img src="${LEAGUE.brandLogo}" alt="" class="login-logo">
             <h1>Admin Login</h1>
             <p class="muted">League staff only.</p>
-            <label class="field"><span>Username</span><input name="username" autocomplete="username" required></label>
-            <label class="field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+            ${LOCAL_SITE ? `<p class="muted small">The league staff login, not your site username and PIN.</p>` : ""}
+            <label class="field"><span>Username</span><input name="username" autocomplete="section-league username" required></label>
+            <label class="field"><span>Password</span><input name="password" type="password" autocomplete="section-league current-password" required></label>
             ${LOCAL_SITE && ACCT.user && ACCT.user.isAdmin ? `
             <label class="ua-check login-save"><input type="checkbox" name="saveAuto" checked> Save for automatic sign-in on this computer (staff and admin site accounts skip this form)</label>`
             : `<label class="field"><span>Your name <span class="muted">(shows in the activity log)</span></span><input name="name" autocomplete="nickname" maxlength="30" required></label>`}
