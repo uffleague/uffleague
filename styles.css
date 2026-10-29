@@ -1877,3 +1877,5 @@ body.gfx-open { overflow: hidden; }
 /* The UFF Predictions half of the Admin tab row starts on its own line under a small label */
 .admin-tabs-group { flex-basis: 100%; margin: 6px 0 -2px; font-size: 11.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .league-auto { margin-top: 48px; justify-content: center; }
+.login-notice { margin: 0; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--blue-line); background: var(--cream-2); color: var(--blue-muted); font-size: 13.5px; text-align: left; }
+.login-save { text-align: left; font-size: 13.5px; }

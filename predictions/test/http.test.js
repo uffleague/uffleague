@@ -10,7 +10,7 @@ const start = async (cfg) => {
   const srv = createServer({ service: s.service, auth: s.auth, challenges: s.challenges, rewards: s.rewards, admin: s.adminTools, audit: s.audit, limiter: s.limiter,
     league: s.league, config: cfg, port: () => srv.address().port,
     // The live League Admin is never called from tests: this stands in for it
-    leagueLogin: () => leagueCreds, leagueFetch: async (url, opts) => { leagueCalls.push({ url, body: JSON.parse(opts.body) });
+    leagueLogin: () => leagueCreds, saveLeague: (v) => { leagueCreds = v; }, leagueFetch: async (url, opts) => { leagueCalls.push({ url, body: JSON.parse(opts.body) });
       return leagueAnswer; } });
   await new Promise((r) => srv.listen(0, "127.0.0.1", r));
   return srv;
@@ -284,4 +284,29 @@ test("league auto-login: staff/admin site accounts only; uses the login saved on
   assert.match(refused.data.error, /turned the saved login down/);
   assert.ok(s.audit.list({ action: "league.login" }).rows.length === 1);
   assert.ok(!JSON.stringify(s.audit.list({}).rows).includes("league-secret-pw"));
+});
+
+test("saving the league login from the form: Admin accounts only, kept only if the live League Admin accepts it", async () => {
+  await signup("savestaff");
+  const staffUser = s.db.prepare("SELECT * FROM users WHERE username = 'savestaff'").get();
+  s.db.prepare("UPDATE users SET role = 'staff' WHERE id = ?").run(staffUser.id);
+  const staff = (await call("/api/auth/login", { method: "POST", body: { username: "savestaff", pin: "48213" } })).session;
+  const admin = await adminSession();
+  const creds = { username: "day", password: "new-league-pw" };
+  leagueCreds = null;
+  assert.equal((await call("/api/auth/league-login/save", { method: "POST", body: creds })).status, 401);
+  assert.equal((await call("/api/auth/league-login/save", { method: "POST", body: creds, session: staff })).status, 403);
+  leagueAnswer = new Response(JSON.stringify({ error: "Wrong username or password." }), { status: 401 });
+  const wrong = await call("/api/auth/league-login/save", { method: "POST", body: creds, session: admin });
+  assert.equal(wrong.status, 400);
+  assert.match(wrong.data.error, /Wrong username or password/);
+  assert.equal(leagueCreds, null); // not saved
+  leagueAnswer = new Response(JSON.stringify({ username: "day", name: "boss", token: "1999999999999.Ym9zcw.abc" }), { status: 200 });
+  const saved = await call("/api/auth/league-login/save", { method: "POST", body: creds, session: admin });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(leagueCreds, creds);
+  assert.ok(!JSON.stringify(saved.data).includes("new-league-pw"));
+  leagueAnswer = new Response(JSON.stringify({ username: "day", name: "savestaff", token: "1999999999999.c2F2ZQ.def" }), { status: 200 });
+  assert.equal((await call("/api/auth/league-login", { method: "POST", body: {}, session: staff })).status, 200); // staff now skip the form
+  assert.ok(s.audit.list({ action: "league.login_saved" }).rows.length === 1);
 });

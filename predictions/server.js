@@ -20,7 +20,7 @@ import { createLimiter } from "./limits.js";
 import { createChallenges } from "./challenges.js";
 import { createRewards } from "./rewards.js";
 import { createAdminTools } from "./admin.js";
-import { CONFIG, SITE_ROOT, dbPath, loadPepper, loadLeagueLogin } from "./config.js";
+import { CONFIG, SITE_ROOT, dbPath, loadPepper, loadLeagueLogin, saveLeagueLogin } from "./config.js";
 import { need } from "./roles.js";
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -68,14 +68,14 @@ export function createTools({ db, league, config, now = Date.now }) {
 }
 
 export function createServer({ service, auth, challenges, rewards, admin, audit, limiter, league, config = CONFIG, port,
-  leagueLogin = loadLeagueLogin, leagueFetch = (url, opts) => fetch(url, opts) }) {
+  leagueLogin = loadLeagueLogin, saveLeague = saveLeagueLogin, leagueFetch = (url, opts) => fetch(url, opts) }) {
   // Logs a staff/admin site account in to the live League Admin with the league login saved on this computer.
   // The league password never reaches the browser; the browser gets the same 12-hour token a normal league login gives.
-  async function leagueSignIn(user) {
+  async function leagueSignIn(user, given = null) {
     need(user, "admin.view");
     if (limiter) limiter(`league:${user.id}`, 20, 10 * 60000);
-    const creds = leagueLogin();
-    if (!creds) throw new HttpError(409, "League auto-login isn't set up on this computer yet. Run: node predictions/accounts.js set-league-login <username>", "league-not-set");
+    const creds = given || leagueLogin();
+    if (!creds) throw new HttpError(409, "It isn't set up on this computer yet. Log in below once with \"Save for automatic sign-in\" ticked (an Admin account has to do it).", "league-not-set");
     let res, data = {};
     try {
       res = await leagueFetch(config.liveUrl, { method: "POST", headers: { "content-type": "application/json" },
@@ -84,7 +84,8 @@ export function createServer({ service, auth, challenges, rewards, admin, audit,
     } catch (e) {
       throw new HttpError(502, "Couldn't reach the live League Admin. Check the internet connection.");
     }
-    if (!res.ok || !data.token) throw new HttpError(502, `The live League Admin turned the saved login down (${data.error || res.status}). Save it again with the accounts tool.`);
+    if (!res.ok || !data.token) throw new HttpError(given ? 400 : 502, given ? `The live League Admin says: ${data.error || "that login didn't work"}`
+      : `The live League Admin turned the saved login down (${data.error || res.status}). Log in below once with "Save" ticked to update it.`);
     if (audit) audit.log({ actorId: user.id, action: "league.login", targetType: "user", targetId: user.accountId, detail: { username: user.username, as: data.name || user.username } });
     return { user: data.name || user.username, token: data.token };
   }
@@ -127,6 +128,16 @@ export function createServer({ service, auth, challenges, rewards, admin, audit,
       }
       if (method === "GET" && path === "/api/account") return send(res, 200, auth.profile(user), cookies);
       if (method === "POST" && path === "/api/auth/league-login") return send(res, 200, await leagueSignIn(user), cookies);
+      // An Admin saves the league login for everyone's auto-login; it's only kept if the live League Admin accepts it
+      if (method === "POST" && path === "/api/auth/league-login/save") {
+        if (!user || !user.isAdmin) throw new HttpError(user ? 403 : 401, "Only Admin and Super Admin accounts can save the league login.");
+        const username = String(body.username || "").trim(), password = String(body.password || "");
+        if (!username || !password || username.length > 60 || password.length > 200) throw new HttpError(400, "Enter the league username and password.");
+        const signed = await leagueSignIn(user, { username, password });
+        saveLeague({ username, password });
+        if (audit) audit.log({ actorId: user.id, action: "league.login_saved", targetType: "user", targetId: user.accountId, detail: { leagueUsername: username } });
+        return send(res, 200, signed, cookies);
+      }
       throw new HttpError(404, "Not found.");
     }
 

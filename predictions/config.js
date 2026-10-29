@@ -33,6 +33,10 @@ export const CONFIG = {
 // accounts in to it (Admin's league tabs). Saved with: node predictions/accounts.js set-league-login <username>
 // (or PRED_LEAGUE_USERNAME + PRED_LEAGUE_PASSWORD). Never sent to the browser. null = not set up.
 export const LEAGUE_LOGIN_FILE = join(LOCAL_DIR, "league-login.json");
+export function saveLeagueLogin(v) {
+  mkdirSync(LOCAL_DIR, { recursive: true });
+  writeFileSync(LEAGUE_LOGIN_FILE, JSON.stringify({ username: v.username, password: v.password }), { mode: 0o600 });
+}
 export function loadLeagueLogin() {
   if (process.env.PRED_LEAGUE_USERNAME && process.env.PRED_LEAGUE_PASSWORD) return { username: process.env.PRED_LEAGUE_USERNAME, password: process.env.PRED_LEAGUE_PASSWORD };
   try {

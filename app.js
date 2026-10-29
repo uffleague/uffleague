@@ -3772,13 +3772,15 @@
       <div class="wrap">
         <div class="login-wrap">
           <form class="card login-card" id="adminLogin" autocomplete="on">
-            ${leagueAuto.error ? `<p class="login-error">Couldn't sign you in automatically: ${esc(leagueAuto.error)}</p>` : ""}
+            ${leagueAuto.error ? `<p class="login-notice">Automatic sign-in: ${esc(leagueAuto.error)}</p>` : ""}
             <img src="${LEAGUE.brandLogo}" alt="" class="login-logo">
             <h1>Admin Login</h1>
             <p class="muted">League staff only.</p>
             <label class="field"><span>Username</span><input name="username" autocomplete="username" required></label>
             <label class="field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
-            <label class="field"><span>Your name <span class="muted">(shows in the activity log)</span></span><input name="name" autocomplete="nickname" maxlength="30" required></label>
+            ${LOCAL_SITE && ACCT.user && ACCT.user.isAdmin ? `
+            <label class="ua-check login-save"><input type="checkbox" name="saveAuto" checked> Save for automatic sign-in on this computer (staff and admin site accounts skip this form)</label>`
+            : `<label class="field"><span>Your name <span class="muted">(shows in the activity log)</span></span><input name="name" autocomplete="nickname" maxlength="30" required></label>`}
             ${adminError ? `<p class="login-error">${adminError}</p>` : ""}
             <button class="btn btn-primary login-btn" type="submit">Log in</button>
           </form>
@@ -7538,10 +7540,15 @@
         const res = await adminCall({ action: "addStream", title: String(form.get("title") || ""), url, gameId: String(form.get("gameId") || "") });
         SAVED.streams = res.streams;
         adminFlash = "Added the live stream. It's on the home page now.";
+      } else if (LOCAL_SITE && form.get("saveAuto")) {
+        const s = await localApi("/api/auth/league-login/save", { username: String(form.get("username") || ""), password: String(form.get("password") || "") });
+        setAdmin({ user: s.user, token: s.token, auto: true });
+        leagueAuto.error = "";
+        adminFlash = "Saved. Staff and admin site accounts on this computer now skip the league login.";
       } else {
         const s = await adminCall({
           action: "login", username: String(form.get("username") || ""),
-          password: String(form.get("password") || ""), name: String(form.get("name") || "")
+          password: String(form.get("password") || ""), name: String(form.get("name") || (ACCT.user ? ACCT.user.username : ""))
         });
         setAdmin({ user: s.name || s.username, token: s.token });
       }
