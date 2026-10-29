@@ -148,7 +148,7 @@ try {
   await click("#authSubmit"); await wait(2000);
   check(await headerUser() === "zeroes_fan", "new account is signed in (name in the header)");
   check((await js("location.hash")) === "#/uff-predictions/me", "and lands where they were headed");
-  check((await text(".pm-chips")).includes("1,000"), "new account starts with 1,000 virtual points");
+  check((await text(".pm-chips")).includes("500"), "new account starts with 500 virtual points");
 
   // Refresh keeps you signed in
   await reload();
@@ -213,7 +213,7 @@ try {
 
   // Guests: the shop and challenges are open to browse; admin and redeeming ask for an account
   await go("#/rewards");
-  check((await js(`document.querySelectorAll(".rw-card").length`)) === 4 && (await raw(".rw-grid")).includes("Demo"), "guest sees the (labeled demo) rewards catalog");
+  check((await js(`document.querySelectorAll(".rw-card:not(.rw-soon)").length`)) === 4 && (await has(".rw-soon")) && (await raw(".rw-grid")).includes("Demo"), "guest sees the (labeled demo) rewards catalog");
   await click("[data-rw-redeem]"); await settle();
   check(await has(".pm-modal .signin-prompt"), "guest redeeming gets a sign-in prompt");
   await shot("09-rewards-guest");
@@ -267,15 +267,15 @@ try {
   await go("#/uff-admin/credits");
   await type("#uaQ-credits", "check_pl"); await click("[data-ua-search='credits'] button"); await wait(1200);
   await click("[data-ua-pick='credits']"); await wait(1500);
-  check((await raw(".ua-balance")).includes("1,000") && (await raw(".acct-facts")).includes("check_player"), "credits: search finds the account and shows balance and account id");
+  check((await raw(".ua-balance")).includes("500 pts") && (await raw(".acct-facts")).includes("check_player"), "credits: search finds the account and shows balance and account id");
   await type("#uaAdjustForm [name=amount]", "250");
   await select("#uaAdjustForm [name=reasonCode]", "event");
   await type("#uaAdjustForm [name=note]", "Week 1 watch party");
   await click("#uaAdjustForm .btn-primary"); await settle();
-  check((await raw(".pm-modal")).includes("1,000 → 1,250"), "credits: confirmation shows before and after", await raw(".pm-modal"));
+  check((await raw(".pm-modal")).includes("500 → 750"), "credits: confirmation shows before and after", await raw(".pm-modal"));
   await shot("13-admin-credit-confirm");
   await confirmYes();
-  check((await flash()).includes("now has 1,250"), "credits: added, with the new balance", await flash());
+  check((await flash()).includes("now has 750"), "credits: added, with the new balance", await flash());
   check((await raw(".ua-table")).includes("Admin: added") && (await raw(".ua-table")).includes("check_admin"), "credits: the ledger shows the change and who made it");
 
   // Permissions: give check_staff the Staff role (confirmed, with a reason)
@@ -304,13 +304,13 @@ try {
   await go("#/rewards");
   const sharp = await js(`[...document.querySelectorAll(".rw-card")].find((c) => c.textContent.includes("Sharpshooter")).querySelector("[data-rw-redeem]").dataset.rwRedeem`);
   await click(`[data-rw-redeem="${sharp}"]`); await settle();
-  check((await raw(".pm-modal")).includes("1,250 to 750"), "redeem confirmation shows the balance before and after", await raw(".pm-modal"));
+  check((await raw(".pm-modal")).includes("750 to 250"), "redeem confirmation shows the balance before and after", await raw(".pm-modal"));
   await shot("15-redeem-confirm");
   await js(`(() => { const b = document.querySelector("[data-rw='confirm']"); b.click(); b.click(); b.click(); })()`); await wait(1800);
   check((await raw(".admin-flash")).includes("waiting for staff approval"), "redeemed: pending staff approval", await raw(".admin-flash"));
   const mine = await js(`fetch("/api/rewards/mine").then((r) => r.json())`);
   check(mine.redemptions.length === 1, "three quick clicks made one redemption", JSON.stringify(mine.redemptions.length));
-  check((await raw(".pm-account .pill")).includes("750"), "balance shows 750 after redeeming");
+  check((await raw(".pm-account .pill")).includes("250"), "balance shows 250 after redeeming");
   await go("#/rewards/mine");
   check((await raw(".rd-row")).includes("Pending"), "My Redemptions lists it as pending");
   await api("/api/auth/logout", {});

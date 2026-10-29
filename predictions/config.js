@@ -16,7 +16,7 @@ const int = (v, fallback, min, max) => {
 export const CONFIG = {
   host: "127.0.0.1", // never anything else: this server is for this computer only
   port: int(process.env.PRED_PORT, 4173, 1024, 65535),
-  startBalance: int(process.env.PRED_START_BALANCE, 1000, 1, 1000000),
+  startBalance: int(process.env.PRED_START_BALANCE, 500, 1, 1000000), // virtual points a new account starts with (once)
   defaultStake: int(process.env.PRED_DEFAULT_STAKE, 50, 1, 1000),
   maxStake: 100,
   minLeaderboard: int(process.env.PRED_MIN_LEADERBOARD, 3, 1, 100),
