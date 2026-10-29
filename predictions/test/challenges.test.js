@@ -215,3 +215,28 @@ test("privacy: you see your own answers only; others' entries never show", async
   assert.equal(s.challenges.myEntries(a).length, 1);
   await rejects(() => s.challenges.myEntries(null), 401);
 });
+
+test("extending a published deadline: later only, before it passes, legs still open; entries kept; audited", async () => {
+  const s = setup();
+  const [gw, ou1] = await threeLegs(s);
+  const { id } = s.challenges.create(s.admin, draft([gw, ou1], { entryDeadline: T0 + 6 * HOUR }));
+  await rejects(() => s.challenges.extend(s.admin, id, T0 + 7 * HOUR), 409, /Only a published/);
+  s.challenges.publish(s.admin, id);
+  const a = s.user("alice");
+  s.challenges.enter(a, id, await answersFor(s, id, ["a", "over"]));
+  await rejects(() => s.challenges.extend(s.admin, id, T0 + 5 * HOUR), 400, /later/);
+  await rejects(() => s.challenges.extend(s.admin, id, T0 + 20 * HOUR), 409, /close before that/); // markets close at T0+9h
+  await rejects(() => s.challenges.extend(s.user("player"), id, T0 + 8 * HOUR), 403);
+  s.challenges.extend(s.admin, id, T0 + 8 * HOUR);
+  s.clock.t = T0 + 7 * HOUR; // past the old deadline, before the new one: still open, answers kept and changeable
+  const view = (await s.challenges.detail(a, id)).challenge;
+  assert.equal(view.status, "open");
+  assert.equal(view.entryDeadline, T0 + 8 * HOUR);
+  assert.equal(view.legs[0].mine.selection, "a");
+  s.challenges.enter(a, id, await answersFor(s, id, ["b", "over"]));
+  s.clock.t = T0 + 8 * HOUR;
+  await rejects(() => s.challenges.extend(s.admin, id, T0 + 8.5 * HOUR), 409, /already passed/);
+  const log = s.audit.list({ action: "challenge.extend" }).rows;
+  assert.equal(log.length, 1);
+  assert.equal(log[0].detail.after.entryDeadline, new Date(T0 + 8 * HOUR).toISOString());
+});

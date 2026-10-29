@@ -155,7 +155,7 @@ export function createServer({ service, auth, challenges, rewards, admin, league
       if (method === "POST" && (m = p.match(/^\/api\/admin\/challenges\/(\d+)$/))) {
         const a = body.action;
         const out = a === "update" ? challenges.update(user, m[1], body.challenge || {}) : a === "publish" ? challenges.publish(user, m[1])
-          : a === "cancel" ? challenges.cancel(user, m[1], body.note) : a === "settle" ? challenges.settle(user, m[1]) : null;
+          : a === "extend" ? challenges.extend(user, m[1], body.entryDeadline) : a === "cancel" ? challenges.cancel(user, m[1], body.note) : a === "settle" ? challenges.settle(user, m[1]) : null;
         if (!out) throw new HttpError(400, "Unknown action.");
         return send(res, 200, out, cookies);
       }

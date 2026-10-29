@@ -124,6 +124,26 @@ export function createChallenges({ db, service, ledger, audit, limiter, now = Da
   }
 
   // Cancelling: no points are involved (entries were free), so every entry just ends void
+  // A published challenge's deadline can only move later, and only before it passes: nobody's answers change,
+  // they just get longer to enter or change them. Every leg's market has to stay open until the new deadline.
+  function extend(user, id, entryDeadline) {
+    const c = byId(id);
+    needManage(user, c);
+    limiter(`admin:${user.id}`, 60, 60000);
+    if (c.status !== "published") fail(409, "Only a published challenge's deadline can be extended (edit a draft instead).");
+    if (now() >= c.entry_deadline) fail(409, "The deadline has already passed, so entries are locked. It can't be reopened.");
+    const next = Number(entryDeadline);
+    if (!Number.isFinite(next) || next <= c.entry_deadline) fail(400, "The new deadline has to be later than the current one.");
+    const early = legsOf(c.id).map((l) => get("SELECT * FROM markets WHERE id = ?", l.market_id)).filter((m) => m.closes_at < next);
+    if (early.length) fail(409, `Market${early.length > 1 ? "s" : ""} ${early.map((m) => `#${m.id}`).join(", ")} close${early.length > 1 ? "" : "s"} before that. Move their closing time first.`);
+    return tx(db, () => {
+      run("UPDATE challenges SET entry_deadline = ?, updated_at = ? WHERE id = ?", next, now(), c.id);
+      audit.log({ actorId: user.id, action: "challenge.extend", targetType: "challenge", targetId: c.id,
+        detail: { before: { entryDeadline: new Date(c.entry_deadline).toISOString() }, after: { entryDeadline: new Date(next).toISOString() } } });
+      return { id: c.id, entryDeadline: next };
+    });
+  }
+
   function cancel(user, id, note) {
     const c = byId(id);
     needManage(user, c);
@@ -307,5 +327,5 @@ export function createChallenges({ db, service, ledger, audit, limiter, now = Da
         gameId: m.gameId, closesAt: m.closesAt, sample: m.sample, status: m.status }));
   }
 
-  return { create, update, publish, cancel, settle, settlePreview, enter, list, detail, myEntries, adminList, legOptions };
+  return { create, update, publish, extend, cancel, settle, settlePreview, enter, list, detail, myEntries, adminList, legOptions };
 }

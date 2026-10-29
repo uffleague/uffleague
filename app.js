@@ -5570,6 +5570,7 @@
     const list = slot.data.challenges;
     const actions = (c) => !c.canManage ? `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/c/${c.id}">View</a>` : [
       c.storedStatus === "draft" ? `<button type="button" class="btn btn-ghost btn-sm" data-ua-ch="edit" data-id="${c.id}">Edit</button><button type="button" class="btn btn-primary btn-sm" data-ua-ch="publish" data-id="${c.id}">Publish</button>` : "",
+      c.status === "open" ? `<button type="button" class="btn btn-ghost btn-sm" data-ua-ch="extend" data-id="${c.id}">Extend deadline</button>` : "",
       c.storedStatus === "published" ? `<button type="button" class="btn btn-ghost btn-sm" data-ua-ch="settle" data-id="${c.id}">Settle</button>` : "",
       ["draft", "published"].includes(c.storedStatus) ? `<button type="button" class="btn btn-ghost btn-sm pm-danger" data-ua-ch="cancel" data-id="${c.id}">Cancel</button>` : "",
       c.storedStatus !== "draft" ? `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/c/${c.id}">View</a>` : ""].join("");
@@ -5986,6 +5987,16 @@
         return uaAsk({ title: `Publish "${c.title}"?`, label: "Publish",
           body: `<p>Players can enter as soon as it's published. A published challenge can't be edited, only cancelled.</p>`,
           run: () => uaRun(() => localApi(`/api/admin/challenges/${id}`, { action: "publish" }), () => { ua.builder = null; return `"${c.title}" is live.`; }) });
+      }
+      if (d.uaCh === "extend") {
+        return uaAsk({ title: `Extend "${c.title}"?`, label: "Extend deadline",
+          body: `<p>Now: ${pmWhen(c.entryDeadline)}. Entries stay as they are; players get longer to enter or change answers. Every leg's market has to stay open until the new deadline.</p>
+            <label class="field">New deadline<input type="datetime-local" id="uaExtendTo" value="${toInput(c.entryDeadline + 86400000)}" required></label>`,
+          run: () => {
+            const v = (document.getElementById("uaExtendTo") || {}).value;
+            return uaRun(() => localApi(`/api/admin/challenges/${id}`, { action: "extend", entryDeadline: v ? new Date(v).getTime() : null }),
+              (o) => `"${c.title}" now closes ${pmWhen(o.entryDeadline)}.`);
+          } });
       }
       if (d.uaCh === "cancel") {
         return uaAsk({ title: `Cancel "${c.title}"?`, danger: true, label: "Cancel challenge", reason: "Why (players see this)",
