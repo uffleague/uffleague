@@ -5293,7 +5293,7 @@
     const u = ACCT.user;
     const head = `
       <div class="page-head page-head--row">
-        <div><h1>Rewards</h1><p class="muted">Spend the virtual points you earn on league-approved UFF awards: badges, titles, profile decorations and in-game cosmetics.</p></div>
+        <div><h1>Rewards</h1><p class="muted">Hit your parlays, cash in your points: trade what you win from UFF parlays and picks for badges, titles, profile decorations and in-game cosmetics.</p></div>
         ${u && !u.isStaff ? `<div class="pm-account"><span class="pill pill-navy">${pmPts(u.balance)}</span></div>` : ""}
       </div>`;
     if (!LOCAL_SITE) return `<div class="wrap">${head}${empty("Not available here", "Rewards are being tested and aren't on the live site yet.")}</div>`;
