@@ -1,5 +1,5 @@
 // UFF accounts on the local server: a username and a 5-digit PIN. Staff and admins are the same accounts with a role
-// (roles.js); they unlock admin tools on a session by entering their PIN again (elevate below).
+// (roles.js): signed in, they use admin tools right away.
 // A 5-digit PIN is only 100,000 possibilities, so it's kept from being guessed by the server, not by its length:
 //   - PINs are hashed with Argon2id plus a pepper (a secret key kept outside the database, see server.js), so a
 //     copied database alone can't be used to try PINs
@@ -74,12 +74,10 @@ export function createAuth({ db, config, now = Date.now }) {
   const audit = createAudit({ db, now });
   let dummy = null; // a hash to check against when the username doesn't exist, so it takes just as long
   const dummyHash = () => (dummy = dummy || hashSecret("00000", pepper));
-  const elevateMs = (config.elevateMinutes || 30) * 60000;
 
-  const publicUser = (u, s = null) => u && { id: u.id, accountId: u.account_id, username: u.username, role: u.role, status: u.status,
+  const publicUser = (u) => u && { id: u.id, accountId: u.account_id, username: u.username, role: u.role, status: u.status,
     isAdmin: u.role === "admin" || u.role === "super_admin", isStaff: u.role !== "user", perms: PERMISSIONS[u.role] || [],
-    balance: u.balance, createdAt: u.created_at,
-    elevated: !!(s && u.role !== "user" && s.elevated_until > now()), elevatedUntil: s && s.elevated_until > now() ? s.elevated_until : null };
+    balance: u.balance, createdAt: u.created_at };
 
   /* ---------- Throttling ---------- */
 
@@ -130,7 +128,7 @@ export function createAuth({ db, config, now = Date.now }) {
       return null;
     }
     if (now() - s.last_seen > 60000) run("UPDATE sessions SET last_seen = ? WHERE token_hash = ?", now(), s.token_hash);
-    return publicUser(u, s);
+    return publicUser(u);
   }
   const logout = (token) => { if (typeof token === "string" && token) run("DELETE FROM sessions WHERE token_hash = ?", sha(token)); };
 
@@ -154,30 +152,6 @@ export function createAuth({ db, config, now = Date.now }) {
     if (u.status !== "active") fail(403, "This account is suspended. Contact a league admin.");
     return { token: startSession(u.id), user: publicUser(u) };
   }
-
-  /* ---------- Unlocking admin tools (staff and above) ---------- */
-
-  // A role alone doesn't open admin tools: the person enters their PIN again, which unlocks them on this one
-  // session for elevateMinutes (so a browser left signed in can't be used for admin changes). Only accounts a
-  // Super Admin gave a role can do it, and wrong PINs here lock out just like at sign-in.
-  function elevate({ token, user, pin, ip }) {
-    if (!user) fail(401, "Sign in first.");
-    if (user.role === "user") fail(403, "Your account doesn't have admin access.");
-    const problem = pinProblem(pin);
-    if (problem) fail(400, problem);
-    const u = get("SELECT * FROM users WHERE id = ?", user.id);
-    const userKey = `elevate:${u.id}`, ipKey = `ip:${ip || "?"}`;
-    const wait = waitFor([userKey, ipKey]);
-    if (wait > 0) tooMany(wait);
-    countMiss(userKey, ipKey);
-    if (u.credential !== "pin" || !verifySecret(pin, u.pass_hash, u.pass_salt, pepper)) fail(401, "That PIN isn't right.");
-    undoMiss(userKey, ipKey);
-    const until = now() + elevateMs;
-    run("UPDATE sessions SET elevated_until = ? WHERE token_hash = ?", until, sha(token));
-    audit.log({ actorId: u.id, action: "admin.unlock", targetType: "user", targetId: u.account_id, detail: { until } });
-    return { elevatedUntil: until };
-  }
-  const lockAdmin = (token) => { if (typeof token === "string" && token) run("UPDATE sessions SET elevated_until = 0 WHERE token_hash = ?", sha(token)); };
 
   /* ---------- New accounts ---------- */
 
@@ -250,7 +224,6 @@ export function createAuth({ db, config, now = Date.now }) {
     if (u.role === "user") fail(409, "That account has no role to take away.");
     tx(db, () => {
       run("UPDATE users SET role = 'user', role_granted_at = ?, role_granted_by = NULL WHERE id = ?", now(), u.id);
-      run("UPDATE sessions SET elevated_until = 0 WHERE user_id = ?", u.id);
       audit.log({ actorId: null, action: "role.revoke", targetType: "user", targetId: u.account_id,
         detail: { username: u.username, before: { role: u.role }, after: { role: "user" }, reason: "Taken away with the local accounts tool" } });
     });
@@ -263,9 +236,9 @@ export function createAuth({ db, config, now = Date.now }) {
     const u = get("SELECT * FROM users WHERE id = ?", user.id);
     const picks = get(`SELECT COUNT(*) AS n, COALESCE(SUM(result = 'won'), 0) AS won, COALESCE(SUM(result = 'lost'), 0) AS lost,
       COALESCE(SUM(result = 'pending'), 0) AS pending FROM predictions WHERE user_id = ?`, u.id);
-    return { user: { ...publicUser(u), elevated: user.elevated, elevatedUntil: user.elevatedUntil },
+    return { user: publicUser(u),
       roleGrantedAt: u.role_granted_at, picks: { total: picks.n, won: picks.won, lost: picks.lost, pending: picks.pending } };
   }
 
-  return { signIn, createAccount, setPin, bootstrapSuperAdmin, revokeRoleLocally, elevate, lockAdmin, sessionUser, logout, profile };
+  return { signIn, createAccount, setPin, bootstrapSuperAdmin, revokeRoleLocally, sessionUser, logout, profile };
 }

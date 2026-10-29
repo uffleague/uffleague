@@ -286,14 +286,14 @@ export function createChallenges({ db, service, ledger, audit, limiter, now = Da
   async function detail(user, id) {
     const c = byId(id);
     // A draft is only visible to whoever can manage it
-    if (c.status === "draft" && !(user && user.elevated && canManage(user, c))) fail(404, "That challenge doesn't exist.");
+    if (c.status === "draft" && !(user && canManage(user, c))) fail(404, "That challenge doesn't exist.");
     const legs = legsOf(c.id);
     const markets = await service.marketsByIds(legs.map((l) => l.market_id));
     const outcome = new Map(legOutcomes(c).map((o) => [o.leg.id, o.outcome]));
     const e = user ? get("SELECT * FROM challenge_entries WHERE challenge_id = ? AND user_id = ?", c.id, user.id) : null;
     const picks = e ? new Map(all("SELECT * FROM challenge_picks WHERE entry_id = ?", e.id).map((p) => [p.leg_id, p])) : new Map();
     return {
-      challenge: { ...summary(c, user && user.id), rules: challengeRules(c), canManage: !!(user && user.elevated && canManage(user, c)),
+      challenge: { ...summary(c, user && user.id), rules: challengeRules(c), canManage: !!(user && canManage(user, c)),
         legs: legs.map((l, i) => {
           const m = markets.get(l.market_id);
           // Only the community split of the market itself is shown; nobody else's challenge answers are

@@ -32,10 +32,9 @@ const call = async (path, { method = "GET", body, session, headers = {}, noCsrf 
   return { status: res.status, setCookie, session: setCookie.split(";")[0], data: type.includes("json") ? await res.json() : await res.text(), res };
 };
 const signup = async (username, pin = "48213") => (await call("/api/auth/signup", { method: "POST", body: { username, pin, confirmPin: pin } })).session;
-// The Super Admin signs in with their PIN like anyone, then unlocks admin tools by entering it again
+// The Super Admin signs in with their PIN like anyone; that's all admin tools need
 const adminSession = async () => {
   const session = (await call("/api/auth/login", { method: "POST", body: { username: "boss", pin: "86420" } })).session;
-  await call("/api/auth/elevate", { method: "POST", body: { pin: "86420" }, session });
   return session;
 };
 
@@ -136,7 +135,7 @@ test("admin endpoints: 401 signed out, 403 for players, work for the admin; play
     assert.equal((await call(path, { method, body, session: u })).status, 403, path);
   }
   assert.equal((await call("/api/predictions/admin/audit", { session: await adminSession() })).status, 200);
-  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { pin: "48213" }, session: u })).status, 403); // players can't unlock admin tools
+  assert.equal((await call("/api/admin/overview", { session: u })).status, 403); // a signed-in player gets no admin tools
 });
 
 test("admin can't make picks through the API", async () => {
@@ -200,21 +199,16 @@ test("guests can browse challenges and the rewards shop; anything personal or ad
   assert.equal((await call("/api/rewards/redeem", { method: "POST", body: { rewardId: 1, idempotencyKey: "abcdefgh12" } })).status, 401);
 });
 
-test("admin routes: players get 403; a Super Admin with only a PIN session gets 401 'elevate' until they unlock", async () => {
+test("admin routes: guests 401, players 403, a signed-in Super Admin straight in; the old unlock routes are gone", async () => {
   const player = await signup("routeplayer");
   for (const p of ["/api/admin/overview", "/api/admin/users?q=a", "/api/admin/audit", "/api/admin/staff", "/api/admin/redemptions"]) {
     assert.equal((await call(p, { session: player })).status, 403, p);
   }
   assert.equal((await call("/api/admin/credits", { method: "POST", session: player, body: { type: "add" } })).status, 403);
-  const pinOnly = (await call("/api/auth/login", { method: "POST", body: { username: "boss", pin: "86420" } })).session;
-  const locked = await call("/api/admin/overview", { session: pinOnly });
-  assert.equal(locked.status, 401);
-  assert.equal(locked.data.code, "elevate");
-  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { pin: "86421" }, session: pinOnly })).status, 401); // wrong PIN
-  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { pin: "86420" }, session: pinOnly })).status, 200);
-  assert.equal((await call("/api/admin/overview", { session: pinOnly })).status, 200);
-  await call("/api/auth/lock", { method: "POST", body: {}, session: pinOnly });
-  assert.equal((await call("/api/admin/overview", { session: pinOnly })).data.code, "elevate");
+  assert.equal((await call("/api/admin/overview")).status, 401);
+  const boss = (await call("/api/auth/login", { method: "POST", body: { username: "boss", pin: "86420" } })).session;
+  assert.equal((await call("/api/admin/overview", { session: boss })).status, 200);
+  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { pin: "86420" }, session: boss })).status, 404);
 });
 
 test("credits over HTTP: duplicate submits with one request id land once; parallel different ones all land", async () => {

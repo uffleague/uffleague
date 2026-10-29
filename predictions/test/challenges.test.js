@@ -57,7 +57,7 @@ test("builder rules: two legs to publish, real open markets only, legs open unti
   assert.throws(() => s.challenges.create(s.admin, draft([gw, ou1])), /already settled or void/);
 });
 
-test("who can build: staff manage their own challenges, admins any, players none; admin tools must be unlocked", async () => {
+test("who can build: staff manage their own challenges, admins any, players none", async () => {
   const s = setup();
   const [gw, ou1] = await threeLegs(s);
   const staffA = s.signedIn("staff_a", "13570", "staff").user;
@@ -67,7 +67,6 @@ test("who can build: staff manage their own challenges, admins any, players none
   await rejects(() => s.challenges.publish(staffB, id), 403);
   s.challenges.update(s.admin, id, draft([ou1, gw])); // an admin can
   await rejects(() => s.challenges.create(s.user("player"), draft([gw, ou1])), 403);
-  await rejects(() => s.challenges.create({ ...staffA, elevated: false }, draft([gw, ou1])), 401, /Unlock admin tools/);
   assert.deepEqual(s.challenges.adminList(staffB).map((c) => c.id), []); // someone else's draft isn't listed
 });
 

@@ -82,11 +82,9 @@ try {
   tool(["create", "check_staff"], "37192\n");
   check(/already a Super Admin/.test(tool(["bootstrap-admin", "check_player"]).stderr), "a second bootstrap is refused");
 
-  // Markets to pick on and build a challenge from (the admin signs in with the PIN, unlocks, then signs out)
+  // Markets to pick on and build a challenge from (the admin signs in with the PIN, then signs out)
   await open("#/");
   await api("/api/auth/login", { username: "check_admin", pin: ADMIN_PIN });
-  check((await api("/api/predictions/admin/markets", {})).code === "elevate", "a PIN session can't use admin tools until unlocked");
-  await api("/api/auth/elevate", { pin: ADMIN_PIN });
   const games = await js(`fetch("/api/predictions/admin/games").then((r) => r.json())`);
   const g = games.games.find((x) => x.id === "SAMPLE-1"), g2 = games.games.find((x) => x.id === "SAMPLE-2");
   const made = await api("/api/predictions/admin/markets", { kind: "game_winner", gameId: g.id, closesAt: g.at });
@@ -228,16 +226,12 @@ try {
   check((await js(`fetch("/api/admin/overview").then((r) => r.status)`)) === 403, "a player calling the admin API gets 403");
   await api("/api/auth/logout", {});
 
-  // The Super Admin: signed in with the PIN, then the PIN again on the unlock card
+  // The Super Admin: signed in with the PIN, straight into UFF Admin (no extra step)
   await api("/api/auth/login", { username: "check_admin", pin: ADMIN_PIN });
   await go("#/uff-admin"); await settle();
-  check(await has("#staffForm") && !(await has(".ua-tabs")), "UFF Admin asks a signed-in Super Admin to unlock with their PIN first");
-  await shot("10-admin-unlock");
-  await type("#staffPass", "11223"); await click("#staffForm .auth-submit"); await wait(1400);
-  check((await raw("#authError")).includes("isn't right"), "a wrong PIN at the unlock step is refused");
-  await type("#staffPass", ADMIN_PIN); await click("#staffForm .auth-submit"); await wait(2000);
+  check(!(await has("#staffForm")), "a signed-in Super Admin isn't asked to type anything again");
   const tabs = await js(`[...document.querySelectorAll(".ua-tabs a")].map((a) => a.textContent).join("|")`);
-  check(tabs === "Overview|Prediction Challenges|User Management|Credits Management|Rewards Catalog|Redemption Requests|Admin Permissions|Audit Logs", "the right PIN opens all eight sections", tabs);
+  check(tabs === "Overview|Prediction Challenges|User Management|Credits Management|Rewards Catalog|Redemption Requests|Admin Permissions|Audit Logs", "a signed-in Super Admin sees all eight sections", tabs);
   check((await raw(".stat-chips")).includes("every balance matches"), "overview shows the ledger check");
   await shot("11-admin-overview");
 
@@ -317,7 +311,6 @@ try {
 
   // Staff side (as the Super Admin): approve, then fulfill; the audit log has everything
   await api("/api/auth/login", { username: "check_admin", pin: ADMIN_PIN });
-  await api("/api/auth/elevate", { pin: ADMIN_PIN });
   await go("#/uff-admin/redemptions");
   check((await raw(".ua-rd")).includes("check_player"), "the request shows in Redemption Requests");
   await click("[data-ua-rd='approve']"); await settle(); await confirmYes();

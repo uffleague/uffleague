@@ -1,6 +1,6 @@
 // Who can do what. Roles live on the account (users.role) and are checked on the server for every privileged
-// request; the page hiding a button is never the protection. Staff and above also unlock admin tools on each
-// session by entering their PIN again (auth.js elevate); without a role, a PIN never opens them.
+// request; the page hiding a button is never the protection. The role is read from the account on every request,
+// so giving or taking one away applies at once; without a role, signing in never opens admin tools.
 import { HttpError } from "./errors.js";
 
 export const ROLES = ["user", "staff", "admin", "super_admin"];
@@ -16,9 +16,8 @@ export const can = (user, perm) => !!user && user.status === "active" && (PERMIS
 // Staff and above run things, so they don't play (no picks, challenge entries or redemptions of their own)
 export const plays = (user) => !!user && user.role === "user";
 
-// Throws unless the signed-in user has the permission and (by default) has unlocked admin tools on this session
-export function need(user, perm, { elevated = true } = {}) {
+// Throws unless the signed-in user's role has the permission
+export function need(user, perm) {
   if (!user) throw new HttpError(401, "Sign in first.");
   if (!can(user, perm)) throw new HttpError(403, "Your account doesn't have permission to do that.");
-  if (elevated && !user.elevated) throw new HttpError(401, "Unlock admin tools with your PIN first.", "elevate");
 }

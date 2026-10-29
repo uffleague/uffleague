@@ -143,31 +143,14 @@ test("each sign-in gets its own session; signing out one leaves the other", () =
   assert.ok(s.auth.sessionUser(b));
 });
 
-test("admin tools: a Super Admin signed in with their PIN unlocks them by entering that PIN again, for 30 minutes", () => {
+test("admin tools: signing in is all it takes for an account with a role; players get none", () => {
   const s = setup();
-  const { token } = s.auth.signIn({ username: "boss", pin: "86420", ip: "a" });
-  const before = s.auth.sessionUser(token);
-  assert.equal(before.role, "super_admin");
-  assert.equal(before.elevated, false);
-  status(() => s.auth.elevate({ token, user: before, pin: "86421", ip: "a" }), 401, /PIN isn't right/);
-  status(() => s.auth.elevate({ token, user: before, pin: "8642", ip: "a" }), 400);
-  status(() => s.auth.elevate({ token, user: before, pin: 86420, ip: "a" }), 400); // a number, not the 5-digit text
-  s.auth.elevate({ token, user: before, pin: "86420", ip: "a" });
-  assert.equal(s.auth.sessionUser(token).elevated, true);
-  s.clock.t += 31 * 60 * 1000; // unlocking lasts 30 minutes
-  assert.equal(s.auth.sessionUser(token).elevated, false);
-  s.auth.elevate({ token, user: s.auth.sessionUser(token), pin: "86420", ip: "a" });
-  s.auth.lockAdmin(token);
-  assert.equal(s.auth.sessionUser(token).elevated, false);
-});
-
-test("unlocking: players (no role) can't, even with their right PIN; wrong PINs lock out like sign-in", () => {
-  const s = setup();
-  const { token, user } = signUp(s, "player1", "48213");
-  status(() => s.auth.elevate({ token, user, pin: "48213", ip: "a" }), 403);
-  const boss = s.auth.signIn({ username: "boss", pin: "86420", ip: "a" });
-  for (let i = 0; i < 5; i++) status(() => s.auth.elevate({ token: boss.token, user: boss.user, pin: "11223", ip: `b${i}` }), 401);
-  status(() => s.auth.elevate({ token: boss.token, user: boss.user, pin: "86420", ip: "c" }), 429); // even the right PIN waits
+  const boss = s.auth.sessionUser(s.auth.signIn({ username: "boss", pin: "86420", ip: "a" }).token);
+  assert.equal(boss.role, "super_admin");
+  assert.ok(boss.perms.includes("roles.manage") && boss.perms.includes("credits.manage"));
+  const player = s.auth.sessionUser(signUp(s, "player1", "48213").token);
+  assert.equal(player.role, "user");
+  assert.deepEqual(player.perms, []);
 });
 
 test("bootstrap: only an existing, signed-in site account, only while there's no Super Admin; logged", () => {

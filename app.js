@@ -4114,7 +4114,6 @@
   ];
   const signin = { step: 1, username: "", error: "", busy: false };
   const signup = { username: "", error: "", busy: false };
-  let staffSignin = { error: "", busy: false };
 
   // Every POST carries the CSRF token the server put in a readable cookie
   const csrfToken = () => (document.cookie.match(/(?:^|;\s*)uffp_csrf=([0-9a-f]{32})/) || [])[1] || "";
@@ -4282,24 +4281,6 @@
       </form>`);
   }
 
-  // Staff and admins unlock admin tools on this session by entering their PIN again (only accounts with a role can).
-  // The server checks it; this card only asks.
-  function unlockCard(what = "admin tools") {
-    const u = ACCT.user;
-    return `
-      <form class="card auth-card unlock-card" id="staffForm" novalidate>
-        ${authBrand("Unlock Admin Tools", `Signed in as <b>${esc(u.username)}</b> (${ROLE_NAMES[u.role]}). Enter your PIN to open ${what}.`)}
-        <div class="auth-field">
-          <label for="staffPass">5-Digit PIN</label>
-          <div class="auth-input">${icon("lock", "auth-ico")}<input id="staffPass" type="password" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="current-password" placeholder="Enter your 5 digit pin" required data-pin data-autofocus>
-            <button type="button" class="auth-eye" data-show-pin="staffPass" aria-pressed="false" aria-label="Show PIN">${icon("eye", "sm")}</button></div>
-        </div>
-        ${authError(staffSignin.error)}
-        <button class="btn btn-primary auth-submit" ${staffSignin.busy ? "disabled" : ""}>${spinOr(staffSignin.busy, "Unlock")}</button>
-        <p class="auth-hint">Stays unlocked on this browser for 30 minutes.</p>
-      </form>`;
-  }
-
   // The signed-in person's own account
   let accountData = null;
   function accountPage() {
@@ -4331,7 +4312,7 @@
           </div>`}
           <dl class="acct-facts">
             <div><dt>Account ID</dt><dd><code>${esc(u.accountId)}</code></dd></div>
-            <div><dt>Sign-in</dt><dd>Username + 5-digit PIN${u.isStaff ? ". Admin tools ask for your PIN again to unlock." : ""}</dd></div>
+            <div><dt>Sign-in</dt><dd>Username + 5-digit PIN</dd></div>
             <div><dt>Forgot your PIN?</dt><dd>There's no reset by email or text yet. A league admin can set a new PIN for you.</dd></div>
             <div><dt>Player profile</dt><dd>Your account isn't linked to a UFF player profile.</dd></div>
           </dl>
@@ -4409,7 +4390,7 @@
 
   document.addEventListener("submit", async (e) => {
     const f = e.target;
-    if (!["signInForm", "signUpForm", "staffForm"].includes(f.id)) return;
+    if (!["signInForm", "signUpForm"].includes(f.id)) return;
     e.preventDefault();
     const next = safeNext(authParts()[1]);
     const go = (user) => {
@@ -4456,22 +4437,6 @@
         signup.busy = false; signup.error = err.message;
         render();
         return focusAuth();
-      }
-    }
-    if (f.id === "staffForm") {
-      const password = f.querySelector("#staffPass").value;
-      staffSignin = { busy: true, error: "" };
-      render();
-      try {
-        await localApi("/api/auth/elevate", { pin: password });
-        staffSignin = { busy: false, error: "" };
-        await loadAccount();
-        if (typeof uffAdminChanged === "function") uffAdminChanged();
-        pm.data = {};
-        render();
-      } catch (err) {
-        staffSignin = { busy: false, error: err.message };
-        render();
       }
     }
   });
@@ -4612,7 +4577,7 @@
       <p class="muted small">Low ${pmPts(lo)} &middot; high ${pmPts(hi)} &middot; ${ledger.length} changes</p>`;
   }
 
-  const pmState = (slot, what) => slot.code === "elevate" && ACCT.user ? `<div class="auth-wrap pm-unlock">${unlockCard(what)}</div>` : slot.loading ? `<div class="card pm-state"><span class="pm-spin"></span>Loading ${what}&hellip;</div>`
+  const pmState = (slot, what) => slot.loading ? `<div class="card pm-state"><span class="pm-spin"></span>Loading ${what}&hellip;</div>`
     : slot.error ? `<div class="card pm-state pm-state--error"><b>Couldn't load ${what}.</b><span>${esc(slot.error)}</span><button type="button" class="btn btn-ghost btn-sm" data-pm="retry">Try again</button></div>` : "";
 
   // Your points by the page title (your name and Sign Out are in the header's account menu)
@@ -5465,14 +5430,13 @@
     const head = `
       <div class="page-head page-head--row">
         <div><h1>UFF Admin</h1><p class="muted">Challenges, users, credits, rewards and permissions. The server checks every action and records it in the audit log.</p></div>
-        ${u && u.elevated ? `<div class="pm-account"><span class="pill">${esc(u.username)} &middot; ${ROLE_NAMES[u.role]}</span><button type="button" class="btn btn-ghost btn-sm" data-ua="lock">Lock admin tools</button></div>` : ""}
+        ${u && u.isStaff ? `<div class="pm-account"><span class="pill">${esc(u.username)} &middot; ${ROLE_NAMES[u.role]}</span></div>` : ""}
       </div>`;
     if (!LOCAL_SITE) return `<div class="wrap">${head}${empty("Not available here", "UFF Admin is being tested and isn't on the live site yet.")}</div>`;
     if (ACCT.error) return `<div class="wrap">${head}${authUnavailable()}</div>`;
     if (!ACCT.ready) return `<div class="wrap">${head}<div class="card pm-state"><span class="pm-spin"></span>Loading&hellip;</div></div>`;
     if (!u) return `<div class="wrap">${head}${signInPrompt("Sign in to open UFF Admin", "#/uff-admin", "Only accounts with a staff or admin role can use it.")}</div>`;
     if (!u.isStaff) return `<div class="wrap">${head}${empty("No admin access", "Your account doesn't have a staff or admin role. A Super Admin can give one on Admin Permissions.")}</div>`;
-    if (!u.elevated) return `<div class="wrap">${head}<div class="auth-wrap pm-unlock">${unlockCard("UFF Admin")}</div></div>`;
     const tabs = UA_TABS.filter(([, , p]) => can_(p));
     if (!tabs.some(([k]) => k === ua.tab)) ua.tab = "overview";
     const body = { overview: uaOverview, challenges: uaChallenges, users: uaUsers, credits: uaCredits, rewards: uaRewards,
@@ -5525,7 +5489,6 @@
       return out;
     } catch (err) {
       ua.err = err.message;
-      if (err.code === "elevate") { ua.confirm = null; await loadAccount(); }
       return null;
     } finally {
       ua.busy = false;
@@ -5550,7 +5513,7 @@
       <div class="pm-cols">
         <div class="card admin-card"><div class="admin-subhead">Your access<span class="muted small">${esc(d.you.roleLabel)}</span></div>
           <ul class="ua-perms">${d.you.perms.map((p) => `<li>${esc(PERM_LABEL[p] || p)}</li>`).join("")}</ul>
-          <p class="muted small">Unlocked until ${pmWhen(d.you.elevatedUntil)}.</p></div>
+          </div>
         <div class="card admin-card"><div class="admin-subhead">Shortcuts</div><div class="ua-links">
           ${can_("markets.manage") ? `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/manage">Markets (UFF Predictions &rarr; Manage)</a>` : ""}
           ${can_("challenges.manage_own") ? `<button type="button" class="btn btn-ghost btn-sm" data-ua="new-challenge">New challenge</button>` : ""}
@@ -5831,7 +5794,7 @@
             : `<div class="pm-fields"><label class="field">New role<select class="select" name="role">${Object.entries(ROLE_NAMES).map(([k, l]) => `<option value="${k}" ${u.role === k ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
               <div class="admin-actions"><button class="btn btn-primary btn-sm" ${ua.busy ? "disabled" : ""}>Review change</button></div>
               <p class="muted small">Staff: run their own challenges and review reward requests. Admin: also markets, users, credits, rewards and the audit log. Super Admin: also roles.
-              They unlock admin tools with their own PIN.</p>`}
+              It takes effect as soon as you confirm; they just sign in as usual.</p>`}
         </form>`;
     }
     return `
@@ -5850,7 +5813,7 @@
   /* -- Audit Logs -- */
 
   const AUDIT_GROUPS = [["", "Everything"], ["role.", "Roles"], ["credits.", "Credits"], ["challenge.", "Challenges"], ["reward.", "Rewards catalog"],
-    ["redemption.", "Redemptions"], ["market.", "Markets"], ["user.", "Account status"], ["admin.", "Admin unlocks"]];
+    ["redemption.", "Redemptions"], ["market.", "Markets"], ["user.", "Account status"]];
   function auditSummary(d) {
     const parts = [];
     if (d.username) parts.push(esc(d.username));
@@ -5918,11 +5881,6 @@
     }
     if (!app.contains(t)) return;
     const d = t.dataset;
-    if (d.ua === "lock") {
-      try { await localApi("/api/auth/lock", {}); } catch (err) {}
-      await loadAccount();
-      return render();
-    }
     if (d.ua === "confirm-no") { ua.confirm = null; ua.err = ""; return uaL.redraw(); }
     if (d.ua === "confirm-yes" && ua.confirm && !ua.busy) {
       const reasonEl = document.getElementById("uaReason");
@@ -7309,7 +7267,6 @@
     if (section === "uff-admin") uaRoute(parts);
     if (section === "account" && lastSection !== "account") accountData = null;
     if (section !== "sign-in" && section !== "create-account") { signin.error = signup.error = ""; if (section !== lastSection) signin.step = 1; }
-    if (section !== lastSection) staffSignin.error = "";
     lastSection = section;
     if (section === "updates") updatesFilter = UPDATE_TYPES[sub] ? sub : "all";
     if (section === "stats") {
@@ -7346,7 +7303,6 @@
     const label = NAV.find((n) => n.path === (section || ""));
     document.title = AUTH_TITLES[section] ? `${AUTH_TITLES[section]} | UFF` : label && label.path ? `${label.label} | UFF` : "UFF | United Flag Football";
     if (AUTH_TITLES[section] && section !== "account" && section !== "uff-admin") focusAuth();
-    if (section === "uff-admin" && document.getElementById("staffPass")) focusAuth();
     closeMenu();
     // Switching tabs on a team page keeps your place
     const teamOpen = section === "teams" && sub ? sub : null;

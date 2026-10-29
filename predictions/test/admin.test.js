@@ -78,7 +78,7 @@ test("credits: a retried request (same id) happens once; many different ones at 
   assert.deepEqual(s.ledger.mismatches(), []);
 });
 
-test("credits: only admins with unlocked tools; staff and players can't", () => {
+test("credits: only admins; staff and players can't", () => {
   const s = setup();
   const t = s.adminTools;
   s.user("fan_five");
@@ -87,11 +87,10 @@ test("credits: only admins with unlocked tools; staff and players can't", () => 
   status(() => t.adjust(staff, req), 403);
   status(() => t.adjust(s.user("sneaky"), req), 403);
   status(() => t.adjust(null, req), 401);
-  status(() => t.adjust({ ...s.admin, elevated: false }, req), 401, /Unlock/);
   status(() => t.search(staff, "fan"), 403);
 });
 
-test("roles: a Super Admin grants and revokes; recorded with who and when; less access locks admin tools at once", () => {
+test("roles: a Super Admin grants and revokes; recorded with who and when; both apply to a signed-in session at once", () => {
   const s = setup();
   const t = s.adminTools;
   s.user("rising");
@@ -99,11 +98,10 @@ test("roles: a Super Admin grants and revokes; recorded with who and when; less 
   assert.equal(r.user.role, "staff");
   assert.equal(r.user.roleGrantedBy, "boss");
   const { token } = s.auth.signIn({ username: "rising", pin: "13579", ip: "x" });
-  s.auth.elevate({ token, user: s.auth.sessionUser(token), pin: "13579", ip: "x" });
-  assert.equal(s.auth.sessionUser(token).elevated, true);
+  assert.ok(s.auth.sessionUser(token).perms.includes("redemptions.review")); // staff tools right away, no extra step
   t.setRole(s.admin, { accountId: acct(s, "rising"), username: "rising", role: "user", reason: "Season over" });
-  assert.equal(s.auth.sessionUser(token).elevated, false);
-  assert.equal(s.auth.sessionUser(token).role, "user");
+  assert.equal(s.auth.sessionUser(token).role, "user"); // the same session loses them straight away
+  assert.throws(() => s.rewards.requests(s.auth.sessionUser(token)), (e) => e.status === 403);
   const log = s.audit.list({ targetId: acct(s, "rising") }).rows.filter((x) => x.action.startsWith("role."));
   assert.deepEqual(log.map((x) => [x.action, x.detail.before.role, x.detail.after.role, x.by]), [["role.revoke", "staff", "user", "boss"], ["role.grant", "user", "staff", "boss"]]);
   assert.deepEqual(t.staffList(s.admin).map((u) => u.username), ["boss"]);
@@ -147,7 +145,7 @@ test("audit log: admins read it, filters work, nobody can edit or delete it, and
   s.user("fan_six");
   t.adjust(s.admin, { accountId: acct(s, "fan_six"), username: "fan_six", type: "add", amount: 5, reasonCode: "test", note: "Local test", idempotencyKey: randomUUID() });
   const all = t.auditLog(s.admin, {});
-  assert.ok(all.rows.length >= 3);
+  assert.deepEqual(all.rows.map((r) => r.action), ["credits.add", "role.bootstrap"]); // every change, newest first
   assert.deepEqual(t.auditLog(s.admin, { action: "credits." }).rows.map((r) => r.action), ["credits.add"]);
   assert.ok(t.auditLog(s.admin, { actor: "boss" }).rows.every((r) => r.by === "boss"));
   status(() => t.auditLog(s.user("curious"), {}), 403);

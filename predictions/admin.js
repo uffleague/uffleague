@@ -36,7 +36,7 @@ export function createAdminTools({ db, ledger, audit, limiter, now = Date.now })
     need(user, "admin.view");
     const count = (sql, ...a) => get(sql, ...a).n;
     return {
-      you: { username: user.username, role: user.role, roleLabel: ROLE_LABEL[user.role], perms: user.perms, elevatedUntil: user.elevatedUntil },
+      you: { username: user.username, role: user.role, roleLabel: ROLE_LABEL[user.role], perms: user.perms },
       users: { total: count("SELECT COUNT(*) AS n FROM users"), suspended: count("SELECT COUNT(*) AS n FROM users WHERE status = 'suspended'"),
         staff: count("SELECT COUNT(*) AS n FROM users WHERE role <> 'user'") },
       challenges: Object.fromEntries(all("SELECT status, COUNT(*) AS n FROM challenges GROUP BY status").map((r) => [r.status, r.n])),
@@ -134,8 +134,6 @@ export function createAdminTools({ db, ledger, audit, limiter, now = Date.now })
       if (u.status !== "active") fail(409, "That account is suspended. Reactivate it first.");
       const up = rank(role) > rank(u.role);
       run("UPDATE users SET role = ?, role_granted_at = ?, role_granted_by = ? WHERE id = ?", role, now(), user.id, u.id);
-      // Less access takes effect right away: their unlocked admin sessions lock
-      if (!up) run("UPDATE sessions SET elevated_until = 0 WHERE user_id = ?", u.id);
       audit.log({ actorId: user.id, action: up ? "role.grant" : "role.revoke", targetType: "user", targetId: u.account_id,
         detail: { username: u.username, before: { role: u.role }, after: { role }, reason } });
       return { user: person(get("SELECT * FROM users WHERE id = ?", u.id)) };

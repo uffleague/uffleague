@@ -99,9 +99,6 @@ export function createServer({ service, auth, challenges, rewards, admin, league
       if (method === "GET" && path === "/api/auth/session") return send(res, 200, { user }, cookies);
       if (method === "POST" && path === "/api/auth/login") return signedIn(auth.signIn({ username: body.username, pin: body.pin, ip }));
       if (method === "POST" && path === "/api/auth/signup") return signedIn(auth.createAccount({ username: body.username, pin: body.pin, confirmPin: body.confirmPin, ip }));
-      // Staff and above unlock admin tools on this session by entering their PIN again
-      if (method === "POST" && path === "/api/auth/elevate") return send(res, 200, auth.elevate({ token, user, pin: body.pin, ip }), cookies);
-      if (method === "POST" && path === "/api/auth/lock") { auth.lockAdmin(token); return send(res, 200, { ok: true }, cookies); }
       if (method === "POST" && path === "/api/auth/logout") {
         auth.logout(token);
         return send(res, 200, { ok: true }, [...cookies, cookie(SESSION, "", 0, { secure })]);
