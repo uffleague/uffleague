@@ -6,8 +6,9 @@
 //   POST /bot, GET /bot/deadlines, GET /bot/primetime (Authorization: Bearer <BOT_KEY>) -> the Discord bot (see below)
 //   GET /avatars?names=a,b -> Roblox headshots for player profiles (see avatars)
 //   GET /test, POST /test (Authorization: Bearer <GAME_KEY>) -> test log for the Roblox game (see gameTest)
-//   POST /game (Authorization: Bearer <GAME_KEY>) -> a finished game from the Roblox game, saved as a result (see gameResult)
-// Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
+//   POST /game (Authorization: Bearer <STATS_KEY>) -> a finished game from the Roblox game, saved as a result (see gameResult)
+// Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password);
+// STATS_KEY is the UFF stats server's key for POST /game (GAME_KEY also works there).
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
   renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, primetime: null, activity: [],
@@ -981,7 +982,7 @@ async function gameTest(req, env) {
 // A finished game from the Roblox game, passed on by the UFF stats server (uffstats on Heroku, POST /api/game).
 // It's matched to that week's scheduled game between the two teams and saved like a result entered on Admin,
 // box score included. A game that already has a result is left alone, so a score fixed on Admin isn't overwritten.
-//   POST /game  Authorization: Bearer <GAME_KEY>
+//   POST /game  Authorization: Bearer <STATS_KEY or GAME_KEY>
 //   { week, home_team: "DET", away_team: "SJS", home_score, away_score, player_of_game?, game_date?: "YYYY-MM-DD",
 //     home_stats: { <Roblox username>: { passing: {...}, rushing: {...}, receiving: {...}, defense: {...} } }, away_stats }
 //   -> { ok, id, score } | 404 no such game on the schedule | 409 already has a result
@@ -1018,7 +1019,8 @@ function gameBox(stats) {
 async function gameResult(req, env) {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const key = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!env.GAME_KEY || !key || !same(key, env.GAME_KEY)) return json({ error: "Wrong or missing game key." }, 401);
+  const keys = [env.STATS_KEY, env.GAME_KEY].filter(Boolean);
+  if (!key || !keys.some((k) => same(key, k))) return json({ error: "Wrong or missing game key." }, 401);
   const text = await req.text();
   if (text.length > GAME_BYTES) return json({ error: "That's too big (128 KB max)." }, 400);
   let g;
