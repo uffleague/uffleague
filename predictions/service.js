@@ -1,12 +1,15 @@
-// UFF Predictions on the local database: picks, settlement, the points ledger and admin actions.
-// Every balance change is a ledger row written in the same transaction as the change itself, and the client
+// UFF Predictions on the local database: picks, settlement and market admin.
+// Picks are free: making one never costs points, a wrong one never loses any, and a correct one earns the market's
+// points. Every balance change goes through ledger.js in the same transaction as the change itself, and the client
 // never sends a balance, an outcome or a stat: those come from the database and the league data (league.js).
 import { tx } from "./db.js";
 import * as core from "./core.js";
+import { createLedger } from "./ledger.js";
+import { createAudit } from "./audit.js";
+import { need, plays } from "./roles.js";
 
-export class HttpError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
-}
+import { HttpError } from "./errors.js";
+export { HttpError };
 const fail = (status, message) => { throw new HttpError(status, message); };
 
 const text = (v, max) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : "");
@@ -19,21 +22,18 @@ export function createService({ db, league, config, now = Date.now }) {
   const all = (sql, ...a) => st(sql).all(...a);
   const run = (sql, ...a) => st(sql).run(...a);
 
-  const audit = (userId, action, marketId, detail) =>
-    run("INSERT INTO audit (at, user_id, action, market_id, detail) VALUES (?, ?, ?, ?, ?)", now(), userId, action, marketId ?? null, JSON.stringify(detail ?? {}));
+  const ledger = createLedger({ db, now });
+  const auditLogger = createAudit({ db, now });
+  const audit = (userId, action, marketId, detail) => auditLogger.log({ actorId: userId, action: `market.${action}`, marketId, detail: detail ?? {} });
+  const addLedger = (userId, delta, kind, { marketId = null, predictionId = null, round = 0, note = null, actorId = null } = {}) =>
+    ledger.post({ userId, delta, kind, marketId, predictionId, round, note, actorId, allowNegative: kind === "reversal" });
+  // What a settled pick gives back. Free picks (all picks since migration 003): the market's points if correct.
+  // Picks made before then held points ("stake"): those pay double if correct and give the points back on a push or void.
+  const paidFor = (p, result) => (p.mode === "free" ? (result === "won" ? p.stake : 0) : core.payoutFor(result, p.stake));
 
-  // The only way a balance changes: the user's balance and the ledger row move together
-  function addLedger(userId, delta, kind, { marketId = null, predictionId = null, round = 0, note = null } = {}) {
-    const u = get("SELECT balance FROM users WHERE id = ?", userId);
-    const after = u.balance + delta;
-    run("UPDATE users SET balance = ? WHERE id = ?", after, userId);
-    run("INSERT INTO ledger (user_id, at, delta, balance_after, kind, market_id, prediction_id, round, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      userId, now(), delta, after, kind, marketId, predictionId, round, note);
-    return after;
-  }
-
-  const publicUser = (u) => u && { id: u.id, accountId: u.account_id, username: u.username, isAdmin: !!u.is_admin, balance: u.balance, createdAt: u.created_at };
-  const needAdmin = (u) => { if (!u || !u.isAdmin) fail(403, "Only admins can do that."); };
+  const publicUser = (u) => u && { id: u.id, accountId: u.account_id, username: u.username, role: u.role, isAdmin: u.role === "admin" || u.role === "super_admin",
+    isStaff: u.role !== "user", balance: u.balance, createdAt: u.created_at };
+  const needAdmin = (u) => need(u, "markets.manage");
 
   /* ---------- Market views ---------- */
 
@@ -132,7 +132,7 @@ export function createService({ db, league, config, now = Date.now }) {
 
   function predict(user, marketId, selection) {
     if (!user) fail(401, "Sign in to make a pick.");
-    if (user.isAdmin) fail(403, "Admin accounts run the markets, so they can't make picks.");
+    if (!plays(user)) fail(403, "Staff and admin accounts run the markets, so they can't make picks.");
     return tx(db, () => {
       const m = get("SELECT * FROM markets WHERE id = ?", Number(marketId));
       if (!m) fail(404, "That market doesn't exist.");
@@ -141,12 +141,10 @@ export function createService({ db, league, config, now = Date.now }) {
       if (status !== "open") fail(409, "Picks for this market are closed.");
       if (!core.optionsFor(m).some((o) => o.key === selection)) fail(400, "That isn't one of this market's choices.");
       if (get("SELECT id FROM predictions WHERE market_id = ? AND user_id = ?", m.id, user.id)) fail(409, "You already made a pick on this market. Picks can't be changed.");
-      const u = get("SELECT balance FROM users WHERE id = ?", user.id);
-      if (u.balance < m.stake) fail(400, `This pick uses ${m.stake} virtual points and you have ${u.balance}.`);
-      const { lastInsertRowid } = run("INSERT INTO predictions (market_id, user_id, selection, stake, created_at) VALUES (?, ?, ?, ?, ?)",
+      // Free: nothing comes off the balance. stake = the points this pick earns if it's correct.
+      const { lastInsertRowid } = run("INSERT INTO predictions (market_id, user_id, selection, stake, created_at, mode) VALUES (?, ?, ?, ?, ?, 'free')",
         m.id, user.id, selection, m.stake, now());
       const predictionId = Number(lastInsertRowid);
-      addLedger(user.id, -m.stake, "stake", { marketId: m.id, predictionId, note: "Pick made" });
       const c = counts(m.id);
       run("INSERT INTO snapshots (market_id, at, total, counts) VALUES (?, ?, ?, ?)", m.id, now(), Object.values(c).reduce((a, b) => a + b, 0), JSON.stringify(c));
       return { predictionId };
@@ -243,7 +241,7 @@ export function createService({ db, league, config, now = Date.now }) {
   // Takes back a settlement's payouts and refunds (a dispute or a void after settling): every pick goes back to pending
   function reverseSettlement(m, adminId, note) {
     all("SELECT * FROM predictions WHERE market_id = ? AND result <> 'pending'", m.id).forEach((p) => {
-      const paid = core.payoutFor(p.result, p.stake);
+      const paid = paidFor(p, p.result);
       if (paid) addLedger(p.user_id, -paid, "reversal", { marketId: m.id, predictionId: p.id, round: m.settlement_round, note });
       run("UPDATE predictions SET result = 'pending', settled_at = NULL WHERE id = ?", p.id);
     });
@@ -314,8 +312,8 @@ export function createService({ db, league, config, now = Date.now }) {
     all("SELECT * FROM predictions WHERE market_id = ? AND result = 'pending'", m.id).forEach((p) => {
       const result = outcome === "push" ? "push" : p.selection === outcome ? "won" : "lost";
       run("UPDATE predictions SET result = ?, settled_at = ? WHERE id = ?", result, now(), p.id);
-      const paid = core.payoutFor(result, p.stake);
-      if (paid) addLedger(p.user_id, paid, result === "won" ? "payout" : "refund", { marketId: m.id, predictionId: p.id, round,
+      const paid = paidFor(p, result);
+      if (paid) addLedger(p.user_id, paid, result === "won" ? "payout" : "refund", { marketId: m.id, predictionId: p.id, round, actorId: adminId,
         note: result === "won" ? "Correct pick" : "Push: points back" });
     });
     run(`INSERT INTO resolutions (market_id, round, outcome, stat_value, score_a, score_b, source, note, by_user, at)
@@ -329,7 +327,7 @@ export function createService({ db, league, config, now = Date.now }) {
     const round = m.settlement_round + 1;
     all("SELECT * FROM predictions WHERE market_id = ? AND result = 'pending'", m.id).forEach((p) => {
       run("UPDATE predictions SET result = 'void', settled_at = ? WHERE id = ?", now(), p.id);
-      addLedger(p.user_id, p.stake, "refund", { marketId: m.id, predictionId: p.id, round, note: "Market void: points back" });
+      if (p.mode === "stake") addLedger(p.user_id, p.stake, "refund", { marketId: m.id, predictionId: p.id, round, actorId: adminId, note: "Market void: points back" });
     });
     run("INSERT INTO resolutions (market_id, round, outcome, source, note, by_user, at) VALUES (?, ?, 'void', 'void', ?, ?, ?)", m.id, round, note, adminId, now());
     run("UPDATE markets SET status = 'void', hold = NULL, settlement_round = ?, updated_at = ? WHERE id = ?", round, now(), m.id);
@@ -415,9 +413,9 @@ export function createService({ db, league, config, now = Date.now }) {
 
   function boardRows() {
     return all(`SELECT u.id, u.username, u.balance, COUNT(p.id) AS picks,
-        COALESCE(SUM(CASE WHEN p.result = 'pending' THEN p.stake ELSE 0 END), 0) AS inPlay,
+        COALESCE(SUM(CASE WHEN p.result = 'pending' AND p.mode = 'stake' THEN p.stake ELSE 0 END), 0) AS inPlay,
         COALESCE(SUM(p.result = 'won'), 0) AS won, COALESCE(SUM(p.result = 'lost'), 0) AS lost
-      FROM users u LEFT JOIN predictions p ON p.user_id = u.id WHERE u.is_admin = 0 GROUP BY u.id`);
+      FROM users u LEFT JOIN predictions p ON p.user_id = u.id WHERE u.role = 'user' AND u.status = 'active' GROUP BY u.id`);
   }
 
   function leaderboard() {
@@ -456,12 +454,19 @@ export function createService({ db, league, config, now = Date.now }) {
     };
   }
 
+  // Market history (the full log is on UFF Admin -> Audit Logs)
   function auditLog(admin, { marketId = null, limit = 200 } = {}) {
     needAdmin(admin);
-    const rows = marketId
-      ? all("SELECT a.*, u.username FROM audit a LEFT JOIN users u ON u.id = a.user_id WHERE a.market_id = ? ORDER BY a.id DESC LIMIT ?", Number(marketId), limit)
-      : all("SELECT a.*, u.username FROM audit a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.id DESC LIMIT ?", Math.min(Number(limit) || 200, 500));
-    return rows.map((r) => ({ id: r.id, at: r.at, by: r.username, action: r.action, marketId: r.market_id, detail: JSON.parse(r.detail || "{}") }));
+    const { rows } = auditLogger.list(marketId ? { targetType: "market", targetId: String(Number(marketId)), limit } : { action: "market.", limit });
+    return rows.map((r) => ({ ...r, action: r.action.replace(/^market\./, "") }));
+  }
+
+  // Market cards for challenge legs (the same view the market pages use), by id
+  async function marketsByIds(ids, userId = null) {
+    const l = await view();
+    const out = new Map();
+    [...new Set(ids)].forEach((id) => { const m = get("SELECT * FROM markets WHERE id = ?", id); if (m) out.set(id, marketView(m, l.view, userId)); });
+    return out;
   }
 
   // Games a market can be made on (not final yet), with players seen in each team's box scores
@@ -489,5 +494,5 @@ export function createService({ db, league, config, now = Date.now }) {
   }
 
   return { listMarkets, getMarket, predict, createMarket, editMarket, setState, preview, resolve,
-    voidMarket, postDemoResult, leaderboard, dashboard, auditLog, games };
+    voidMarket, postDemoResult, leaderboard, dashboard, auditLog, games, marketsByIds };
 }

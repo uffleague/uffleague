@@ -1,4 +1,5 @@
-// UFF accounts on the local server: a username and a 5-digit PIN for players, a long password for local admins.
+// UFF accounts on the local server: a username and a 5-digit PIN. Staff and admins are the same accounts with a role
+// (roles.js), plus an admin password that unlocks admin tools on a session (elevate below).
 // A 5-digit PIN is only 100,000 possibilities, so it's kept from being guessed by the server, not by its length:
 //   - PINs are hashed with Argon2id plus a pepper (a secret key kept outside the database, see server.js), so a
 //     copied database alone can't be used to try PINs
@@ -8,7 +9,10 @@
 // Nothing here ever logs or returns a PIN.
 import { argon2Sync, randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from "node:crypto";
 import { tx } from "./db.js";
-import { HttpError } from "./service.js";
+import { HttpError } from "./errors.js";
+import { createLedger } from "./ledger.js";
+import { createAudit } from "./audit.js";
+import { PERMISSIONS } from "./roles.js";
 
 const fail = (status, message) => { throw new HttpError(status, message); };
 const sha = (s) => createHash("sha256").update(s).digest("hex");
@@ -66,10 +70,16 @@ export function createAuth({ db, config, now = Date.now }) {
   const st = (sql) => db.prepare(sql);
   const get = (sql, ...a) => st(sql).get(...a);
   const run = (sql, ...a) => st(sql).run(...a);
+  const ledger = createLedger({ db, now });
+  const audit = createAudit({ db, now });
   let dummy = null; // a hash to check against when the username doesn't exist, so it takes just as long
   const dummyHash = () => (dummy = dummy || hashSecret("00000", pepper));
+  const elevateMs = (config.elevateMinutes || 30) * 60000;
 
-  const publicUser = (u) => u && { id: u.id, accountId: u.account_id, username: u.username, isAdmin: !!u.is_admin, balance: u.balance, createdAt: u.created_at };
+  const publicUser = (u, s = null) => u && { id: u.id, accountId: u.account_id, username: u.username, role: u.role, status: u.status,
+    isAdmin: u.role === "admin" || u.role === "super_admin", isStaff: u.role !== "user", perms: PERMISSIONS[u.role] || [],
+    hasAdminPassword: !!u.staff_secret, balance: u.balance, createdAt: u.created_at,
+    elevated: !!(s && u.role !== "user" && s.elevated_until > now()), elevatedUntil: s && s.elevated_until > now() ? s.elevated_until : null };
 
   /* ---------- Throttling ---------- */
 
@@ -106,68 +116,69 @@ export function createAuth({ db, config, now = Date.now }) {
     run("DELETE FROM sessions WHERE expires_at <= ? OR last_seen <= ?", now(), now() - config.sessionIdleHours * 3600000);
     run("INSERT INTO sessions (token_hash, user_id, expires_at, created_at, last_seen) VALUES (?, ?, ?, ?, ?)",
       sha(token), userId, now() + config.sessionDays * 86400000, now(), now());
+    run("UPDATE users SET last_sign_in_at = ? WHERE id = ?", now(), userId);
     return token;
   }
-  // A session ends at its expiry, or once it goes unused for sessionIdleHours
+  // A session ends at its expiry, once it goes unused for sessionIdleHours, or when the account is suspended
   function sessionUser(token) {
     if (typeof token !== "string" || !/^[0-9a-f]{64}$/.test(token)) return null;
     const s = get("SELECT * FROM sessions WHERE token_hash = ?", sha(token));
     if (!s) return null;
-    if (s.expires_at <= now() || now() - s.last_seen > config.sessionIdleHours * 3600000) {
+    const u = get("SELECT * FROM users WHERE id = ?", s.user_id);
+    if (!u || u.status !== "active" || s.expires_at <= now() || now() - s.last_seen > config.sessionIdleHours * 3600000) {
       run("DELETE FROM sessions WHERE token_hash = ?", s.token_hash);
       return null;
     }
     if (now() - s.last_seen > 60000) run("UPDATE sessions SET last_seen = ? WHERE token_hash = ?", now(), s.token_hash);
-    return publicUser(get("SELECT * FROM users WHERE id = ?", s.user_id));
+    return publicUser(u, s);
   }
   const logout = (token) => { if (typeof token === "string" && token) run("DELETE FROM sessions WHERE token_hash = ?", sha(token)); };
 
-  /* ---------- Signing in ---------- */
+  /* ---------- Signing in (PIN) ---------- */
 
   // One answer for every wrong guess, whether or not the username exists
-  function check({ username, secret, kind, ip }) {
-    const name = String(username ?? "").trim();
-    const userKey = `user:${kind}:${name.toLowerCase()}`, ipKey = `ip:${ip || "?"}`;
-    const wait = waitFor([userKey, ipKey]);
-    if (wait > 0) tooMany(wait);
-    countMiss(userKey, ipKey); // counted before checking, so requests sent all at once can't skip the limit
-    const u = get("SELECT * FROM users WHERE username = ?", name);
-    const right = u && u.credential === kind && (kind === "password") === !!u.is_admin;
-    const ok = verifySecret(String(secret), right ? u.pass_hash : dummyHash(), right ? u.pass_salt : "", pepper) && right;
-    if (!ok) fail(401, kind === "pin" ? "That username and PIN don't match an account." : "Wrong username or password.");
-    undoMiss(userKey, ipKey);
-    return { token: startSession(u.id), user: publicUser(u) };
-  }
-
   function signIn({ username, pin, ip }) {
     const name = String(username ?? "").trim();
     const problem = usernameProblem(name) || pinProblem(pin);
     if (problem) fail(400, problem);
-    return check({ username: name, secret: pin, kind: "pin", ip });
+    const userKey = `user:pin:${name.toLowerCase()}`, ipKey = `ip:${ip || "?"}`;
+    const wait = waitFor([userKey, ipKey]);
+    if (wait > 0) tooMany(wait);
+    countMiss(userKey, ipKey); // counted before checking, so requests sent all at once can't skip the limit
+    const u = get("SELECT * FROM users WHERE username = ?", name);
+    const right = u && u.credential === "pin";
+    const ok = verifySecret(pin, right ? u.pass_hash : dummyHash(), right ? u.pass_salt : "", pepper) && right;
+    if (!ok) fail(401, "That username and PIN don't match an account.");
+    undoMiss(userKey, ipKey);
+    // Only someone with the right PIN learns an account is suspended
+    if (u.status !== "active") fail(403, "This account is suspended. Contact a league admin.");
+    return { token: startSession(u.id), user: publicUser(u) };
   }
 
-  function adminSignIn({ username, password, ip }) {
-    if (typeof password !== "string" || !password || password.length > 200 || !String(username ?? "").trim()) fail(400, "Enter the admin username and password.");
-    return check({ username, secret: password, kind: "password", ip });
+  /* ---------- Unlocking admin tools (staff and above) ---------- */
+
+  // A role alone doesn't open admin tools: the person also enters their admin password, which unlocks them on
+  // this one session for elevateMinutes. A stolen or guessed PIN can't do it.
+  function elevate({ token, user, password, ip }) {
+    if (!user) fail(401, "Sign in first.");
+    if (user.role === "user") fail(403, "Your account doesn't have admin access.");
+    const u = get("SELECT * FROM users WHERE id = ?", user.id);
+    if (!u.staff_secret) fail(409, `No admin password is set for this account yet. On this computer run: node predictions/accounts.js set-admin-password ${u.username}`);
+    if (typeof password !== "string" || !password || password.length > 200) fail(400, "Enter your admin password.");
+    const userKey = `elevate:${u.id}`, ipKey = `ip:${ip || "?"}`;
+    const wait = waitFor([userKey, ipKey]);
+    if (wait > 0) tooMany(wait);
+    countMiss(userKey, ipKey);
+    if (!verifySecret(password, u.staff_secret, "", pepper)) fail(401, "That admin password isn't right.");
+    undoMiss(userKey, ipKey);
+    const until = now() + elevateMs;
+    run("UPDATE sessions SET elevated_until = ? WHERE token_hash = ?", until, sha(token));
+    audit.log({ actorId: u.id, action: "admin.unlock", targetType: "user", targetId: u.account_id, detail: { until } });
+    return { elevatedUntil: until };
   }
+  const lockAdmin = (token) => { if (typeof token === "string" && token) run("UPDATE sessions SET elevated_until = 0 WHERE token_hash = ?", sha(token)); };
 
   /* ---------- New accounts ---------- */
-
-  function insertUser({ username, hash, credential, isAdmin }) {
-    return tx(db, () => {
-      if (get("SELECT id FROM users WHERE username = ?", username)) fail(409, "That username is taken.");
-      const { lastInsertRowid } = run(`INSERT INTO users (username, pass_hash, pass_salt, is_admin, balance, created_at, account_id, credential)
-        VALUES (?, ?, '', ?, 0, ?, ?, ?)`, username, hash, isAdmin ? 1 : 0, now(), randomUUID(), credential);
-      const id = Number(lastInsertRowid);
-      // Starting virtual points: once, when the account is made (never on sign-in). Admins don't play.
-      if (!isAdmin) {
-        run("UPDATE users SET balance = ? WHERE id = ?", config.startBalance, id);
-        run("INSERT INTO ledger (user_id, at, delta, balance_after, kind, note) VALUES (?, ?, ?, ?, 'grant', ?)",
-          id, now(), config.startBalance, config.startBalance, "Starting virtual points (no cash value)");
-      }
-      return get("SELECT * FROM users WHERE id = ?", id);
-    });
-  }
 
   function createAccount({ username, pin, confirmPin, ip }) {
     const name = String(username ?? "").trim();
@@ -183,19 +194,23 @@ export function createAuth({ db, config, now = Date.now }) {
     if (r.failures >= L.signupMax) tooMany(r.window_start + L.signupWindowMs - now());
     r.failures++;
     put(r);
-    const u = insertUser({ username: name, hash: hashSecret(pin, pepper), credential: "pin", isAdmin: false });
+    const hash = hashSecret(pin, pepper);
+    const u = tx(db, () => {
+      if (get("SELECT id FROM users WHERE username = ?", name)) fail(409, "That username is taken.");
+      // Every new account is a plain user; roles are only ever given afterwards by a Super Admin (or the local bootstrap)
+      const { lastInsertRowid } = run(`INSERT INTO users (username, pass_hash, pass_salt, balance, created_at, account_id, credential, role, status)
+        VALUES (?, ?, '', 0, ?, ?, 'pin', 'user', 'active')`, name, hash, now(), randomUUID());
+      const id = Number(lastInsertRowid);
+      // Starting virtual points: once, when the account is made (never on sign-in)
+      ledger.post({ userId: id, delta: config.startBalance, kind: "grant", note: "Starting virtual points (no cash value)", idempotencyKey: `grant:${id}` });
+      return get("SELECT * FROM users WHERE id = ?", id);
+    });
     return { token: startSession(u.id), user: publicUser(u) };
   }
 
-  // Local admins (made by server.js on first start, or the accounts tool)
-  function createAdmin({ username, password }) {
-    const name = String(username ?? "").trim();
-    if (usernameProblem(name)) fail(400, usernameProblem(name));
-    if (typeof password !== "string" || password.length < 12) fail(400, "Admin passwords need at least 12 characters.");
-    return publicUser(insertUser({ username: name, hash: hashSecret(password, pepper), credential: "password", isAdmin: true }));
-  }
+  /* ---------- The accounts tool (this computer only) ---------- */
 
-  // The accounts tool: there's no PIN reset by email or text yet, so a local admin sets a new PIN here.
+  // There's no PIN reset by email or text yet, so a local admin sets a new PIN here.
   // Signs the account out everywhere and clears its lockout.
   function setPin(username, pin) {
     const problem = pinProblem(pin);
@@ -203,11 +218,54 @@ export function createAuth({ db, config, now = Date.now }) {
     if (easyPin(pin)) fail(400, "That PIN is too easy to guess.");
     const u = get("SELECT * FROM users WHERE username = ?", String(username ?? "").trim());
     if (!u) fail(404, "No account has that username.");
-    if (u.is_admin) fail(400, "Admin accounts use a password, not a PIN.");
     tx(db, () => {
       run("UPDATE users SET pass_hash = ?, pass_salt = '', credential = 'pin' WHERE id = ?", hashSecret(pin, pepper), u.id);
       run("DELETE FROM sessions WHERE user_id = ?", u.id);
       run("DELETE FROM auth_throttle WHERE key = ?", `user:pin:${u.username.toLowerCase()}`);
+    });
+    return publicUser(get("SELECT * FROM users WHERE id = ?", u.id));
+  }
+
+  // The admin password for an account that has (or is about to get) staff access. Ends its unlocked sessions.
+  function setAdminPassword(username, password) {
+    if (typeof password !== "string" || password.length < 12 || password.length > 200) fail(400, "Admin passwords need at least 12 characters.");
+    if (/^\d+$/.test(password)) fail(400, "An admin password can't be only digits.");
+    const u = get("SELECT * FROM users WHERE username = ?", String(username ?? "").trim());
+    if (!u) fail(404, "No account has that username.");
+    run("UPDATE users SET staff_secret = ? WHERE id = ?", hashSecret(password, pepper), u.id);
+    run("UPDATE sessions SET elevated_until = 0 WHERE user_id = ?", u.id);
+    run("DELETE FROM auth_throttle WHERE key = ?", `elevate:${u.id}`);
+    audit.log({ actorId: null, action: "admin.password_set", targetType: "user", targetId: u.account_id, detail: { username: u.username, via: "local accounts tool" } });
+    return publicUser(get("SELECT * FROM users WHERE id = ?", u.id));
+  }
+
+  // The first Super Admin, set up on this computer. Only works while there is no Super Admin, only for an existing
+  // PIN account that has really been signed into (made and used through the site), never for a made-up name.
+  function bootstrapSuperAdmin(username, password) {
+    if (get("SELECT id FROM users WHERE role = 'super_admin'")) fail(409, "There's already a Super Admin. Give roles on the Admin Permissions page instead.");
+    const u = get("SELECT * FROM users WHERE username = ?", String(username ?? "").trim());
+    if (!u) fail(404, "No account has that username. Create it on the site first (Create an account), then run this again.");
+    if (u.credential !== "pin" || !u.last_sign_in_at) fail(409, "That account hasn't been set up through the site's sign-up and sign-in yet.");
+    if (u.status !== "active") fail(409, "That account is suspended.");
+    setAdminPassword(u.username, password);
+    tx(db, () => {
+      run("UPDATE users SET role = 'super_admin', role_granted_at = ?, role_granted_by = NULL WHERE id = ?", now(), u.id);
+      audit.log({ actorId: null, action: "role.bootstrap", targetType: "user", targetId: u.account_id,
+        detail: { username: u.username, before: { role: u.role }, after: { role: "super_admin" }, reason: "First Super Admin, set up with the local accounts tool" } });
+    });
+    return publicUser(get("SELECT * FROM users WHERE id = ?", u.id));
+  }
+
+  // Local recovery: take a role away from the command line (the Admin Permissions page does this normally)
+  function revokeRoleLocally(username) {
+    const u = get("SELECT * FROM users WHERE username = ?", String(username ?? "").trim());
+    if (!u) fail(404, "No account has that username.");
+    if (u.role === "user") fail(409, "That account has no role to take away.");
+    tx(db, () => {
+      run("UPDATE users SET role = 'user', role_granted_at = ?, role_granted_by = NULL WHERE id = ?", now(), u.id);
+      run("UPDATE sessions SET elevated_until = 0 WHERE user_id = ?", u.id);
+      audit.log({ actorId: null, action: "role.revoke", targetType: "user", targetId: u.account_id,
+        detail: { username: u.username, before: { role: u.role }, after: { role: "user" }, reason: "Taken away with the local accounts tool" } });
     });
     return publicUser(get("SELECT * FROM users WHERE id = ?", u.id));
   }
@@ -218,8 +276,9 @@ export function createAuth({ db, config, now = Date.now }) {
     const u = get("SELECT * FROM users WHERE id = ?", user.id);
     const picks = get(`SELECT COUNT(*) AS n, COALESCE(SUM(result = 'won'), 0) AS won, COALESCE(SUM(result = 'lost'), 0) AS lost,
       COALESCE(SUM(result = 'pending'), 0) AS pending FROM predictions WHERE user_id = ?`, u.id);
-    return { user: publicUser(u), picks: { total: picks.n, won: picks.won, lost: picks.lost, pending: picks.pending } };
+    return { user: { ...publicUser(u), elevated: user.elevated, elevatedUntil: user.elevatedUntil },
+      roleGrantedAt: u.role_granted_at, picks: { total: picks.n, won: picks.won, lost: picks.lost, pending: picks.pending } };
   }
 
-  return { signIn, adminSignIn, createAccount, createAdmin, setPin, sessionUser, logout, profile };
+  return { signIn, createAccount, setPin, setAdminPassword, bootstrapSuperAdmin, revokeRoleLocally, elevate, lockAdmin, sessionUser, logout, profile };
 }

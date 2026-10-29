@@ -6,7 +6,8 @@ import { setup, ouInput, gwInput, HOUR, T0 } from "./helpers.js";
 
 let s, server, base, csrf;
 const start = async (cfg) => {
-  const srv = createServer({ service: s.service, auth: s.auth, league: s.league, config: cfg, port: () => srv.address().port });
+  const srv = createServer({ service: s.service, auth: s.auth, challenges: s.challenges, rewards: s.rewards, admin: s.adminTools, league: s.league, config: cfg,
+    port: () => srv.address().port });
   await new Promise((r) => srv.listen(0, "127.0.0.1", r));
   return srv;
 };
@@ -31,7 +32,12 @@ const call = async (path, { method = "GET", body, session, headers = {}, noCsrf 
   return { status: res.status, setCookie, session: setCookie.split(";")[0], data: type.includes("json") ? await res.json() : await res.text(), res };
 };
 const signup = async (username, pin = "48213") => (await call("/api/auth/signup", { method: "POST", body: { username, pin, confirmPin: pin } })).session;
-const adminSession = async () => (await call("/api/auth/admin-login", { method: "POST", body: { username: "boss", password: "adminpass1234" } })).session;
+// The Super Admin signs in with their PIN like anyone, then unlocks admin tools with the admin password
+const adminSession = async () => {
+  const session = (await call("/api/auth/login", { method: "POST", body: { username: "boss", pin: "86420" } })).session;
+  await call("/api/auth/elevate", { method: "POST", body: { password: "adminpass1234" }, session });
+  return session;
+};
 
 test("guests can read every public thing without an account", async () => {
   await s.service.createMarket(s.admin, gwInput({ gameId: "T-3", closesAt: T0 + 5 * HOUR }));
@@ -103,7 +109,7 @@ test("a pick goes through the API and your dashboard and account show only yours
   const me = (await call("/api/predictions/me", { session: bob })).data;
   assert.equal(me.user.username, "bob_h");
   assert.deepEqual(me.active.map((m) => m.mine.selection), ["b"]);
-  assert.equal(me.user.balance, 950);
+  assert.equal(me.user.balance, 1000); // picks are free
   const acct = (await call("/api/account", { session: bob })).data;
   assert.equal(acct.user.username, "bob_h");
   assert.equal(acct.picks.total, 1);
@@ -116,7 +122,7 @@ test("the client can't set its own balance, stake, result or role", async () => 
   assert.equal(r0.data.user.balance, 1000);
   await call(`/api/predictions/markets/${id}/predict`, { method: "POST", session: r0.session, body: { selection: "over", stake: 1, balance: 999999, result: "won" } });
   const me = (await call("/api/predictions/me", { session: r0.session })).data;
-  assert.equal(me.user.balance, 950);
+  assert.equal(me.user.balance, 1000); // picks are free; the sent "balance" is ignored
   assert.equal(me.active[0].mine.stake, 50);
   assert.equal(me.active[0].mine.result, "pending");
   assert.equal((await call("/api/predictions/admin/audit", { session: r0.session })).status, 403);
@@ -130,7 +136,7 @@ test("admin endpoints: 401 signed out, 403 for players, work for the admin; play
     assert.equal((await call(path, { method, body, session: u })).status, 403, path);
   }
   assert.equal((await call("/api/predictions/admin/audit", { session: await adminSession() })).status, 200);
-  assert.equal((await call("/api/auth/admin-login", { method: "POST", body: { username: "plainuser", password: "48213" } })).status, 401);
+  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { password: "48213" }, session: u })).status, 403); // players can't unlock admin tools
 });
 
 test("admin can't make picks through the API", async () => {
@@ -182,4 +188,78 @@ test("only the site's files are served: no database, source, git, pepper or secr
     "/package.json", "/logos/../package.json", "/%2e%2e/package.json", "/.claude/settings.local.json", "/node_modules/"]) {
     assert.equal((await call(p)).status, 404, p);
   }
+});
+
+/* ---------- Admin expansion: challenges, rewards, credits, roles over HTTP ---------- */
+
+test("guests can browse challenges and the rewards shop; anything personal or admin asks them to sign in", async () => {
+  for (const p of ["/api/challenges", "/api/rewards"]) assert.equal((await call(p)).status, 200, p);
+  for (const p of ["/api/challenges/mine", "/api/rewards/mine", "/api/admin/overview", "/api/admin/users?q=a", "/api/admin/audit"]) {
+    assert.equal((await call(p)).status, 401, p);
+  }
+  assert.equal((await call("/api/rewards/redeem", { method: "POST", body: { rewardId: 1, idempotencyKey: "abcdefgh12" } })).status, 401);
+});
+
+test("admin routes: players get 403; a Super Admin with only a PIN session gets 401 'elevate' until they unlock", async () => {
+  const player = await signup("routeplayer");
+  for (const p of ["/api/admin/overview", "/api/admin/users?q=a", "/api/admin/audit", "/api/admin/staff", "/api/admin/redemptions"]) {
+    assert.equal((await call(p, { session: player })).status, 403, p);
+  }
+  assert.equal((await call("/api/admin/credits", { method: "POST", session: player, body: { type: "add" } })).status, 403);
+  const pinOnly = (await call("/api/auth/login", { method: "POST", body: { username: "boss", pin: "86420" } })).session;
+  const locked = await call("/api/admin/overview", { session: pinOnly });
+  assert.equal(locked.status, 401);
+  assert.equal(locked.data.code, "elevate");
+  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { password: "86420" }, session: pinOnly })).status, 401); // the PIN isn't it
+  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { password: "adminpass1234" }, session: pinOnly })).status, 200);
+  assert.equal((await call("/api/admin/overview", { session: pinOnly })).status, 200);
+  await call("/api/auth/lock", { method: "POST", body: {}, session: pinOnly });
+  assert.equal((await call("/api/admin/overview", { session: pinOnly })).data.code, "elevate");
+});
+
+test("credits over HTTP: duplicate submits with one request id land once; parallel different ones all land", async () => {
+  const fan = await signup("httpfan");
+  const admin = await adminSession();
+  const found = (await call("/api/admin/users?q=httpfan", { session: admin })).data.users[0];
+  const body = { accountId: found.accountId, username: "httpfan", type: "add", amount: 40, reasonCode: "event", note: "HTTP test", idempotencyKey: "same-key-123456" };
+  const dupes = await Promise.all(Array.from({ length: 5 }, () => call("/api/admin/credits", { method: "POST", session: admin, body })));
+  assert.ok(dupes.every((r) => r.status === 200));
+  const many = await Promise.all(Array.from({ length: 8 }, (_, i) => call("/api/admin/credits", { method: "POST", session: admin,
+    body: { ...body, amount: 5, idempotencyKey: `parallel-${i}-abcdef` } })));
+  assert.ok(many.every((r) => r.status === 200));
+  assert.equal((await call("/api/account", { session: fan })).data.user.balance, 1000 + 40 + 8 * 5);
+  const set = await call("/api/admin/credits", { method: "POST", session: admin, body: { ...body, type: "set", target: 10, idempotencyKey: "set-no-confirm-1" } });
+  assert.equal(set.status, 400); // an exact balance has to be confirmed
+});
+
+test("redeeming over HTTP: refreshes and double clicks (same request id) take the points once; history is private", async () => {
+  const admin = await adminSession();
+  const made = await call("/api/admin/rewards", { method: "POST", session: admin, body: { name: "HTTP badge", category: "badge", cost: 200, enabled: true, requiresApproval: true } });
+  assert.equal(made.status, 200);
+  const buyer = await signup("httpbuyer");
+  const other = await signup("httpother");
+  const body = { rewardId: made.data.id, idempotencyKey: "redeem-once-12345" };
+  const clicks = await Promise.all(Array.from({ length: 6 }, () => call("/api/rewards/redeem", { method: "POST", session: buyer, body })));
+  assert.ok(clicks.every((r) => r.status === 200));
+  assert.equal(new Set(clicks.map((r) => r.data.redemption.id)).size, 1);
+  assert.equal((await call("/api/account", { session: buyer })).data.user.balance, 800);
+  assert.equal((await call("/api/rewards/mine", { session: buyer })).data.redemptions.length, 1);
+  assert.equal((await call("/api/rewards/mine", { session: other })).data.redemptions.length, 0);
+  const id = clicks[0].data.redemption.id;
+  assert.equal((await call(`/api/rewards/redemptions/${id}/cancel`, { method: "POST", body: {}, session: other })).status, 404);
+  const pending = (await call("/api/admin/redemptions?status=pending", { session: admin })).data.redemptions;
+  assert.ok(pending.some((r) => r.id === id && r.user.username === "httpbuyer"));
+});
+
+test("roles over HTTP: only a Super Admin grants; the grant shows up and is audited", async () => {
+  await signup("httpstaffer");
+  const admin = await adminSession();
+  const target = (await call("/api/admin/users?q=httpstaffer", { session: admin })).data.users[0];
+  const player = await signup("httpwannabe");
+  const self = (await call("/api/admin/users?q=httpwannabe", { session: admin })).data.users[0];
+  assert.equal((await call("/api/admin/roles", { method: "POST", session: player, body: { accountId: self.accountId, username: "httpwannabe", role: "super_admin", reason: "me" } })).status, 403);
+  const r = await call("/api/admin/roles", { method: "POST", session: admin, body: { accountId: target.accountId, username: "httpstaffer", role: "staff", reason: "Runs challenges" } });
+  assert.equal(r.status, 200);
+  assert.ok((await call("/api/admin/staff", { session: admin })).data.staff.some((u) => u.username === "httpstaffer" && u.roleGrantedBy === "boss"));
+  assert.ok((await call("/api/admin/audit?action=role.", { session: admin })).data.rows.some((a) => a.action === "role.grant" && a.detail.after.role === "staff"));
 });

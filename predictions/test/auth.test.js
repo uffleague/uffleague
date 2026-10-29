@@ -57,7 +57,7 @@ test("a second identical sign-up (double click) doesn't make a second account or
   signUp(s, "clicker");
   status(() => signUp(s, "clicker"), 409);
   assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'clicker'").get().n, 1);
-  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM ledger WHERE kind = 'grant'").get().n, 1);
+  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM ledger l JOIN users u ON u.id = l.user_id WHERE l.kind = 'grant' AND u.username = 'clicker'").get().n, 1);
 });
 
 test("sign in: right PIN works, leading zeroes matter, wrong PIN and unknown name get the same answer", () => {
@@ -143,21 +143,66 @@ test("each sign-in gets its own session; signing out one leaves the other", () =
   assert.ok(s.auth.sessionUser(b));
 });
 
-test("admins use a password, not a PIN; players can't use the admin sign-in", () => {
+test("a PIN never opens admin tools: a Super Admin signed in with their PIN still has to enter the admin password", () => {
   const s = setup();
-  signUp(s, "player1", "48213");
-  assert.ok(s.auth.adminSignIn({ username: "boss", password: "adminpass1234", ip: "a" }).user.isAdmin);
-  status(() => s.auth.adminSignIn({ username: "player1", password: "48213", ip: "a" }), 401);
-  status(() => s.auth.signIn({ username: "boss", pin: "12345", ip: "a" }), 401);
-  status(() => s.auth.createAdmin({ username: "weakadmin", password: "short" }), 400);
+  const { token } = s.auth.signIn({ username: "boss", pin: "86420", ip: "a" });
+  const before = s.auth.sessionUser(token);
+  assert.equal(before.role, "super_admin");
+  assert.equal(before.elevated, false);
+  status(() => s.auth.elevate({ token, user: before, password: "86420", ip: "a" }), 401); // the PIN isn't the admin password
+  status(() => s.auth.elevate({ token, user: before, password: "wrong-password-1", ip: "a" }), 401);
+  s.auth.elevate({ token, user: before, password: "adminpass1234", ip: "a" });
+  assert.equal(s.auth.sessionUser(token).elevated, true);
+  s.clock.t += 31 * 60 * 1000; // unlocking lasts 30 minutes
+  assert.equal(s.auth.sessionUser(token).elevated, false);
+  s.auth.elevate({ token, user: s.auth.sessionUser(token), password: "adminpass1234", ip: "a" });
+  s.auth.lockAdmin(token);
+  assert.equal(s.auth.sessionUser(token).elevated, false);
 });
 
-test("roles and account ids can't be changed, even straight in the database", () => {
+test("admin password: players can't unlock admin tools, and wrong passwords lock out like PINs", () => {
+  const s = setup();
+  const { token, user } = signUp(s, "player1", "48213");
+  status(() => s.auth.elevate({ token, user, password: "anything-at-all", ip: "a" }), 403);
+  const boss = s.auth.signIn({ username: "boss", pin: "86420", ip: "a" });
+  for (let i = 0; i < 5; i++) status(() => s.auth.elevate({ token: boss.token, user: boss.user, password: "nope-nope-nope", ip: `b${i}` }), 401);
+  status(() => s.auth.elevate({ token: boss.token, user: boss.user, password: "adminpass1234", ip: "c" }), 429);
+  status(() => s.auth.setAdminPassword("player1", "short"), 400);
+  status(() => s.auth.setAdminPassword("player1", "123456789012345"), 400, /only digits/);
+});
+
+test("bootstrap: only an existing, signed-in site account, only while there's no Super Admin; logged", () => {
+  const s = setup(); // boss is already the Super Admin
+  signUp(s, "second");
+  status(() => s.auth.bootstrapSuperAdmin("second", "adminpass1234"), 409, /already a Super Admin/);
+  s.auth.revokeRoleLocally("boss");
+  status(() => s.auth.bootstrapSuperAdmin("made_up_name", "adminpass1234"), 404);
+  s.db.prepare("INSERT INTO users (username, pass_hash, pass_salt, balance, created_at, account_id, credential) VALUES ('notverified', 'x', '', 0, 0, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'pin')").run();
+  status(() => s.auth.bootstrapSuperAdmin("notverified", "adminpass1234"), 409, /hasn't been set up/); // never signed in
+  status(() => s.auth.bootstrapSuperAdmin("second", "short"), 400);
+  assert.equal(s.auth.bootstrapSuperAdmin("second", "adminpass1234").role, "super_admin");
+  const log = s.audit.list({ action: "role." }).rows.map((r) => r.action);
+  assert.deepEqual(log, ["role.bootstrap", "role.revoke", "role.bootstrap"]);
+  assert.ok(!JSON.stringify(s.audit.list({}).rows).includes("adminpass1234"));
+});
+
+test("account ids can't be changed, even straight in the database; new accounts are always plain users", () => {
   const s = setup();
   const { user } = signUp(s, "climber");
-  assert.throws(() => s.db.prepare("UPDATE users SET is_admin = 1 WHERE id = ?").run(user.id), /is_admin never changes/);
   assert.throws(() => s.db.prepare("UPDATE users SET account_id = 'x' WHERE id = ?").run(user.id), /account_id never changes/);
-  assert.equal(s.auth.sessionUser(s.auth.signIn({ username: "climber", pin: "48213", ip: "a" }).token).isAdmin, false);
+  const again = s.auth.sessionUser(s.auth.signIn({ username: "climber", pin: "48213", ip: "a" }).token);
+  assert.equal(again.role, "user");
+  assert.equal(again.isAdmin, false);
+  assert.deepEqual(again.perms, []);
+});
+
+test("a suspended account can't sign in, and its sessions end", () => {
+  const s = setup();
+  const { token } = signUp(s, "troublemaker", "48213");
+  s.db.prepare("UPDATE users SET status = 'suspended' WHERE username = 'troublemaker'").run();
+  assert.equal(s.auth.sessionUser(token), null);
+  status(() => s.auth.signIn({ username: "troublemaker", pin: "48213", ip: "a" }), 403, /suspended/);
+  status(() => s.auth.signIn({ username: "troublemaker", pin: "48214", ip: "a" }), 401); // wrong PIN learns nothing
 });
 
 test("the pepper is needed: the same database with another pepper can't check any PIN", () => {
@@ -176,7 +221,7 @@ test("set-pin (the accounts tool): new PIN works, old one doesn't, signed out ev
   assert.equal(s.auth.sessionUser(token), null);
   status(() => s.auth.signIn({ username: "forgetful", pin: "48213", ip: "q" }), 401);
   assert.ok(s.auth.signIn({ username: "forgetful", pin: "70815", ip: "q" }).token);
-  status(() => s.auth.setPin("boss", "70815"), 400);
+  status(() => s.auth.setPin("nobody_here", "70815"), 404);
 });
 
 test("profile: only your own account; signed out gets 401", () => {
@@ -192,9 +237,10 @@ test("profile: only your own account; signed out gets 401", () => {
 
 test("migration 002 goes down and up again, and gives accounts made before it an id", () => {
   const db = openDb(":memory:");
-  migrateDown(db);
+  assert.equal(migrateDown(db), 3);
+  assert.equal(migrateDown(db), 2);
   db.prepare("INSERT INTO users (username, pass_hash, pass_salt, is_admin, balance, created_at) VALUES ('oldtimer', 'aa', 'bb', 0, 5, 1)").run();
-  assert.deepEqual(migrateUp(db), [2]);
+  assert.deepEqual(migrateUp(db), [2, 3]);
   const row = db.prepare("SELECT account_id, credential FROM users WHERE username = 'oldtimer'").get();
   assert.match(row.account_id, /^[0-9a-f-]{36}$/);
   assert.equal(row.credential, "password");

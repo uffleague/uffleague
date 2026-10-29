@@ -10,7 +10,9 @@ test("new accounts start with the configured virtual points, recorded in the led
   const u = s.user("alice");
   assert.equal(u.balance, 750);
   assert.equal(s.ledgerSum(u.id), 750);
-  assert.equal(s.admin.balance, 0);
+  // Admins are ordinary accounts given a role, so theirs started the same way; the role is what keeps them from playing
+  assert.equal(s.admin.role, "super_admin");
+  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM ledger WHERE user_id = ? AND kind = 'grant'").get(u.id).n, 1);
 });
 
 test("game winner: picks, community percent, settlement from the official final", async () => {
@@ -25,14 +27,14 @@ test("game winner: picks, community percent, settlement from the official final"
   assert.equal(market.total, 3);
   assert.equal(market.history.length, 3);
   assert.equal(market.mine.selection, "a");
-  assert.equal(s.balance(a.id), 950);
+  assert.equal(s.balance(a.id), 1000); // picks are free
 
   s.clock.t = T0 + 9 * HOUR; // closed
   s.post("T-1", [35, 28]);
   const r = await s.service.resolve(s.admin, id);
   assert.equal(r.outcome, "a");
-  assert.equal(s.balance(a.id), 1050);
-  assert.equal(s.balance(c.id), 950);
+  assert.equal(s.balance(a.id), 1050); // correct: +50
+  assert.equal(s.balance(c.id), 1000); // wrong: nothing taken
   [a, b, c].forEach((u) => assert.equal(s.balance(u.id), s.ledgerSum(u.id)));
   const after = (await s.service.getMarket(id, c.id)).market;
   assert.equal(after.status, "resolved");
@@ -107,7 +109,7 @@ test("picks close at the closing time, when locked, and before opening", async (
   await rejects(() => s.service.predict(a, m3.id, "over"), 409, /isn't open/);
   s.clock.t = T0 + 2 * HOUR;
   s.service.predict(a, m3.id, "over");
-  assert.equal(s.balance(a.id), 950);
+  assert.equal((await s.service.getMarket(m3.id, a.id)).market.mine.selection, "over");
 });
 
 test("one pick per market: a second or conflicting pick is turned away and costs nothing", async () => {
@@ -117,7 +119,8 @@ test("one pick per market: a second or conflicting pick is turned away and costs
   s.service.predict(a, id, "a");
   await rejects(() => s.service.predict(a, id, "b"), 409, /already/);
   await rejects(() => s.service.predict(a, id, "a"), 409, /already/);
-  assert.equal(s.balance(a.id), 950);
+  assert.equal(s.balance(a.id), 1000);
+  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM predictions WHERE user_id = ?").get(a.id).n, 1);
   assert.equal((await s.service.getMarket(id)).market.total, 1);
 });
 
@@ -131,14 +134,21 @@ test("bad choices, signed-out users and admins can't pick", async () => {
   await rejects(() => s.service.predict(a, 9999, "a"), 404);
 });
 
-test("not enough virtual points: the pick is refused and the balance never goes below 0", async () => {
-  const s = setup({ config: { startBalance: 60 } });
+test("picks are free: no points needed to pick, and a wrong pick never takes points (balance never below 0)", async () => {
+  const s = setup({ config: { startBalance: 10 } });
   const a = s.user("alice");
   const m1 = await s.service.createMarket(s.admin, gwInput());
   const m2 = await s.service.createMarket(s.admin, ouInput());
-  s.service.predict(a, m1.id, "a");
-  await rejects(() => s.service.predict(a, m2.id, "over"), 400, /50 virtual points and you have 10/);
+  s.service.predict(a, m1.id, "a"); // the market awards 50; alice has only 10, and that's fine
+  s.service.predict(a, m2.id, "over");
   assert.equal(s.balance(a.id), 10);
+  s.clock.t = T0 + 9 * HOUR;
+  s.post("T-1", [0, 7]);
+  s.post("T-2", [20, 10], box(100));
+  await s.service.resolve(s.admin, m1.id);
+  await s.service.resolve(s.admin, m2.id);
+  assert.equal(s.balance(a.id), 10); // both wrong: nothing taken
+  assert.equal(s.db.prepare("SELECT COUNT(*) AS n FROM ledger WHERE user_id = ? AND delta < 0").get(a.id).n, 0);
 });
 
 test("settling is idempotent: a retry pays nothing twice", async () => {
@@ -163,7 +173,7 @@ test("the ledger refuses a second payout for the same pick and round, even bypas
   const a = s.user("alice");
   const { id } = await s.service.createMarket(s.admin, gwInput());
   const { predictionId } = s.service.predict(a, id, "a");
-  const ins = s.db.prepare("INSERT INTO ledger (user_id, at, delta, balance_after, kind, prediction_id, round) VALUES (?, 0, 100, 0, 'payout', ?, 1)");
+  const ins = s.db.prepare("INSERT INTO ledger (tx_id, user_id, at, delta, balance_before, balance_after, kind, prediction_id, round) VALUES (lower(hex(randomblob(16))), ?, 0, 100, 0, 100, 'payout', ?, 1)");
   ins.run(a.id, predictionId);
   assert.throws(() => ins.run(a.id, predictionId), /UNIQUE/);
 });
@@ -224,11 +234,11 @@ test("dispute reverses a settlement, then a corrected result pays the right peop
   await s.service.resolve(s.admin, id);
   assert.equal(s.balance(a.id), 1050);
   s.service.setState(s.admin, id, "dispute", "Wrong score was posted");
-  assert.equal(s.balance(a.id), 950);
-  assert.equal(s.balance(b.id), 950);
+  assert.equal(s.balance(a.id), 1000); // the award is taken back
+  assert.equal(s.balance(b.id), 1000);
   await rejects(() => s.service.predict(s.user("late"), id, "a"), 409);
   await s.service.resolve(s.admin, id, { mode: "manual", scoreA: 21, scoreB: 28, note: "Corrected by league office" });
-  assert.equal(s.balance(a.id), 950);
+  assert.equal(s.balance(a.id), 1000);
   assert.equal(s.balance(b.id), 1050);
   [a, b].forEach((u) => assert.equal(s.balance(u.id), s.ledgerSum(u.id)));
   const m = (await s.service.getMarket(id, b.id)).market;
@@ -271,7 +281,8 @@ test("ordinary users can't run admin actions", async () => {
   await rejects(() => s.service.setState(a, id, "lock"), 403);
   await rejects(() => s.service.editMarket(a, id, { closesAt: T0 + HOUR }), 403);
   await rejects(() => s.service.auditLog(a), 403);
-  await rejects(() => s.service.games(null), 403);
+  await rejects(() => s.service.games(a), 403);
+  await rejects(() => s.service.games(null), 401); // signed out: sign in first
 });
 
 test("a market with picks keeps its line; closing time can still move; every change is audited", async () => {
@@ -308,7 +319,7 @@ test("dashboard: only your own picks, accuracy separate from points, streak and 
   assert.equal(me.record.accuracy, 1);
   assert.deepEqual(me.record.streak, { type: "W", n: 2 });
   assert.equal(me.user.balance, 1100);
-  assert.deepEqual(me.ledger.map((l) => l.balance), [1000, 950, 900, 1000, 1100]);
+  assert.deepEqual(me.ledger.map((l) => l.balance), [1000, 1050, 1100]); // start, then +50 for each correct pick
   assert.deepEqual(me.rank, { rank: 1, of: 1 }); // bob has 1 decided pick, under the minimum of 2
 
   // bob's view of the same market shows his pick, never alice's
@@ -335,13 +346,13 @@ test("leaderboard: accuracy and points are separate lists, admins aren't on eith
   assert.ok(lb.accuracy.every((r) => !("balance" in r)));
 });
 
-test("points list counts points riding on open picks, so making a pick doesn't drop you down it", async () => {
+test("points list: making a pick doesn't change your points or drop you down it", async () => {
   const s = setup();
   const [a] = ["alice", "bob"].map(s.user);
   const { id } = await s.service.createMarket(s.admin, gwInput());
   s.service.predict(a, id, "a");
   const lb = s.service.leaderboard();
-  assert.deepEqual(lb.points.map((r) => [r.username, r.total, r.inPlay, r.balance]), [["alice", 1000, 50, 950]]);
+  assert.deepEqual(lb.points.map((r) => [r.username, r.total, r.inPlay, r.balance]), [["alice", 1000, 0, 1000]]);
 });
 
 test("list: filters by category, status and search, and sorts", async () => {

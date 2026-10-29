@@ -3,7 +3,7 @@
 // It starts its own server (demo mode, port 4175, a throwaway database and pepper in a temp folder), so it never
 // touches your local data, then drives the site like a visitor would and prints PASS/FAIL for each check.
 // Screenshots go to the temp folder it prints.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -15,11 +15,15 @@ const EDGE = ["C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", "C
   "/usr/bin/microsoft-edge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"].find(existsSync);
 if (!EDGE) { console.error("Microsoft Edge wasn't found, so the browser check can't run."); process.exit(2); }
 const TMP = mkdtempSync(join(tmpdir(), "uff-browser-"));
-const PORT = 4175, SITE = `http://127.0.0.1:${PORT}`, ADMIN_PW = randomBytes(12).toString("hex");
+const PORT = 4175, SITE = `http://127.0.0.1:${PORT}`, ADMIN_PW = `check-${randomBytes(12).toString("hex")}`, ADMIN_PIN = "39175";
+const DB = join(TMP, "check.db"), PEPPER = randomBytes(32).toString("hex");
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const server = spawn(process.execPath, [join(ROOT, "predictions", "server.js"), "--demo"], { stdio: "ignore",
-  env: { ...process.env, PRED_PORT: String(PORT), PRED_DB: join(TMP, "check.db"), PRED_PEPPER: randomBytes(32).toString("hex"), PRED_ADMIN_PASSWORD: ADMIN_PW } });
+  env: { ...process.env, PRED_PORT: String(PORT), PRED_DB: DB, PRED_PEPPER: PEPPER } });
+// The accounts tool on the same throwaway database: test accounts, and the first Super Admin
+const tool = (args, input) => spawnSync(process.execPath, [join(ROOT, "predictions", "accounts.js"), ...args, "--demo"],
+  { env: { ...process.env, PRED_DB: DB, PRED_PEPPER: PEPPER }, input, encoding: "utf8" });
 const edge = spawn(EDGE, ["--headless=new", "--remote-debugging-port=9334", `--user-data-dir=${join(TMP, "edge")}`, "--no-first-run", "--disable-extensions", "about:blank"], { stdio: "ignore" });
 
 let failed = 0;
@@ -50,7 +54,8 @@ try {
   const js = async (expr) => (await cmd("Runtime.evaluate", { expression: expr, awaitPromise: true, returnByValue: true })).result.value;
   const settle = () => wait(900);
   const open = async (hash) => { await cmd("Page.navigate", { url: `${SITE}/${hash}` }); await wait(1800); };
-  const go = async (hash) => { await js(`location.hash = ${JSON.stringify(hash)}`); await settle(); };
+  // Like clicking a link; going to the page you're already on still redraws it (a link to the same page would too)
+  const go = async (hash) => { await js(`location.hash === ${JSON.stringify(hash)} ? window.dispatchEvent(new HashChangeEvent("hashchange")) : (location.hash = ${JSON.stringify(hash)})`); await settle(); };
   const reload = async () => { await cmd("Page.reload"); await wait(2000); };
   const shot = async (name) => {
     const { data } = await cmd("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
@@ -69,14 +74,25 @@ try {
     "x-csrf-token": (document.cookie.match(/uffp_csrf=([0-9a-f]{32})/) || [])[1] || "" }, body: JSON.stringify(${JSON.stringify(body)}) }).then((r) => r.json())`);
 
   await size(1280, 900);
-  // A market to try picking on (made by the admin, who then signs out)
+  // Test accounts, and the first Super Admin (an ordinary account bootstrapped with the accounts tool)
+  tool(["create", "check_admin"], `${ADMIN_PIN}\n`);
+  const boot = tool(["bootstrap-admin", "check_admin"], `${ADMIN_PW}\n`);
+  check(/is now the Super Admin/.test(boot.stdout), "accounts tool makes the first Super Admin", boot.stderr || boot.stdout);
+  tool(["create", "check_player"], "28461\n");
+  tool(["create", "check_staff"], "37192\n");
+  check(/already a Super Admin/.test(tool(["bootstrap-admin", "check_player"], `${ADMIN_PW}\n`).stderr), "a second bootstrap is refused");
+
+  // Markets to pick on and build a challenge from (the admin signs in with the PIN, unlocks, then signs out)
   await open("#/");
-  await api("/api/auth/admin-login", { username: "localadmin", password: ADMIN_PW });
+  await api("/api/auth/login", { username: "check_admin", pin: ADMIN_PIN });
+  check((await api("/api/predictions/admin/markets", {})).code === "elevate", "a PIN session can't use admin tools until unlocked");
+  await api("/api/auth/elevate", { password: ADMIN_PW });
   const games = await js(`fetch("/api/predictions/admin/games").then((r) => r.json())`);
-  const g = games.games.find((x) => x.id === "SAMPLE-1");
+  const g = games.games.find((x) => x.id === "SAMPLE-1"), g2 = games.games.find((x) => x.id === "SAMPLE-2");
   const made = await api("/api/predictions/admin/markets", { kind: "game_winner", gameId: g.id, closesAt: g.at });
+  const ou = await api("/api/predictions/admin/markets", { kind: "player_ou", gameId: g2.id, player: "biglester1", playerTeam: "New Orleans Raiders", statKey: "pass_yds", line: 499.5, closesAt: g2.at });
   await api("/api/auth/logout", {});
-  check(Number.isInteger(made.id), "admin made a sample market", JSON.stringify(made));
+  check(Number.isInteger(made.id) && Number.isInteger(ou.id), "admin made two sample markets", JSON.stringify([made, ou]));
 
   // Guests: browsing never needs an account
   await open("#/");
@@ -189,10 +205,136 @@ try {
   await type("#authPin", "04213"); await click("#authSubmit"); await wait(1500);
   check((await text("#authError")).includes("don't match an account"), "unknown username: same generic error");
 
+  /* ---------- Admin expansion: guests, UFF Admin, challenges, credits, roles, rewards ---------- */
+  const flash = () => text(".admin-flash");
+  const select = (sel, value) => js(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); el.value = ${JSON.stringify(value)};
+    el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); return el.value; })()`);
+  const confirmYes = async (reason) => { if (reason != null) await type("#uaReason", reason); await click("[data-ua='confirm-yes']"); await wait(1600); };
+
+  // Guests: the shop and challenges are open to browse; admin and redeeming ask for an account
+  await go("#/rewards");
+  check((await js(`document.querySelectorAll(".rw-card").length`)) === 4 && (await raw(".rw-grid")).includes("Demo"), "guest sees the (labeled demo) rewards catalog");
+  await click("[data-rw-redeem]"); await settle();
+  check(await has(".pm-modal .signin-prompt"), "guest redeeming gets a sign-in prompt");
+  await shot("09-rewards-guest");
+  await js(`document.querySelector(".pm-modal").click()`); await settle();
+  await go("#/uff-admin");
+  check(await has(".signin-prompt") && !(await has(".ua-tabs")), "guest at UFF Admin is asked to sign in (no admin pages)");
+
+  // A player has no admin access, page or API
+  await api("/api/auth/login", { username: "check_player", pin: "28461" });
+  await go("#/uff-admin"); await settle();
+  check((await raw("#app")).includes("No admin access"), "a player at UFF Admin sees 'No admin access'");
+  check((await js(`fetch("/api/admin/overview").then((r) => r.status)`)) === 403, "a player calling the admin API gets 403");
+  await api("/api/auth/logout", {});
+
+  // The Super Admin: PIN, then the admin password on the unlock card
+  await api("/api/auth/login", { username: "check_admin", pin: ADMIN_PIN });
+  await go("#/uff-admin"); await settle();
+  check(await has("#staffForm") && !(await has(".ua-tabs")), "UFF Admin asks a signed-in Super Admin for the admin password first");
+  await shot("10-admin-unlock");
+  await type("#staffPass", "wrong-password-123"); await click("#staffForm .auth-submit"); await wait(1400);
+  check((await raw("#authError")).includes("isn't right"), "a wrong admin password is refused");
+  await type("#staffPass", ADMIN_PW); await click("#staffForm .auth-submit"); await wait(2000);
+  const tabs = await js(`[...document.querySelectorAll(".ua-tabs a")].map((a) => a.textContent).join("|")`);
+  check(tabs === "Overview|Prediction Challenges|User Management|Credits Management|Rewards Catalog|Redemption Requests|Admin Permissions|Audit Logs", "the right password opens all eight sections", tabs);
+  check((await raw(".stat-chips")).includes("every balance matches"), "overview shows the ledger check");
+  await shot("11-admin-overview");
+
+  // Build a challenge: details, two legs (reordered), draft, preview, publish
+  await go("#/uff-admin/challenges");
+  await click("[data-ua='new-challenge']"); await settle();
+  await type("#uaChallengeForm [name=title]", "UFF Weekly Challenge");
+  await type("#uaChallengeForm [name=description]", "Two picks, one entry. Free to enter.");
+  const deadline = await js(`(() => { const d = new Date(Date.now() + 2 * 3600e3); d.setSeconds(0, 0); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); })()`);
+  await select("#uaChallengeForm [name=deadline]", deadline); await settle();
+  await select("#uaAddLeg", String(made.id)); await settle();
+  await select("#uaAddLeg", String(ou.id)); await settle();
+  check((await js(`document.querySelectorAll(".ua-leg").length`)) === 2, "builder: two legs added from real markets");
+  await click("[data-ua-leg='down'][data-i='0']"); await settle();
+  check((await raw(".ua-preview-legs li")).includes("biglester1"), "builder: reordering moves the leg (preview follows)");
+  check((await raw(".ua-preview")).includes("Up to 150 pts"), "builder: preview shows the award before publishing", await raw(".ua-preview"));
+  await shot("12-admin-builder");
+  await click("#uaChallengeForm .btn:not([type=button])"); await wait(1600);
+  check((await flash()).includes("Draft created"), "builder: draft saved", await flash());
+  await click("#uaChallengeForm [data-ua-ch='publish']"); await settle();
+  check((await raw(".pm-modal")).includes("can't be edited"), "publishing asks for confirmation first");
+  await confirmYes();
+  check((await flash()).includes("is live"), "confirming publishes the challenge", await flash());
+  const challengeId = (await js(`fetch("/api/challenges").then((r) => r.json())`)).challenges[0].id;
+
+  // Credits: find a username, see the account, add points with a reason, confirm
+  await go("#/uff-admin/credits");
+  await type("#uaQ-credits", "check_pl"); await click("[data-ua-search='credits'] button"); await wait(1200);
+  await click("[data-ua-pick='credits']"); await wait(1500);
+  check((await raw(".ua-balance")).includes("1,000") && (await raw(".acct-facts")).includes("check_player"), "credits: search finds the account and shows balance and account id");
+  await type("#uaAdjustForm [name=amount]", "250");
+  await select("#uaAdjustForm [name=reasonCode]", "event");
+  await type("#uaAdjustForm [name=note]", "Week 1 watch party");
+  await click("#uaAdjustForm .btn-primary"); await settle();
+  check((await raw(".pm-modal")).includes("1,000 → 1,250"), "credits: confirmation shows before and after", await raw(".pm-modal"));
+  await shot("13-admin-credit-confirm");
+  await confirmYes();
+  check((await flash()).includes("now has 1,250"), "credits: added, with the new balance", await flash());
+  check((await raw(".ua-table")).includes("Admin: added") && (await raw(".ua-table")).includes("check_admin"), "credits: the ledger shows the change and who made it");
+
+  // Permissions: give check_staff the Staff role (confirmed, with a reason)
+  await go("#/uff-admin/permissions");
+  await type("#uaQ-permissions", "check_staff"); await click("[data-ua-search='permissions'] button"); await wait(1200);
+  await click(".ua-results [data-ua-pick='permissions']"); await wait(1500);
+  await select("#uaRoleForm [name=role]", "staff");
+  await click("#uaRoleForm .btn-primary"); await settle();
+  check((await raw(".pm-modal")).includes("Player → Staff"), "role change asks for confirmation, showing old and new role");
+  await confirmYes("Helps run weekly challenges");
+  check((await flash()).includes("is now Staff"), "role granted", await flash());
+  check((await raw(".table-card")).includes("check_staff"), "Accounts with a role lists them, with who gave it");
+  await api("/api/auth/logout", {});
+
+  // A player enters the challenge (free) and redeems a reward (points taken once)
+  await api("/api/auth/login", { username: "check_player", pin: "28461" });
+  await go(`#/uff-predictions/c/${challengeId}`);
+  check((await raw(".pm-rules")).includes("Free to enter"), "challenge page shows the scoring rules");
+  await click("#chForm .ch-submit"); await settle();
+  check((await raw(".pm-err")).includes("Answer every leg"), "submitting needs every leg answered");
+  await js(`document.querySelectorAll("#chForm .ch-leg").forEach((leg) => leg.querySelector("input[type=radio]").click())`);
+  await click("#chForm .ch-submit"); await wait(1600);
+  check((await raw(".admin-flash")).includes("Entry submitted"), "the entry is saved", await raw(".admin-flash"));
+  check((await raw("#chForm .ch-submit")).includes("Update entry"), "answers can still change before the deadline");
+  await shot("14-challenge-entered");
+  await go("#/rewards");
+  const sharp = await js(`[...document.querySelectorAll(".rw-card")].find((c) => c.textContent.includes("Sharpshooter")).querySelector("[data-rw-redeem]").dataset.rwRedeem`);
+  await click(`[data-rw-redeem="${sharp}"]`); await settle();
+  check((await raw(".pm-modal")).includes("1,250 to 750"), "redeem confirmation shows the balance before and after", await raw(".pm-modal"));
+  await shot("15-redeem-confirm");
+  await js(`(() => { const b = document.querySelector("[data-rw='confirm']"); b.click(); b.click(); b.click(); })()`); await wait(1800);
+  check((await raw(".admin-flash")).includes("waiting for staff approval"), "redeemed: pending staff approval", await raw(".admin-flash"));
+  const mine = await js(`fetch("/api/rewards/mine").then((r) => r.json())`);
+  check(mine.redemptions.length === 1, "three quick clicks made one redemption", JSON.stringify(mine.redemptions.length));
+  check((await raw(".pm-account .pill")).includes("750"), "balance shows 750 after redeeming");
+  await go("#/rewards/mine");
+  check((await raw(".rd-row")).includes("Pending"), "My Redemptions lists it as pending");
+  await api("/api/auth/logout", {});
+
+  // Staff side (as the Super Admin): approve, then fulfill; the audit log has everything
+  await api("/api/auth/login", { username: "check_admin", pin: ADMIN_PIN });
+  await api("/api/auth/elevate", { password: ADMIN_PW });
+  await go("#/uff-admin/redemptions");
+  check((await raw(".ua-rd")).includes("check_player"), "the request shows in Redemption Requests");
+  await click("[data-ua-rd='approve']"); await settle(); await confirmYes();
+  check((await flash()).includes("Approved"), "approved", await flash());
+  await click("[data-ua-rdf='approved']"); await settle();
+  await click("[data-ua-rd='fulfill']"); await settle(); await confirmYes("Badge added in game");
+  check((await flash()).includes("Fulfilled"), "fulfilled", await flash());
+  await go("#/uff-admin/audit");
+  const log = await raw(".ua-audit");
+  check(["redemption.fulfill", "redemption.approve", "role.grant", "credits.add", "challenge.publish", "challenge.create", "role.bootstrap"].every((a) => log.includes(a)), "audit log has every sensitive action");
+  check(!log.includes(ADMIN_PW) && !log.includes(ADMIN_PIN), "audit log holds no passwords or PINs");
+  await shot("16-admin-audit");
+
   // Phone and tablet widths
   for (const [w, h, cols] of [[390, 844, 1], [768, 1024, 2]]) {
     await size(w, h);
-    for (const hash of ["#/sign-in", "#/create-account", `#/uff-predictions/m/${made.id}`, "#/"]) {
+    for (const hash of ["#/sign-in", "#/create-account", `#/uff-predictions/m/${made.id}`, "#/rewards", `#/uff-predictions/c/${challengeId}`, "#/uff-admin/credits", "#/uff-admin/challenges", "#/uff-admin/audit", "#/"]) {
       await go(hash);
       check(await noOverflow(), `${w}px ${hash}: no sideways scrolling`);
       if (hash !== "#/") await shot(`06-${w}-${hash.replace(/[^a-z0-9]+/gi, "-")}`);

@@ -7,7 +7,6 @@
 //         npm run predictions:demo   (sample games, works offline)
 import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { pathToFileURL } from "node:url";
@@ -15,7 +14,13 @@ import { openDb } from "./db.js";
 import { createLeagueSource } from "./league.js";
 import { createService, HttpError } from "./service.js";
 import { createAuth } from "./auth.js";
-import { CONFIG, SITE_ROOT, LOCAL_DIR, dbPath, loadPepper } from "./config.js";
+import { createLedger } from "./ledger.js";
+import { createAudit } from "./audit.js";
+import { createLimiter } from "./limits.js";
+import { createChallenges } from "./challenges.js";
+import { createRewards } from "./rewards.js";
+import { createAdminTools } from "./admin.js";
+import { CONFIG, SITE_ROOT, dbPath, loadPepper } from "./config.js";
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon" };
@@ -48,7 +53,20 @@ async function readJson(req) {
   try { return chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {}; } catch (e) { throw new HttpError(400, "That isn't valid JSON."); }
 }
 
-export function createServer({ service, auth, league, config = CONFIG, port }) {
+// The pieces behind the routes, all on one database
+export function createTools({ db, league, config, now = Date.now }) {
+  const ledger = createLedger({ db, now });
+  const audit = createAudit({ db, now });
+  const limiter = createLimiter({ db, now });
+  const service = createService({ db, league, config, now });
+  const auth = createAuth({ db, config, now });
+  return { service, auth, ledger, audit, limiter,
+    challenges: createChallenges({ db, service, ledger, audit, limiter, now }),
+    rewards: createRewards({ db, ledger, audit, limiter, now }),
+    admin: createAdminTools({ db, ledger, audit, limiter, now }) };
+}
+
+export function createServer({ service, auth, challenges, rewards, admin, league, config = CONFIG, port }) {
   const hostOk = (h) => {
     const p = String(port());
     return [`127.0.0.1:${p}`, `localhost:${p}`].includes(String(h || "").toLowerCase());
@@ -81,12 +99,71 @@ export function createServer({ service, auth, league, config = CONFIG, port }) {
       if (method === "GET" && path === "/api/auth/session") return send(res, 200, { user }, cookies);
       if (method === "POST" && path === "/api/auth/login") return signedIn(auth.signIn({ username: body.username, pin: body.pin, ip }));
       if (method === "POST" && path === "/api/auth/signup") return signedIn(auth.createAccount({ username: body.username, pin: body.pin, confirmPin: body.confirmPin, ip }));
-      if (method === "POST" && path === "/api/auth/admin-login") return signedIn(auth.adminSignIn({ username: body.username, password: body.password, ip }));
+      // Staff and above unlock admin tools on this session with their admin password (a PIN never does)
+      if (method === "POST" && path === "/api/auth/elevate") return send(res, 200, auth.elevate({ token, user, password: body.password, ip }), cookies);
+      if (method === "POST" && path === "/api/auth/lock") { auth.lockAdmin(token); return send(res, 200, { ok: true }, cookies); }
       if (method === "POST" && path === "/api/auth/logout") {
         auth.logout(token);
         return send(res, 200, { ok: true }, [...cookies, cookie(SESSION, "", 0, { secure })]);
       }
       if (method === "GET" && path === "/api/account") return send(res, 200, auth.profile(user), cookies);
+      throw new HttpError(404, "Not found.");
+    }
+
+    const p = url.pathname.replace(/\/+$/, "");
+    const q = url.searchParams;
+
+    // Challenges (public; entering needs an account)
+    if (p.startsWith("/api/challenges")) {
+      if (method === "GET" && p === "/api/challenges") return send(res, 200, { challenges: challenges.list(user) }, cookies);
+      if (method === "GET" && p === "/api/challenges/mine") return send(res, 200, { entries: challenges.myEntries(user) }, cookies);
+      if (method === "GET" && (m = p.match(/^\/api\/challenges\/(\d+)$/))) return send(res, 200, await challenges.detail(user, m[1]), cookies);
+      if (method === "POST" && (m = p.match(/^\/api\/challenges\/(\d+)\/enter$/))) {
+        const out = challenges.enter(user, m[1], body.picks || {});
+        return send(res, 200, { ...out, ...(await challenges.detail(user, m[1])) }, cookies);
+      }
+      throw new HttpError(404, "Not found.");
+    }
+    // Rewards (the catalog is public; redeeming and your history need an account)
+    if (p.startsWith("/api/rewards")) {
+      if (method === "GET" && p === "/api/rewards") return send(res, 200, rewards.catalog(user), cookies);
+      if (method === "GET" && p === "/api/rewards/mine") return send(res, 200, { redemptions: rewards.mine(user) }, cookies);
+      if (method === "POST" && p === "/api/rewards/redeem") return send(res, 200, rewards.redeem(user, { rewardId: body.rewardId, idempotencyKey: body.idempotencyKey }), cookies);
+      if (method === "POST" && (m = p.match(/^\/api\/rewards\/redemptions\/(\d+)\/cancel$/))) return send(res, 200, rewards.cancelOwn(user, m[1]), cookies);
+      throw new HttpError(404, "Not found.");
+    }
+    // UFF Admin: every function checks the permission (and the unlocked session) itself
+    if (p.startsWith("/api/admin")) {
+      if (!user) throw new HttpError(401, "Sign in first.");
+      if (method === "GET" && p === "/api/admin/overview") return send(res, 200, admin.overview(user), cookies);
+      if (method === "GET" && p === "/api/admin/users") return send(res, 200, { users: admin.search(user, q.get("q") || "") }, cookies);
+      if (method === "GET" && (m = p.match(/^\/api\/admin\/users\/([0-9a-f-]{36})$/))) return send(res, 200, admin.detail(user, m[1]), cookies);
+      if (method === "GET" && (m = p.match(/^\/api\/admin\/users\/([0-9a-f-]{36})\/ledger$/))) return send(res, 200, admin.history(user, m[1], q.get("before")), cookies);
+      if (method === "POST" && p === "/api/admin/users/status") return send(res, 200, admin.setStatus(user, body), cookies);
+      if (method === "POST" && p === "/api/admin/credits") return send(res, 200, admin.adjust(user, body), cookies);
+      if (method === "GET" && p === "/api/admin/credit-reasons") return send(res, 200, { reasons: admin.reasons }, cookies);
+      if (method === "GET" && p === "/api/admin/staff") return send(res, 200, { staff: admin.staffList(user) }, cookies);
+      if (method === "POST" && p === "/api/admin/roles") return send(res, 200, admin.setRole(user, body), cookies);
+      if (method === "GET" && p === "/api/admin/audit") {
+        return send(res, 200, admin.auditLog(user, { action: q.get("action") || "", actor: q.get("actor") || "", targetType: q.get("targetType") || "",
+          targetId: q.get("targetId") || "", beforeId: q.get("before") }), cookies);
+      }
+      if (method === "GET" && p === "/api/admin/challenges") return send(res, 200, { challenges: challenges.adminList(user) }, cookies);
+      if (method === "GET" && p === "/api/admin/challenges/leg-options") return send(res, 200, { markets: await challenges.legOptions(user) }, cookies);
+      if (method === "POST" && p === "/api/admin/challenges") return send(res, 200, challenges.create(user, body), cookies);
+      if (method === "GET" && (m = p.match(/^\/api\/admin\/challenges\/(\d+)\/settle-preview$/))) return send(res, 200, challenges.settlePreview(user, m[1]), cookies);
+      if (method === "POST" && (m = p.match(/^\/api\/admin\/challenges\/(\d+)$/))) {
+        const a = body.action;
+        const out = a === "update" ? challenges.update(user, m[1], body.challenge || {}) : a === "publish" ? challenges.publish(user, m[1])
+          : a === "cancel" ? challenges.cancel(user, m[1], body.note) : a === "settle" ? challenges.settle(user, m[1]) : null;
+        if (!out) throw new HttpError(400, "Unknown action.");
+        return send(res, 200, out, cookies);
+      }
+      if (method === "GET" && p === "/api/admin/rewards") return send(res, 200, rewards.adminCatalog(user), cookies);
+      if (method === "POST" && p === "/api/admin/rewards") return send(res, 200, rewards.createReward(user, body), cookies);
+      if (method === "POST" && (m = p.match(/^\/api\/admin\/rewards\/(\d+)$/))) return send(res, 200, rewards.updateReward(user, m[1], body), cookies);
+      if (method === "GET" && p === "/api/admin/redemptions") return send(res, 200, { redemptions: rewards.requests(user, { status: q.get("status") || "" }) }, cookies);
+      if (method === "POST" && (m = p.match(/^\/api\/admin\/redemptions\/(\d+)$/))) return send(res, 200, rewards.act(user, m[1], body), cookies);
       throw new HttpError(404, "Not found.");
     }
 
@@ -111,7 +188,6 @@ export function createServer({ service, auth, league, config = CONFIG, port }) {
     // Admin only (service checks too)
     if (!path.startsWith("/admin/")) throw new HttpError(404, "Not found.");
     if (!user) throw new HttpError(401, "Sign in first.");
-    if (!user.isAdmin) throw new HttpError(403, "Only admins can do that.");
     if (method === "GET" && path === "/admin/games") return send(res, 200, await service.games(user));
     if (method === "GET" && path === "/admin/audit") return send(res, 200, { audit: service.auditLog(user, { marketId: url.searchParams.get("market") }) });
     if (method === "POST" && path === "/admin/markets") return send(res, 200, await service.createMarket(user, body));
@@ -151,28 +227,15 @@ export function createServer({ service, auth, league, config = CONFIG, port }) {
     if (!hostOk(req.headers.host)) { res.writeHead(421, { "content-type": "text/plain" }); return res.end("This server only answers on 127.0.0.1 / localhost."); }
     const url = new URL(req.url, `http://${req.headers.host}`);
     try {
-      if (/^\/api\/(predictions|auth|account)(\/|$)/.test(url.pathname)) return await api(req, res, url);
+      if (/^\/api\/(predictions|auth|account|challenges|rewards|admin)(\/|$)/.test(url.pathname)) return await api(req, res, url);
       if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, { error: "Method not allowed" });
       return await staticFile(req, res, url);
     } catch (e) {
-      if (e instanceof HttpError) return send(res, e.status, { error: e.message });
+      if (e instanceof HttpError) return send(res, e.status, { error: e.message, ...(e.code ? { code: e.code } : {}) });
       console.error(e);
       return send(res, 500, { error: "Something went wrong on the local server." });
     }
   });
-}
-
-// The first time, a local admin account is made. Its password comes from PRED_ADMIN_PASSWORD, or is made up and
-// written to predictions/.local/admin-login.txt (git-ignored). It only exists in this computer's database.
-function ensureAdmin(db, auth, demo) {
-  if (db.prepare("SELECT id FROM users WHERE is_admin = 1").get()) return null;
-  const username = process.env.PRED_ADMIN_USERNAME || "localadmin";
-  const password = process.env.PRED_ADMIN_PASSWORD || randomBytes(9).toString("base64url");
-  auth.createAdmin({ username, password });
-  mkdirSync(LOCAL_DIR, { recursive: true });
-  const file = join(LOCAL_DIR, demo ? "admin-login-demo.txt" : "admin-login.txt");
-  if (!process.env.PRED_ADMIN_PASSWORD) writeFileSync(file, `Local UFF Predictions admin (this computer only)\nusername: ${username}\npassword: ${password}\n`);
-  return { username, file: process.env.PRED_ADMIN_PASSWORD ? null : file };
 }
 
 async function main() {
@@ -181,10 +244,11 @@ async function main() {
   const db = openDb(file);
   const league = createLeagueSource({ mode: demo ? "demo" : "live", db, startedAt: Date.now() });
   const config = { ...CONFIG, pepper: loadPepper() };
-  const service = createService({ db, league, config });
-  const auth = createAuth({ db, config });
-  const made = ensureAdmin(db, auth, demo);
-  const server = createServer({ service, auth, league, config, port: () => server.address().port });
+  const tools = createTools({ db, league, config });
+  // Demo mode gets a few clearly labeled sample rewards so the shop can be tried; live mode starts with none
+  if (demo) tools.rewards.seedDemo();
+  const superAdmin = db.prepare("SELECT username FROM users WHERE role = 'super_admin' AND status = 'active' LIMIT 1").get();
+  const server = createServer({ ...tools, league, config, port: () => server.address().port });
   server.listen(CONFIG.port, CONFIG.host, async () => {
     const url = `http://127.0.0.1:${server.address().port}/`;
     const l = await league.get();
@@ -193,9 +257,8 @@ async function main() {
     console.log(`  Sign in:   ${url}#/sign-in   (accounts: node predictions/accounts.js)`);
     console.log(`  Database:  ${file}`);
     console.log(`  League:    ${l.ok ? "loaded" : `NOT available (${l.error})`}`);
-    const login = join(LOCAL_DIR, demo ? "admin-login-demo.txt" : "admin-login.txt");
-    if (made) console.log(`  Admin:     made "${made.username}"${made.file ? `; password in ${made.file}` : " (password from PRED_ADMIN_PASSWORD)"}`);
-    else if (existsSync(login)) console.log(`  Admin:     ${readFileSync(login, "utf8").split("\n")[1]} (password in ${login})`);
+    console.log(superAdmin ? `  Admin:     ${superAdmin.username} is a Super Admin (UFF Admin: ${url}#/uff-admin)`
+      : `  Admin:     no Super Admin yet. Make an account on the site, then: node predictions/accounts.js bootstrap-admin <username>${demo ? " --demo" : ""}`);
     console.log("  Stop with Ctrl+C.\n");
   });
   server.on("error", (e) => {
