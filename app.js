@@ -5333,7 +5333,12 @@
         </div>`;
     }).join("");
     return `
-      ${d.rewards.length ? `<div class="rw-grid">${cards}</div>` : empty("No rewards yet", "UFF staff haven't set up any rewards yet. Check back later.")}
+      ${d.rewards.length ? `<div class="rw-grid">${cards}
+        <div class="card rw-card rw-soon" aria-label="More rewards coming soon">
+          <span class="rw-ico">${icon("star")}</span>
+          <b class="rw-name">More coming soon</b>
+          <p class="muted small">New rewards get added through the season. Keep hitting your parlays and stacking points.</p>
+        </div></div>` : empty("No rewards yet", "UFF staff haven't set up any rewards yet. Check back later.")}
       <div class="card admin-card pm-rules"><div class="admin-subhead">How redeeming works</div><ul>${d.policy.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></div>`;
   }
 

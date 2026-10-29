@@ -1870,3 +1870,6 @@ body.gfx-open { overflow: hidden; }
 }
 .pm-page .table-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .admin-predictions-link { margin-top: 16px; }
+.rw-soon { align-items: center; justify-content: center; text-align: center; border-style: dashed; background: transparent; min-height: 220px; }
+.rw-soon .rw-ico { background: transparent; border: 1px solid var(--blue-line); color: var(--blue-soft); }
+.rw-soon p { margin: 0; max-width: 240px; }
