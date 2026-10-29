@@ -217,7 +217,7 @@ try {
   await shot("09-rewards-guest");
   await js(`document.querySelector(".pm-modal").click()`); await settle();
   await go("#/uff-admin");
-  check(await has(".signin-prompt") && !(await has(".ua-tabs")), "guest at UFF Admin is asked to sign in (no admin pages)");
+  check(await has(".signin-prompt") && !(await has(".admin-tabs a[href^='#/uff-admin']")), "guest at Admin is asked to sign in (no admin pages)");
 
   // A player has no admin access, page or API
   await api("/api/auth/login", { username: "check_player", pin: "28461" });
@@ -230,8 +230,8 @@ try {
   await api("/api/auth/login", { username: "check_admin", pin: ADMIN_PIN });
   await go("#/uff-admin"); await settle();
   check(!(await has("#staffForm")), "a signed-in Super Admin isn't asked to type anything again");
-  const tabs = await js(`[...document.querySelectorAll(".ua-tabs a")].map((a) => a.textContent).join("|")`);
-  check(tabs === "Overview|Prediction Challenges|User Management|Credits Management|Rewards Catalog|Redemption Requests|Admin Permissions|Audit Logs", "a signed-in Super Admin sees all eight sections", tabs);
+  const tabs = await js(`[...document.querySelectorAll(".admin-tabs a[href^='#/uff-admin']")].map((a) => a.textContent).join("|")`);
+  check(tabs === "Predictions Overview|Prediction Challenges|User Management|Credits Management|Rewards Catalog|Redemption Requests|Admin Permissions|Audit Logs", "a signed-in Super Admin sees all eight sections", tabs);
   check((await raw(".stat-chips")).includes("every balance matches"), "overview shows the ledger check");
   await shot("11-admin-overview");
 

@@ -3723,14 +3723,14 @@
         <div class="card stat-chip"><span class="eyebrow">Playoff bracket</span><span class="num">${po ? `${po.rounds.length} round${po.rounds.length === 1 ? "" : "s"}` : "None"}</span></div>
         <div class="card stat-chip"><span class="eyebrow">Legacy players</span><span class="num">${LEAGUE.legacy.players.length}</span></div>
       </div>
-      ${LOCAL_SITE ? `
+      ${LOCAL_SITE && !(ACCT.user && ACCT.user.isStaff) ? `
       <div class="card admin-card admin-predictions-link">
         <div class="admin-subhead">UFF Predictions<span class="muted small">this computer only</span></div>
-        <p class="muted small">Over/Under and Game Winner markets, multi-pick challenges, credits and rewards are run from UFF Admin with a site account that has an Admin role (not this league login).</p>
+        <p class="muted small">Over/Under and Game Winner markets, parlays, credits and rewards show up as tabs here once you're signed in to the site with an account that has an Admin role (that's separate from this league login).</p>
         <div class="admin-actions">
           <a class="btn btn-primary btn-sm" href="#/uff-predictions/manage">Add an Over/Under or Game Winner</a>
           <a class="btn btn-ghost btn-sm" href="#/uff-admin/challenges">Multi-pick challenges</a>
-          <a class="btn btn-ghost btn-sm" href="#/uff-admin">UFF Admin</a>
+          <a class="btn btn-ghost btn-sm" href="#/uff-admin">Admin</a>
         </div>
       </div>` : ""}
       ${activitySection(25)}`;
@@ -3750,10 +3750,7 @@
             </div>
             <button class="btn btn-ghost" id="adminLogout">Log out</button>
           </div>
-          <nav class="admin-tabs" aria-label="Admin sections">
-            ${ADMIN_TABS.map(([k, label, ic]) => `
-              <a href="#/admin/${k}" class="admin-tab ${k === tab[0] ? "active" : ""}" ${k === tab[0] ? 'aria-current="page"' : ""}>${icon(ic, "sm")}${label}</a>`).join("")}
-          </nav>
+          ${adminTabRow(`league:${tab[0]}`)}
           ${flashBox()}
           ${tab[3]()}
         </div>`;
@@ -4174,7 +4171,7 @@
       <div class="acct-menu" id="acctMenu" hidden>
         <div class="acct-menu-head"><b>${esc(u.username)}</b><span>${u.isStaff ? ROLE_NAMES[u.role] : `${Number(u.balance).toLocaleString("en-US")} virtual points`}</span></div>
         <a href="#/account">${icon("user", "sm")}Profile</a>
-        ${u.isStaff ? `<a href="#/uff-admin">${icon("shield", "sm")}UFF Admin</a>` : `<a href="#/uff-predictions/me">${icon("predict", "sm")}My Predictions</a>
+        ${u.isStaff ? `<a href="#/uff-admin">${icon("shield", "sm")}Admin</a>` : `<a href="#/uff-predictions/me">${icon("predict", "sm")}My Predictions</a>
         <a href="#/rewards/mine">${icon("awards", "sm")}My Redemptions</a>`}
         <button type="button" data-acct="signout">${icon("arrowR", "sm")}Sign Out</button>
       </div>`;
@@ -4317,7 +4314,7 @@
             <div><dt>Player profile</dt><dd>Your account isn't linked to a UFF player profile.</dd></div>
           </dl>
           <div class="admin-actions">
-            ${u.isStaff ? `<a class="btn btn-ghost btn-sm" href="#/uff-admin">Open UFF Admin</a>` : `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/me">My Predictions</a><a class="btn btn-ghost btn-sm" href="#/rewards/mine">My Redemptions</a>`}
+            ${u.isStaff ? `<a class="btn btn-ghost btn-sm" href="#/uff-admin">Open Admin</a>` : `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/me">My Predictions</a><a class="btn btn-ghost btn-sm" href="#/rewards/mine">My Redemptions</a>`}
             <button type="button" class="btn btn-ghost btn-sm" data-acct="signout">Sign Out</button>
           </div>
         </div>
@@ -4619,7 +4616,7 @@
     else if (pm.view === "c") body = pmChallengePage(cfg);
     else if (pm.view === "me") body = pmMePage(cfg);
     else if (pm.view === "leaders") body = pmLeadersPage(cfg);
-    else if (pm.view === "manage") body = admin ? pmManagePage(cfg) : empty("Admins only", `Market management is for UFF admins. <a class="link-strong" href="#/uff-admin">UFF Admin</a>`);
+    else if (pm.view === "manage") body = admin ? pmManagePage(cfg) : empty("Admins only", `Market management is for UFF admins. <a class="link-strong" href="#/uff-admin">Admin</a>`);
     else body = pmMarketsPage(cfg);
     return `
       <div class="wrap pm-page">
@@ -5415,6 +5412,24 @@
   const uaL = sectionLoader(ua.data, "uff-admin", () => uffAdminPage());
   function uffAdminChanged() { uaL.fresh(); }
   const can_ = (p) => !!(ACCT.user && (ACCT.user.perms || []).includes(p));
+  const UA_ICONS = { overview: "predict", challenges: "trend", users: "teams", credits: "stats", rewards: "awards", redemptions: "updates", permissions: "shield", audit: "records" };
+
+  // One Admin tab row for both halves of Admin: the league's sections (they save to the live site, so they need the
+  // league staff login) and, on this computer, UFF Predictions' sections (a site account with a staff/admin role).
+  // active = "league:<tab>" or "uff:<tab>"
+  function adminTabRow(active) {
+    const session = getAdmin();
+    const league = session && session.user ? ADMIN_TABS.map(([k, label, ic]) => [`#/admin/${k}`, label, ic, `league:${k}`]) : [];
+    const uff = LOCAL_SITE && ACCT.user && ACCT.user.isStaff
+      ? UA_TABS.filter(([, , p]) => can_(p)).map(([k, label]) => [`#/uff-admin/${k}`, k === "overview" ? "Predictions Overview" : label, UA_ICONS[k], `uff:${k}`]) : [];
+    const link = ([href, label, ic, key]) => `<a href="${href}" class="admin-tab ${key === active ? "active" : ""}" ${key === active ? 'aria-current="page"' : ""}>${icon(ic, "sm")}${label}</a>`;
+    return `
+      <nav class="admin-tabs" aria-label="Admin sections">
+        ${league.map(link).join("")}
+        ${!league.length && uff.length ? `<a href="#/admin" class="admin-tab">${icon("shield", "sm")}League tools (log in)</a>` : ""}
+        ${uff.length ? `<span class="admin-tabs-group">UFF Predictions</span>${uff.map(link).join("")}` : ""}
+      </nav>`;
+  }
 
   function uaRoute(parts) {
     const tab = UA_TABS.some(([k]) => k === parts[1]) ? parts[1] : "overview";
@@ -5429,13 +5444,13 @@
     const u = ACCT.user;
     const head = `
       <div class="page-head page-head--row">
-        <div><h1>UFF Admin</h1><p class="muted">Challenges, users, credits, rewards and permissions. The server checks every action and records it in the audit log.</p></div>
+        <div><h1>Admin</h1><p class="muted">League tools and UFF Predictions in one place. The server checks every action and records it in the audit log.</p></div>
         ${u && u.isStaff ? `<div class="pm-account"><span class="pill">${esc(u.username)} &middot; ${ROLE_NAMES[u.role]}</span></div>` : ""}
       </div>`;
     if (!LOCAL_SITE) return `<div class="wrap">${head}${empty("Not available here", "UFF Admin is being tested and isn't on the live site yet.")}</div>`;
     if (ACCT.error) return `<div class="wrap">${head}${authUnavailable()}</div>`;
     if (!ACCT.ready) return `<div class="wrap">${head}<div class="card pm-state"><span class="pm-spin"></span>Loading&hellip;</div></div>`;
-    if (!u) return `<div class="wrap">${head}${signInPrompt("Sign in to open UFF Admin", "#/uff-admin", "Only accounts with a staff or admin role can use it.")}</div>`;
+    if (!u) return `<div class="wrap">${head}${signInPrompt("Sign in to open Admin", "#/uff-admin", "Only accounts with a staff or admin role can use it.")}</div>`;
     if (!u.isStaff) return `<div class="wrap">${head}${empty("No admin access", "Your account doesn't have a staff or admin role. A Super Admin can give one on Admin Permissions.")}</div>`;
     const tabs = UA_TABS.filter(([, , p]) => can_(p));
     if (!tabs.some(([k]) => k === ua.tab)) ua.tab = "overview";
@@ -5444,7 +5459,7 @@
     return `
       <div class="wrap pm-page ua-page">
         ${head}
-        <nav class="admin-tabs ua-tabs" aria-label="UFF Admin sections">${tabs.map(([k, l]) => `<a class="admin-tab ${ua.tab === k ? "active" : ""}" href="#/uff-admin/${k}">${l}</a>`).join("")}</nav>
+        ${adminTabRow(`uff:${ua.tab}`)}
         ${ua.msg ? `<div class="admin-flash" role="status">${esc(ua.msg)}</div>` : ""}
         ${ua.err && !ua.confirm ? `<p class="login-error pm-err" role="alert">${esc(ua.err)}</p>` : ""}
         ${body}
@@ -7250,7 +7265,7 @@
 
   let lastTeamOpen = null;
   let lastSection = null;
-  const AUTH_TITLES = { "sign-in": "Sign In", "create-account": "Create Account", account: "Your Account", "uff-admin": "UFF Admin" };
+  const AUTH_TITLES = { "sign-in": "Sign In", "create-account": "Create Account", account: "Your Account", "uff-admin": "Admin" };
   let lastStatsView = null;
   function render() {
     gfxClose();
@@ -7267,6 +7282,11 @@
     if (section === "uff-admin") uaRoute(parts);
     if (section === "account" && lastSection !== "account") accountData = null;
     if (section !== "sign-in" && section !== "create-account") { signin.error = signup.error = ""; if (section !== lastSection) signin.step = 1; }
+    // Admin's tab row includes the UFF Predictions tabs when the signed-in site account has a role: check it again
+    // on the way in (a role may have been given or taken since the page loaded)
+    if (section === "admin" && LOCAL_SITE && lastSection !== "admin") {
+      loadAccount().then(() => { if (location.hash.replace(/^#\/?/, "").split("/")[0] === "admin") render(); });
+    }
     lastSection = section;
     if (section === "updates") updatesFilter = UPDATE_TYPES[sub] ? sub : "all";
     if (section === "stats") {
@@ -7972,7 +7992,7 @@
 
   window.addEventListener("hashchange", render);
   render();
-  loadAccount().then(() => { if (/^#\/(sign-in|create-account|account|uff-admin|rewards|uff-predictions)/.test(location.hash)) render(); });
+  loadAccount().then(() => { if (/^#\/(sign-in|create-account|account|admin|uff-admin|rewards|uff-predictions)/.test(location.hash)) render(); });
 
   /* ---------- Live updates ---------- */
 
