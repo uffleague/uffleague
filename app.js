@@ -3723,6 +3723,16 @@
         <div class="card stat-chip"><span class="eyebrow">Playoff bracket</span><span class="num">${po ? `${po.rounds.length} round${po.rounds.length === 1 ? "" : "s"}` : "None"}</span></div>
         <div class="card stat-chip"><span class="eyebrow">Legacy players</span><span class="num">${LEAGUE.legacy.players.length}</span></div>
       </div>
+      ${LOCAL_SITE ? `
+      <div class="card admin-card admin-predictions-link">
+        <div class="admin-subhead">UFF Predictions<span class="muted small">this computer only</span></div>
+        <p class="muted small">Over/Under and Game Winner markets, multi-pick challenges, credits and rewards are run from UFF Admin with a site account that has an Admin role (not this league login).</p>
+        <div class="admin-actions">
+          <a class="btn btn-primary btn-sm" href="#/uff-predictions/manage">Add an Over/Under or Game Winner</a>
+          <a class="btn btn-ghost btn-sm" href="#/uff-admin/challenges">Multi-pick challenges</a>
+          <a class="btn btn-ghost btn-sm" href="#/uff-admin">UFF Admin</a>
+        </div>
+      </div>` : ""}
       ${activitySection(25)}`;
   }
 
