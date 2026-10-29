@@ -4282,20 +4282,21 @@
       </form>`);
   }
 
-  // Staff and admins unlock admin tools on this session with their admin password (a PIN alone never opens them).
+  // Staff and admins unlock admin tools on this session by entering their PIN again (only accounts with a role can).
   // The server checks it; this card only asks.
   function unlockCard(what = "admin tools") {
     const u = ACCT.user;
     return `
       <form class="card auth-card unlock-card" id="staffForm" novalidate>
-        ${authBrand("Unlock Admin Tools", `Signed in as <b>${esc(u.username)}</b> (${ROLE_NAMES[u.role]}). Enter your admin password to open ${what}.`)}
+        ${authBrand("Unlock Admin Tools", `Signed in as <b>${esc(u.username)}</b> (${ROLE_NAMES[u.role]}). Enter your PIN to open ${what}.`)}
         <div class="auth-field">
-          <label for="staffPass">Admin password</label>
-          <div class="auth-input">${icon("lock", "auth-ico")}<input id="staffPass" type="password" autocomplete="current-password" required data-autofocus></div>
+          <label for="staffPass">5-Digit PIN</label>
+          <div class="auth-input">${icon("lock", "auth-ico")}<input id="staffPass" type="password" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="current-password" placeholder="Enter your 5 digit pin" required data-pin data-autofocus>
+            <button type="button" class="auth-eye" data-show-pin="staffPass" aria-pressed="false" aria-label="Show PIN">${icon("eye", "sm")}</button></div>
         </div>
         ${authError(staffSignin.error)}
         <button class="btn btn-primary auth-submit" ${staffSignin.busy ? "disabled" : ""}>${spinOr(staffSignin.busy, "Unlock")}</button>
-        <p class="auth-hint">Stays unlocked on this browser for 30 minutes. ${u.hasAdminPassword ? "" : "No admin password is set for this account yet: on this computer run <code>node predictions/accounts.js set-admin-password " + esc(u.username) + "</code>."}</p>
+        <p class="auth-hint">Stays unlocked on this browser for 30 minutes.</p>
       </form>`;
   }
 
@@ -4330,7 +4331,7 @@
           </div>`}
           <dl class="acct-facts">
             <div><dt>Account ID</dt><dd><code>${esc(u.accountId)}</code></dd></div>
-            <div><dt>Sign-in</dt><dd>Username + 5-digit PIN${u.isStaff ? ". Admin tools also need your admin password." : ""}</dd></div>
+            <div><dt>Sign-in</dt><dd>Username + 5-digit PIN${u.isStaff ? ". Admin tools ask for your PIN again to unlock." : ""}</dd></div>
             <div><dt>Forgot your PIN?</dt><dd>There's no reset by email or text yet. A league admin can set a new PIN for you.</dd></div>
             <div><dt>Player profile</dt><dd>Your account isn't linked to a UFF player profile.</dd></div>
           </dl>
@@ -4462,7 +4463,7 @@
       staffSignin = { busy: true, error: "" };
       render();
       try {
-        await localApi("/api/auth/elevate", { password });
+        await localApi("/api/auth/elevate", { pin: password });
         staffSignin = { busy: false, error: "" };
         await loadAccount();
         if (typeof uffAdminChanged === "function") uffAdminChanged();
@@ -5824,15 +5825,15 @@
             : `<div class="pm-fields"><label class="field">New role<select class="select" name="role">${Object.entries(ROLE_NAMES).map(([k, l]) => `<option value="${k}" ${u.role === k ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
               <div class="admin-actions"><button class="btn btn-primary btn-sm" ${ua.busy ? "disabled" : ""}>Review change</button></div>
               <p class="muted small">Staff: run their own challenges and review reward requests. Admin: also markets, users, credits, rewards and the audit log. Super Admin: also roles.
-              Staff and admins also need an admin password (set on this computer with the accounts tool) before they can unlock admin tools.</p>`}
+              They unlock admin tools with their own PIN.</p>`}
         </form>`;
     }
     return `
       <div class="card table-card">
         <div class="table-title">Accounts with a role</div>
-        ${staff.data ? `<div class="ua-table-wrap"><table class="pm-log ua-table"><thead><tr><th>Username</th><th>Role</th><th>Since</th><th>Given by</th><th>Admin password</th><th></th></tr></thead><tbody>
+        ${staff.data ? `<div class="ua-table-wrap"><table class="pm-log ua-table"><thead><tr><th>Username</th><th>Role</th><th>Since</th><th>Given by</th><th></th></tr></thead><tbody>
           ${staff.data.staff.map((u) => `<tr><td><b>${esc(u.username)}</b></td><td>${ROLE_NAMES[u.role]}</td><td class="small">${u.roleGrantedAt ? pmWhen(u.roleGrantedAt) : ""}</td>
-            <td class="small">${esc(u.roleGrantedBy || "local setup")}</td><td>${u.hasAdminPassword ? "Set" : "<span class='ua-bad'>Not set</span>"}</td>
+            <td class="small">${esc(u.roleGrantedBy || "local setup")}</td>
             <td class="ua-row-actions"><button type="button" class="btn btn-ghost btn-sm" data-ua-pick="permissions" data-id="${u.accountId}">Change</button></td></tr>`).join("")}
         </tbody></table></div>` : pmState(staff, "staff")}
       </div>
@@ -6068,10 +6069,9 @@
       return uaAsk({ title: `Make ${u.username} ${ROLE_NAMES[role]}?`, danger: role === "super_admin", label: "Change role", reason: "Why (goes in the audit log)",
         body: `<ul class="pm-modal-facts"><li>${ROLE_NAMES[u.role]} &rarr; <b>${ROLE_NAMES[role]}</b></li>
           ${role === "super_admin" ? "<li>Super Admins can give and take away every role, including yours.</li>" : ""}
-          ${role !== "user" && !u.hasAdminPassword ? `<li>They also need an admin password: on this computer run <code>node predictions/accounts.js set-admin-password ${esc(u.username)}</code>.</li>` : ""}
           <li>Less access takes effect right away.</li></ul>`,
         run: (reason) => uaRun(() => localApi("/api/admin/roles", { accountId: u.accountId, username: u.username, role, reason }),
-          (o) => `${u.username} is now ${ROLE_NAMES[o.user.role]}.${o.needsAdminPassword ? " They still need an admin password (accounts tool)." : ""}`) });
+          (o) => `${u.username} is now ${ROLE_NAMES[o.user.role]}.`) });
     }
   });
 

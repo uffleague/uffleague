@@ -32,10 +32,10 @@ const call = async (path, { method = "GET", body, session, headers = {}, noCsrf 
   return { status: res.status, setCookie, session: setCookie.split(";")[0], data: type.includes("json") ? await res.json() : await res.text(), res };
 };
 const signup = async (username, pin = "48213") => (await call("/api/auth/signup", { method: "POST", body: { username, pin, confirmPin: pin } })).session;
-// The Super Admin signs in with their PIN like anyone, then unlocks admin tools with the admin password
+// The Super Admin signs in with their PIN like anyone, then unlocks admin tools by entering it again
 const adminSession = async () => {
   const session = (await call("/api/auth/login", { method: "POST", body: { username: "boss", pin: "86420" } })).session;
-  await call("/api/auth/elevate", { method: "POST", body: { password: "adminpass1234" }, session });
+  await call("/api/auth/elevate", { method: "POST", body: { pin: "86420" }, session });
   return session;
 };
 
@@ -136,7 +136,7 @@ test("admin endpoints: 401 signed out, 403 for players, work for the admin; play
     assert.equal((await call(path, { method, body, session: u })).status, 403, path);
   }
   assert.equal((await call("/api/predictions/admin/audit", { session: await adminSession() })).status, 200);
-  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { password: "48213" }, session: u })).status, 403); // players can't unlock admin tools
+  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { pin: "48213" }, session: u })).status, 403); // players can't unlock admin tools
 });
 
 test("admin can't make picks through the API", async () => {
@@ -210,8 +210,8 @@ test("admin routes: players get 403; a Super Admin with only a PIN session gets 
   const locked = await call("/api/admin/overview", { session: pinOnly });
   assert.equal(locked.status, 401);
   assert.equal(locked.data.code, "elevate");
-  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { password: "86420" }, session: pinOnly })).status, 401); // the PIN isn't it
-  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { password: "adminpass1234" }, session: pinOnly })).status, 200);
+  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { pin: "86421" }, session: pinOnly })).status, 401); // wrong PIN
+  assert.equal((await call("/api/auth/elevate", { method: "POST", body: { pin: "86420" }, session: pinOnly })).status, 200);
   assert.equal((await call("/api/admin/overview", { session: pinOnly })).status, 200);
   await call("/api/auth/lock", { method: "POST", body: {}, session: pinOnly });
   assert.equal((await call("/api/admin/overview", { session: pinOnly })).data.code, "elevate");

@@ -15,7 +15,7 @@ const EDGE = ["C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe", "C
   "/usr/bin/microsoft-edge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"].find(existsSync);
 if (!EDGE) { console.error("Microsoft Edge wasn't found, so the browser check can't run."); process.exit(2); }
 const TMP = mkdtempSync(join(tmpdir(), "uff-browser-"));
-const PORT = 4175, SITE = `http://127.0.0.1:${PORT}`, ADMIN_PW = `check-${randomBytes(12).toString("hex")}`, ADMIN_PIN = "39175";
+const PORT = 4175, SITE = `http://127.0.0.1:${PORT}`, ADMIN_PIN = "39175";
 const DB = join(TMP, "check.db"), PEPPER = randomBytes(32).toString("hex");
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -76,17 +76,17 @@ try {
   await size(1280, 900);
   // Test accounts, and the first Super Admin (an ordinary account bootstrapped with the accounts tool)
   tool(["create", "check_admin"], `${ADMIN_PIN}\n`);
-  const boot = tool(["bootstrap-admin", "check_admin"], `${ADMIN_PW}\n`);
+  const boot = tool(["bootstrap-admin", "check_admin"]);
   check(/is now the Super Admin/.test(boot.stdout), "accounts tool makes the first Super Admin", boot.stderr || boot.stdout);
   tool(["create", "check_player"], "28461\n");
   tool(["create", "check_staff"], "37192\n");
-  check(/already a Super Admin/.test(tool(["bootstrap-admin", "check_player"], `${ADMIN_PW}\n`).stderr), "a second bootstrap is refused");
+  check(/already a Super Admin/.test(tool(["bootstrap-admin", "check_player"]).stderr), "a second bootstrap is refused");
 
   // Markets to pick on and build a challenge from (the admin signs in with the PIN, unlocks, then signs out)
   await open("#/");
   await api("/api/auth/login", { username: "check_admin", pin: ADMIN_PIN });
   check((await api("/api/predictions/admin/markets", {})).code === "elevate", "a PIN session can't use admin tools until unlocked");
-  await api("/api/auth/elevate", { password: ADMIN_PW });
+  await api("/api/auth/elevate", { pin: ADMIN_PIN });
   const games = await js(`fetch("/api/predictions/admin/games").then((r) => r.json())`);
   const g = games.games.find((x) => x.id === "SAMPLE-1"), g2 = games.games.find((x) => x.id === "SAMPLE-2");
   const made = await api("/api/predictions/admin/markets", { kind: "game_winner", gameId: g.id, closesAt: g.at });
@@ -228,16 +228,16 @@ try {
   check((await js(`fetch("/api/admin/overview").then((r) => r.status)`)) === 403, "a player calling the admin API gets 403");
   await api("/api/auth/logout", {});
 
-  // The Super Admin: PIN, then the admin password on the unlock card
+  // The Super Admin: signed in with the PIN, then the PIN again on the unlock card
   await api("/api/auth/login", { username: "check_admin", pin: ADMIN_PIN });
   await go("#/uff-admin"); await settle();
-  check(await has("#staffForm") && !(await has(".ua-tabs")), "UFF Admin asks a signed-in Super Admin for the admin password first");
+  check(await has("#staffForm") && !(await has(".ua-tabs")), "UFF Admin asks a signed-in Super Admin to unlock with their PIN first");
   await shot("10-admin-unlock");
-  await type("#staffPass", "wrong-password-123"); await click("#staffForm .auth-submit"); await wait(1400);
-  check((await raw("#authError")).includes("isn't right"), "a wrong admin password is refused");
-  await type("#staffPass", ADMIN_PW); await click("#staffForm .auth-submit"); await wait(2000);
+  await type("#staffPass", "11223"); await click("#staffForm .auth-submit"); await wait(1400);
+  check((await raw("#authError")).includes("isn't right"), "a wrong PIN at the unlock step is refused");
+  await type("#staffPass", ADMIN_PIN); await click("#staffForm .auth-submit"); await wait(2000);
   const tabs = await js(`[...document.querySelectorAll(".ua-tabs a")].map((a) => a.textContent).join("|")`);
-  check(tabs === "Overview|Prediction Challenges|User Management|Credits Management|Rewards Catalog|Redemption Requests|Admin Permissions|Audit Logs", "the right password opens all eight sections", tabs);
+  check(tabs === "Overview|Prediction Challenges|User Management|Credits Management|Rewards Catalog|Redemption Requests|Admin Permissions|Audit Logs", "the right PIN opens all eight sections", tabs);
   check((await raw(".stat-chips")).includes("every balance matches"), "overview shows the ledger check");
   await shot("11-admin-overview");
 
@@ -317,7 +317,7 @@ try {
 
   // Staff side (as the Super Admin): approve, then fulfill; the audit log has everything
   await api("/api/auth/login", { username: "check_admin", pin: ADMIN_PIN });
-  await api("/api/auth/elevate", { password: ADMIN_PW });
+  await api("/api/auth/elevate", { pin: ADMIN_PIN });
   await go("#/uff-admin/redemptions");
   check((await raw(".ua-rd")).includes("check_player"), "the request shows in Redemption Requests");
   await click("[data-ua-rd='approve']"); await settle(); await confirmYes();
@@ -328,7 +328,7 @@ try {
   await go("#/uff-admin/audit");
   const log = await raw(".ua-audit");
   check(["redemption.fulfill", "redemption.approve", "role.grant", "credits.add", "challenge.publish", "challenge.create", "role.bootstrap"].every((a) => log.includes(a)), "audit log has every sensitive action");
-  check(!log.includes(ADMIN_PW) && !log.includes(ADMIN_PIN), "audit log holds no passwords or PINs");
+  check(!log.includes(ADMIN_PIN), "audit log holds no PINs");
   await shot("16-admin-audit");
 
   // Phone and tablet widths

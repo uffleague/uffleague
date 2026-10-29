@@ -98,10 +98,8 @@ test("roles: a Super Admin grants and revokes; recorded with who and when; less 
   const r = t.setRole(s.admin, { accountId: acct(s, "rising"), username: "rising", role: "staff", reason: "Helps run challenges" });
   assert.equal(r.user.role, "staff");
   assert.equal(r.user.roleGrantedBy, "boss");
-  assert.equal(r.needsAdminPassword, true);
-  s.auth.setAdminPassword("rising", "adminpass1234");
   const { token } = s.auth.signIn({ username: "rising", pin: "13579", ip: "x" });
-  s.auth.elevate({ token, user: s.auth.sessionUser(token), password: "adminpass1234", ip: "x" });
+  s.auth.elevate({ token, user: s.auth.sessionUser(token), pin: "13579", ip: "x" });
   assert.equal(s.auth.sessionUser(token).elevated, true);
   t.setRole(s.admin, { accountId: acct(s, "rising"), username: "rising", role: "user", reason: "Season over" });
   assert.equal(s.auth.sessionUser(token).elevated, false);
@@ -157,7 +155,7 @@ test("audit log: admins read it, filters work, nobody can edit or delete it, and
   assert.throws(() => s.db.prepare("UPDATE audit SET action = 'nothing'").run(), /never changed/);
   assert.throws(() => s.db.prepare("DELETE FROM audit").run(), /never deleted/);
   assert.throws(() => s.db.prepare("DELETE FROM ledger").run(), /never deleted/);
-  assert.ok(!/adminpass1234|86420|13579/.test(JSON.stringify(t.auditLog(s.admin, { limit: 200 }).rows)));
+  assert.ok(!/86420|13579|13570/.test(JSON.stringify(t.auditLog(s.admin, { limit: 200 }).rows)));
 });
 
 test("overview: counts for staff, point totals and ledger check only for credit admins", () => {

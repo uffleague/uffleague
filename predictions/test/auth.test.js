@@ -143,47 +143,45 @@ test("each sign-in gets its own session; signing out one leaves the other", () =
   assert.ok(s.auth.sessionUser(b));
 });
 
-test("a PIN never opens admin tools: a Super Admin signed in with their PIN still has to enter the admin password", () => {
+test("admin tools: a Super Admin signed in with their PIN unlocks them by entering that PIN again, for 30 minutes", () => {
   const s = setup();
   const { token } = s.auth.signIn({ username: "boss", pin: "86420", ip: "a" });
   const before = s.auth.sessionUser(token);
   assert.equal(before.role, "super_admin");
   assert.equal(before.elevated, false);
-  status(() => s.auth.elevate({ token, user: before, password: "86420", ip: "a" }), 401); // the PIN isn't the admin password
-  status(() => s.auth.elevate({ token, user: before, password: "wrong-password-1", ip: "a" }), 401);
-  s.auth.elevate({ token, user: before, password: "adminpass1234", ip: "a" });
+  status(() => s.auth.elevate({ token, user: before, pin: "86421", ip: "a" }), 401, /PIN isn't right/);
+  status(() => s.auth.elevate({ token, user: before, pin: "8642", ip: "a" }), 400);
+  status(() => s.auth.elevate({ token, user: before, pin: 86420, ip: "a" }), 400); // a number, not the 5-digit text
+  s.auth.elevate({ token, user: before, pin: "86420", ip: "a" });
   assert.equal(s.auth.sessionUser(token).elevated, true);
   s.clock.t += 31 * 60 * 1000; // unlocking lasts 30 minutes
   assert.equal(s.auth.sessionUser(token).elevated, false);
-  s.auth.elevate({ token, user: s.auth.sessionUser(token), password: "adminpass1234", ip: "a" });
+  s.auth.elevate({ token, user: s.auth.sessionUser(token), pin: "86420", ip: "a" });
   s.auth.lockAdmin(token);
   assert.equal(s.auth.sessionUser(token).elevated, false);
 });
 
-test("admin password: players can't unlock admin tools, and wrong passwords lock out like PINs", () => {
+test("unlocking: players (no role) can't, even with their right PIN; wrong PINs lock out like sign-in", () => {
   const s = setup();
   const { token, user } = signUp(s, "player1", "48213");
-  status(() => s.auth.elevate({ token, user, password: "anything-at-all", ip: "a" }), 403);
+  status(() => s.auth.elevate({ token, user, pin: "48213", ip: "a" }), 403);
   const boss = s.auth.signIn({ username: "boss", pin: "86420", ip: "a" });
-  for (let i = 0; i < 5; i++) status(() => s.auth.elevate({ token: boss.token, user: boss.user, password: "nope-nope-nope", ip: `b${i}` }), 401);
-  status(() => s.auth.elevate({ token: boss.token, user: boss.user, password: "adminpass1234", ip: "c" }), 429);
-  status(() => s.auth.setAdminPassword("player1", "short"), 400);
-  status(() => s.auth.setAdminPassword("player1", "123456789012345"), 400, /only digits/);
+  for (let i = 0; i < 5; i++) status(() => s.auth.elevate({ token: boss.token, user: boss.user, pin: "11223", ip: `b${i}` }), 401);
+  status(() => s.auth.elevate({ token: boss.token, user: boss.user, pin: "86420", ip: "c" }), 429); // even the right PIN waits
 });
 
 test("bootstrap: only an existing, signed-in site account, only while there's no Super Admin; logged", () => {
   const s = setup(); // boss is already the Super Admin
   signUp(s, "second");
-  status(() => s.auth.bootstrapSuperAdmin("second", "adminpass1234"), 409, /already a Super Admin/);
+  status(() => s.auth.bootstrapSuperAdmin("second"), 409, /already a Super Admin/);
   s.auth.revokeRoleLocally("boss");
-  status(() => s.auth.bootstrapSuperAdmin("made_up_name", "adminpass1234"), 404);
+  status(() => s.auth.bootstrapSuperAdmin("made_up_name"), 404);
   s.db.prepare("INSERT INTO users (username, pass_hash, pass_salt, balance, created_at, account_id, credential) VALUES ('notverified', 'x', '', 0, 0, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'pin')").run();
-  status(() => s.auth.bootstrapSuperAdmin("notverified", "adminpass1234"), 409, /hasn't been set up/); // never signed in
-  status(() => s.auth.bootstrapSuperAdmin("second", "short"), 400);
-  assert.equal(s.auth.bootstrapSuperAdmin("second", "adminpass1234").role, "super_admin");
+  status(() => s.auth.bootstrapSuperAdmin("notverified"), 409, /hasn't been set up/); // never signed in
+  assert.equal(s.auth.bootstrapSuperAdmin("second").role, "super_admin");
   const log = s.audit.list({ action: "role." }).rows.map((r) => r.action);
   assert.deepEqual(log, ["role.bootstrap", "role.revoke", "role.bootstrap"]);
-  assert.ok(!JSON.stringify(s.audit.list({}).rows).includes("adminpass1234"));
+  assert.ok(!JSON.stringify(s.audit.list({}).rows).includes("86420"));
 });
 
 test("account ids can't be changed, even straight in the database; new accounts are always plain users", () => {

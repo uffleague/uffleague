@@ -19,7 +19,7 @@ export function createAdminTools({ db, ledger, audit, limiter, now = Date.now })
   const person = (u) => u && { accountId: u.account_id, username: u.username, role: u.role, roleLabel: ROLE_LABEL[u.role], status: u.status,
     balance: u.balance, createdAt: u.created_at, lastSignInAt: u.last_sign_in_at, roleGrantedAt: u.role_granted_at,
     roleGrantedBy: u.role_granted_by ? (get("SELECT username FROM users WHERE id = ?", u.role_granted_by) || {}).username : null,
-    hasAdminPassword: !!u.staff_secret, verified: u.credential === "pin" && !!u.last_sign_in_at };
+    verified: u.credential === "pin" && !!u.last_sign_in_at };
   // Found by the permanent account id, and the username has to match too, so a renamed or mistyped account is never hit
   function target(accountId, username) {
     const u = get("SELECT * FROM users WHERE account_id = ?", String(accountId || ""));
@@ -138,7 +138,7 @@ export function createAdminTools({ db, ledger, audit, limiter, now = Date.now })
       if (!up) run("UPDATE sessions SET elevated_until = 0 WHERE user_id = ?", u.id);
       audit.log({ actorId: user.id, action: up ? "role.grant" : "role.revoke", targetType: "user", targetId: u.account_id,
         detail: { username: u.username, before: { role: u.role }, after: { role }, reason } });
-      return { user: person(get("SELECT * FROM users WHERE id = ?", u.id)), needsAdminPassword: role !== "user" && !u.staff_secret };
+      return { user: person(get("SELECT * FROM users WHERE id = ?", u.id)) };
     });
   }
 

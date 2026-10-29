@@ -126,9 +126,8 @@ test("staff can't review their own request", () => {
   const { s, id } = shop();
   const r = s.rewards.redeem(s.user("future_staff"), { rewardId: id, idempotencyKey: key() }).redemption;
   s.db.prepare("UPDATE users SET role = 'staff' WHERE username = 'future_staff'").run();
-  s.auth.setAdminPassword("future_staff", "adminpass1234");
   const { token } = s.auth.signIn({ username: "future_staff", pin: "13579", ip: "x" });
-  s.auth.elevate({ token, user: s.auth.sessionUser(token), password: "adminpass1234", ip: "x" });
+  s.auth.elevate({ token, user: s.auth.sessionUser(token), pin: "13579", ip: "x" });
   status(() => s.rewards.act(s.auth.sessionUser(token), r.id, { action: "approve" }), 403, /own request/);
 });
 

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
 export const SITE_ROOT = join(HERE, "..");
-export const LOCAL_DIR = join(HERE, ".local"); // git-ignored: databases and the local admin password
+export const LOCAL_DIR = join(HERE, ".local"); // git-ignored: databases and the PIN pepper
 
 const int = (v, fallback, min, max) => {
   const n = Number(v);

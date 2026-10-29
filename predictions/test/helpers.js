@@ -25,13 +25,13 @@ export function setup({ config = {} } = {}) {
   const tools = createTools({ db, league, config: cfg, now: () => clock.t });
   const { service, auth } = tools;
   // The admin is an ordinary account made the first Super Admin (the accounts tool's bootstrap), then signed in with
-  // its PIN and unlocked with its admin password: the same path a real admin takes
-  const signedIn = (name, pin, role = null, password = "adminpass1234") => {
+  // its PIN and unlocked by entering that PIN again: the same path a real admin takes
+  const signedIn = (name, pin, role = null) => {
     auth.createAccount({ username: name, pin, confirmPin: pin, ip: `test:${name}` });
-    if (role === "super_admin") auth.bootstrapSuperAdmin(name, password);
-    else if (role) { db.prepare("UPDATE users SET role = ?, role_granted_at = ? WHERE username = ?").run(role, clock.t, name); auth.setAdminPassword(name, password); }
+    if (role === "super_admin") auth.bootstrapSuperAdmin(name);
+    else if (role) db.prepare("UPDATE users SET role = ?, role_granted_at = ? WHERE username = ?").run(role, clock.t, name);
     const { token } = auth.signIn({ username: name, pin, ip: `test:${name}` });
-    if (role) auth.elevate({ token, user: auth.sessionUser(token), password, ip: `test:${name}` });
+    if (role) auth.elevate({ token, user: auth.sessionUser(token), pin, ip: `test:${name}` });
     return { token, user: auth.sessionUser(token) };
   };
   const boss = signedIn("boss", "86420", "super_admin");

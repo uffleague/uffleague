@@ -4,8 +4,7 @@
 //   node predictions/accounts.js create <name>   [--demo]   then type the 5-digit PIN
 //   node predictions/accounts.js set-pin <name>  [--demo]   new PIN (there's no reset by email or text yet)
 //   node predictions/accounts.js bootstrap-admin <name>     [--demo]   make an existing site account the FIRST Super Admin
-//                                                                       (only while there is none), and set its admin password
-//   node predictions/accounts.js set-admin-password <name>  [--demo]   the password staff/admins type to unlock admin tools
+//                                                                       (only while there is none; they unlock admin tools with their PIN)
 //   node predictions/accounts.js revoke-role <name>         [--demo]   back to an ordinary user (recovery; normally done on
 //                                                                       UFF Admin -> Admin Permissions)
 // --demo = the demo-mode database (npm run predictions:demo); otherwise the live-mode one.
@@ -36,8 +35,8 @@ function readPin(prompt) {
 
 try {
   if (cmd === "list") {
-    const rows = db.prepare("SELECT username, account_id, credential, role, status, staff_secret, balance, created_at FROM users ORDER BY id").all();
-    rows.forEach((r) => console.log([r.username, r.account_id, r.role + (r.role !== "user" ? (r.staff_secret ? " (admin password set)" : " (no admin password)") : ""),
+    const rows = db.prepare("SELECT username, account_id, credential, role, status, balance, created_at FROM users ORDER BY id").all();
+    rows.forEach((r) => console.log([r.username, r.account_id, r.role,
       r.status, r.credential === "pin" ? "PIN" : "old password account (retired)", `${r.balance} pts`, new Date(r.created_at).toISOString().slice(0, 10)].join("  ")));
     if (!rows.length) console.log("No accounts yet.");
   } else if (cmd === "create" && name) {
@@ -48,7 +47,7 @@ try {
   } else if (cmd === "set-pin" && name) {
     const user = auth.setPin(name, await readPin("New 5-digit PIN: "));
     console.log(`New PIN set for ${user.username}. They're signed out everywhere.`);
-  } else if (["bootstrap-admin", "set-admin-password", "revoke-role"].includes(cmd) && name) {
+  } else if (["bootstrap-admin", "revoke-role"].includes(cmd) && name) {
     if (process.env.NODE_ENV === "production" || process.env.PRED_SECURE_COOKIES === "1") {
       throw new Error("This is for a development copy on this computer. It won't run with production settings.");
     }
@@ -56,16 +55,11 @@ try {
       const user = auth.revokeRoleLocally(name);
       console.log(`${user.username} is an ordinary user again (logged in the audit log).`);
     } else {
-      const pw = await readPin("Admin password (12+ characters, not just digits): ");
-      const again = process.stdin.isTTY ? await readPin("Same password again: ") : pw;
-      if (pw !== again) throw new Error("The two passwords don't match.");
-      const user = cmd === "bootstrap-admin" ? auth.bootstrapSuperAdmin(name, pw) : auth.setAdminPassword(name, pw);
-      console.log(cmd === "bootstrap-admin"
-        ? `${user.username} (${user.accountId}) is now the Super Admin. Sign in on the site with their PIN, open UFF Admin, and unlock it with this admin password.`
-        : `Admin password set for ${user.username}.${user.role === "user" ? " (They have no role yet; a Super Admin can give one on Admin Permissions.)" : ""}`);
+      const user = auth.bootstrapSuperAdmin(name);
+      console.log(`${user.username} (${user.accountId}) is now the Super Admin. Sign in on the site, open UFF Admin, and unlock it with the same PIN.`);
     }
   } else {
-    console.log("Use: node predictions/accounts.js list | create <username> | set-pin <username> | bootstrap-admin <username> | set-admin-password <username> | revoke-role <username>   [--demo]");
+    console.log("Use: node predictions/accounts.js list | create <username> | set-pin <username> | bootstrap-admin <username> | revoke-role <username>   [--demo]");
     process.exitCode = 1;
   }
 } catch (e) {

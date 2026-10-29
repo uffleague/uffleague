@@ -1,5 +1,5 @@
 // UFF accounts on the local server: a username and a 5-digit PIN. Staff and admins are the same accounts with a role
-// (roles.js), plus an admin password that unlocks admin tools on a session (elevate below).
+// (roles.js); they unlock admin tools on a session by entering their PIN again (elevate below).
 // A 5-digit PIN is only 100,000 possibilities, so it's kept from being guessed by the server, not by its length:
 //   - PINs are hashed with Argon2id plus a pepper (a secret key kept outside the database, see server.js), so a
 //     copied database alone can't be used to try PINs
@@ -78,7 +78,7 @@ export function createAuth({ db, config, now = Date.now }) {
 
   const publicUser = (u, s = null) => u && { id: u.id, accountId: u.account_id, username: u.username, role: u.role, status: u.status,
     isAdmin: u.role === "admin" || u.role === "super_admin", isStaff: u.role !== "user", perms: PERMISSIONS[u.role] || [],
-    hasAdminPassword: !!u.staff_secret, balance: u.balance, createdAt: u.created_at,
+    balance: u.balance, createdAt: u.created_at,
     elevated: !!(s && u.role !== "user" && s.elevated_until > now()), elevatedUntil: s && s.elevated_until > now() ? s.elevated_until : null };
 
   /* ---------- Throttling ---------- */
@@ -157,19 +157,20 @@ export function createAuth({ db, config, now = Date.now }) {
 
   /* ---------- Unlocking admin tools (staff and above) ---------- */
 
-  // A role alone doesn't open admin tools: the person also enters their admin password, which unlocks them on
-  // this one session for elevateMinutes. A stolen or guessed PIN can't do it.
-  function elevate({ token, user, password, ip }) {
+  // A role alone doesn't open admin tools: the person enters their PIN again, which unlocks them on this one
+  // session for elevateMinutes (so a browser left signed in can't be used for admin changes). Only accounts a
+  // Super Admin gave a role can do it, and wrong PINs here lock out just like at sign-in.
+  function elevate({ token, user, pin, ip }) {
     if (!user) fail(401, "Sign in first.");
     if (user.role === "user") fail(403, "Your account doesn't have admin access.");
+    const problem = pinProblem(pin);
+    if (problem) fail(400, problem);
     const u = get("SELECT * FROM users WHERE id = ?", user.id);
-    if (!u.staff_secret) fail(409, `No admin password is set for this account yet. On this computer run: node predictions/accounts.js set-admin-password ${u.username}`);
-    if (typeof password !== "string" || !password || password.length > 200) fail(400, "Enter your admin password.");
     const userKey = `elevate:${u.id}`, ipKey = `ip:${ip || "?"}`;
     const wait = waitFor([userKey, ipKey]);
     if (wait > 0) tooMany(wait);
     countMiss(userKey, ipKey);
-    if (!verifySecret(password, u.staff_secret, "", pepper)) fail(401, "That admin password isn't right.");
+    if (u.credential !== "pin" || !verifySecret(pin, u.pass_hash, u.pass_salt, pepper)) fail(401, "That PIN isn't right.");
     undoMiss(userKey, ipKey);
     const until = now() + elevateMs;
     run("UPDATE sessions SET elevated_until = ? WHERE token_hash = ?", until, sha(token));
@@ -226,28 +227,14 @@ export function createAuth({ db, config, now = Date.now }) {
     return publicUser(get("SELECT * FROM users WHERE id = ?", u.id));
   }
 
-  // The admin password for an account that has (or is about to get) staff access. Ends its unlocked sessions.
-  function setAdminPassword(username, password) {
-    if (typeof password !== "string" || password.length < 12 || password.length > 200) fail(400, "Admin passwords need at least 12 characters.");
-    if (/^\d+$/.test(password)) fail(400, "An admin password can't be only digits.");
-    const u = get("SELECT * FROM users WHERE username = ?", String(username ?? "").trim());
-    if (!u) fail(404, "No account has that username.");
-    run("UPDATE users SET staff_secret = ? WHERE id = ?", hashSecret(password, pepper), u.id);
-    run("UPDATE sessions SET elevated_until = 0 WHERE user_id = ?", u.id);
-    run("DELETE FROM auth_throttle WHERE key = ?", `elevate:${u.id}`);
-    audit.log({ actorId: null, action: "admin.password_set", targetType: "user", targetId: u.account_id, detail: { username: u.username, via: "local accounts tool" } });
-    return publicUser(get("SELECT * FROM users WHERE id = ?", u.id));
-  }
-
   // The first Super Admin, set up on this computer. Only works while there is no Super Admin, only for an existing
   // PIN account that has really been signed into (made and used through the site), never for a made-up name.
-  function bootstrapSuperAdmin(username, password) {
+  function bootstrapSuperAdmin(username) {
     if (get("SELECT id FROM users WHERE role = 'super_admin'")) fail(409, "There's already a Super Admin. Give roles on the Admin Permissions page instead.");
     const u = get("SELECT * FROM users WHERE username = ?", String(username ?? "").trim());
     if (!u) fail(404, "No account has that username. Create it on the site first (Create an account), then run this again.");
     if (u.credential !== "pin" || !u.last_sign_in_at) fail(409, "That account hasn't been set up through the site's sign-up and sign-in yet.");
     if (u.status !== "active") fail(409, "That account is suspended.");
-    setAdminPassword(u.username, password);
     tx(db, () => {
       run("UPDATE users SET role = 'super_admin', role_granted_at = ?, role_granted_by = NULL WHERE id = ?", now(), u.id);
       audit.log({ actorId: null, action: "role.bootstrap", targetType: "user", targetId: u.account_id,
@@ -280,5 +267,5 @@ export function createAuth({ db, config, now = Date.now }) {
       roleGrantedAt: u.role_granted_at, picks: { total: picks.n, won: picks.won, lost: picks.lost, pending: picks.pending } };
   }
 
-  return { signIn, createAccount, setPin, setAdminPassword, bootstrapSuperAdmin, revokeRoleLocally, elevate, lockAdmin, sessionUser, logout, profile };
+  return { signIn, createAccount, setPin, bootstrapSuperAdmin, revokeRoleLocally, elevate, lockAdmin, sessionUser, logout, profile };
 }
