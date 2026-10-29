@@ -670,7 +670,7 @@ function adminDeadlines(env, data, body) {
 //            view: what the site and the bot get, updatedAt (changes whenever the view does) }
 const PT_LOCK_HOURS = 48;
 const PT_DEFAULTS = { perSeries: 1, topSeeds: 6 };
-const SITE_DATA = "https://uffleague.github.io/data.js";
+const SITE_DATA = "https://raw.githubusercontent.com/uffleague/uffleague/main/data.js"; // the repo itself, wherever the site is hosted
 const ptState = (data) => ({ manual: {}, labels: {}, auto: {}, teams: [], view: null, updatedAt: null, ...(data.primetime || {}),
   settings: { ...PT_DEFAULTS, ...((data.primetime || {}).settings || {}) } });
 
