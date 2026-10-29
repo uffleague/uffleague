@@ -5,6 +5,9 @@
 //   node predictions/accounts.js set-pin <name>  [--demo]   new PIN (there's no reset by email or text yet)
 //   node predictions/accounts.js bootstrap-admin <name>     [--demo]   make an existing site account the FIRST Super Admin
 //                                                                       (only while there is none; they unlock admin tools with their PIN)
+//   node predictions/accounts.js set-league-login <league username>   the live League Admin login, so staff/admin site
+//                                                                       accounts get signed in to it automatically (type the password)
+//   node predictions/accounts.js clear-league-login                     forget it
 //   node predictions/accounts.js revoke-role <name>         [--demo]   back to an ordinary user (recovery; normally done on
 //                                                                       UFF Admin -> Admin Permissions)
 // --demo = the demo-mode database (npm run predictions:demo); otherwise the live-mode one.
@@ -13,7 +16,8 @@
 import { createInterface } from "node:readline";
 import { openDb } from "./db.js";
 import { createAuth } from "./auth.js";
-import { CONFIG, dbPath, loadPepper } from "./config.js";
+import { writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { CONFIG, dbPath, loadPepper, LEAGUE_LOGIN_FILE, LOCAL_DIR } from "./config.js";
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const [cmd, name] = args;
@@ -47,6 +51,15 @@ try {
   } else if (cmd === "set-pin" && name) {
     const user = auth.setPin(name, await readPin("New 5-digit PIN: "));
     console.log(`New PIN set for ${user.username}. They're signed out everywhere.`);
+  } else if (cmd === "set-league-login" && name) {
+    const password = await readPin("League Admin password: ");
+    if (!password) throw new Error("No password typed.");
+    mkdirSync(LOCAL_DIR, { recursive: true });
+    writeFileSync(LEAGUE_LOGIN_FILE, JSON.stringify({ username: name, password }), { mode: 0o600 });
+    console.log(`Saved. Staff and admin site accounts now get signed in to the League Admin as ${name} (restart not needed).`);
+  } else if (cmd === "clear-league-login") {
+    rmSync(LEAGUE_LOGIN_FILE, { force: true });
+    console.log("League auto-login is off. Staff log in to the League Admin themselves again.");
   } else if (["bootstrap-admin", "revoke-role"].includes(cmd) && name) {
     if (process.env.NODE_ENV === "production" || process.env.PRED_SECURE_COOKIES === "1") {
       throw new Error("This is for a development copy on this computer. It won't run with production settings.");
@@ -59,7 +72,7 @@ try {
       console.log(`${user.username} (${user.accountId}) is now the Super Admin. Sign in on the site, open UFF Admin, and unlock it with the same PIN.`);
     }
   } else {
-    console.log("Use: node predictions/accounts.js list | create <username> | set-pin <username> | bootstrap-admin <username> | revoke-role <username>   [--demo]");
+    console.log("Use: node predictions/accounts.js list | create <username> | set-pin <username> | bootstrap-admin <username> | revoke-role <username> | set-league-login <league username> | clear-league-login   [--demo]");
     process.exitCode = 1;
   }
 } catch (e) {

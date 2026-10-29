@@ -20,7 +20,8 @@ import { createLimiter } from "./limits.js";
 import { createChallenges } from "./challenges.js";
 import { createRewards } from "./rewards.js";
 import { createAdminTools } from "./admin.js";
-import { CONFIG, SITE_ROOT, dbPath, loadPepper } from "./config.js";
+import { CONFIG, SITE_ROOT, dbPath, loadPepper, loadLeagueLogin } from "./config.js";
+import { need } from "./roles.js";
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon" };
@@ -66,7 +67,28 @@ export function createTools({ db, league, config, now = Date.now }) {
     admin: createAdminTools({ db, ledger, audit, limiter, now }) };
 }
 
-export function createServer({ service, auth, challenges, rewards, admin, league, config = CONFIG, port }) {
+export function createServer({ service, auth, challenges, rewards, admin, audit, limiter, league, config = CONFIG, port,
+  leagueLogin = loadLeagueLogin, leagueFetch = (url, opts) => fetch(url, opts) }) {
+  // Logs a staff/admin site account in to the live League Admin with the league login saved on this computer.
+  // The league password never reaches the browser; the browser gets the same 12-hour token a normal league login gives.
+  async function leagueSignIn(user) {
+    need(user, "admin.view");
+    if (limiter) limiter(`league:${user.id}`, 20, 10 * 60000);
+    const creds = leagueLogin();
+    if (!creds) throw new HttpError(409, "League auto-login isn't set up on this computer yet. Run: node predictions/accounts.js set-league-login <username>", "league-not-set");
+    let res, data = {};
+    try {
+      res = await leagueFetch(config.liveUrl, { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "login", username: creds.username, password: creds.password, name: user.username }) });
+      data = await res.json();
+    } catch (e) {
+      throw new HttpError(502, "Couldn't reach the live League Admin. Check the internet connection.");
+    }
+    if (!res.ok || !data.token) throw new HttpError(502, `The live League Admin turned the saved login down (${data.error || res.status}). Save it again with the accounts tool.`);
+    if (audit) audit.log({ actorId: user.id, action: "league.login", targetType: "user", targetId: user.accountId, detail: { username: user.username, as: data.name || user.username } });
+    return { user: data.name || user.username, token: data.token };
+  }
+
   const hostOk = (h) => {
     const p = String(port());
     return [`127.0.0.1:${p}`, `localhost:${p}`].includes(String(h || "").toLowerCase());
@@ -104,6 +126,7 @@ export function createServer({ service, auth, challenges, rewards, admin, league
         return send(res, 200, { ok: true }, [...cookies, cookie(SESSION, "", 0, { secure })]);
       }
       if (method === "GET" && path === "/api/account") return send(res, 200, auth.profile(user), cookies);
+      if (method === "POST" && path === "/api/auth/league-login") return send(res, 200, await leagueSignIn(user), cookies);
       throw new HttpError(404, "Not found.");
     }
 

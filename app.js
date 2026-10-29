@@ -2844,6 +2844,8 @@
   const setAdmin = (v) => { try { v ? sessionStorage.setItem(ADMIN_KEY, JSON.stringify(v)) : sessionStorage.removeItem(ADMIN_KEY); } catch (e) {} };
   let adminError = "";
   let adminFlash = "";
+  // League auto-login for staff site accounts (this computer only): off = they pressed Log out, so don't sign them straight back in
+  const leagueAuto = { busy: false, error: "", off: false };
 
   async function adminCall(body) {
     const offline = "Couldn't reach the admin server. Check your internet and try again.";
@@ -3755,10 +3757,22 @@
           ${tab[3]()}
         </div>`;
     }
+    // On this computer, a site account with a staff/admin role is signed in to the League Admin by the local server
+    // (it keeps the league login; see predictions/server.js leagueSignIn) instead of typing it
+    if (LOCAL_SITE && ACCT.user && ACCT.user.isStaff && !leagueAuto.off && !leagueAuto.error) {
+      if (!leagueAuto.busy) {
+        leagueAuto.busy = true;
+        localApi("/api/auth/league-login", {})
+          .then((s) => { setAdmin({ user: s.user, token: s.token, auto: true }); adminError = ""; }, (err) => { leagueAuto.error = err.message; })
+          .then(() => { leagueAuto.busy = false; if (location.hash.replace(/^#\/?/, "").split("/")[0] === "admin") render(); });
+      }
+      return `<div class="wrap"><div class="card pm-state league-auto"><span class="pm-spin"></span>Signing ${esc(ACCT.user.username)} in to the League Admin&hellip;</div></div>`;
+    }
     return `
       <div class="wrap">
         <div class="login-wrap">
           <form class="card login-card" id="adminLogin" autocomplete="on">
+            ${leagueAuto.error ? `<p class="login-error">Couldn't sign you in automatically: ${esc(leagueAuto.error)}</p>` : ""}
             <img src="${LEAGUE.brandLogo}" alt="" class="login-logo">
             <h1>Admin Login</h1>
             <p class="muted">League staff only.</p>
@@ -4141,6 +4155,7 @@
     ACCT.user = user;
     pm.data = {};
     accountData = null;
+    leagueAuto.off = false; leagueAuto.error = ""; // a new account gets its own try at the league auto-login
     drawAccount();
   }
 
@@ -4186,6 +4201,9 @@
 
   async function signOut() {
     try { await localApi("/api/auth/logout", {}); } catch (e) {}
+    const league = getAdmin();
+    if (league && league.auto) setAdmin(null);
+    leagueAuto.off = false; leagueAuto.error = "";
     accountChanged(null);
     render(); // the page you're on stays; anything that needs an account asks you to sign in again
   }
@@ -7873,6 +7891,7 @@
     }
     if (t.id !== "adminLogout") return;
     setAdmin(null);
+    leagueAuto.off = true;
     render();
   });
 

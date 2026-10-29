@@ -29,6 +29,18 @@ export const CONFIG = {
   secureCookies: process.env.PRED_SECURE_COOKIES === "1"
 };
 
+// The live League Admin's staff login, kept only on this computer, so the local server can log staff and admin site
+// accounts in to it (Admin's league tabs). Saved with: node predictions/accounts.js set-league-login <username>
+// (or PRED_LEAGUE_USERNAME + PRED_LEAGUE_PASSWORD). Never sent to the browser. null = not set up.
+export const LEAGUE_LOGIN_FILE = join(LOCAL_DIR, "league-login.json");
+export function loadLeagueLogin() {
+  if (process.env.PRED_LEAGUE_USERNAME && process.env.PRED_LEAGUE_PASSWORD) return { username: process.env.PRED_LEAGUE_USERNAME, password: process.env.PRED_LEAGUE_PASSWORD };
+  try {
+    const v = JSON.parse(readFileSync(LEAGUE_LOGIN_FILE, "utf8"));
+    return v && v.username && v.password ? { username: String(v.username), password: String(v.password) } : null;
+  } catch (e) { return null; }
+}
+
 export const dbPath = (demo) => process.env.PRED_DB || join(LOCAL_DIR, demo ? "predictions-demo.db" : "predictions.db");
 
 // The PIN pepper: a secret mixed into every PIN hash and kept outside the database, so a copy of the database alone

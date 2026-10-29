@@ -5,9 +5,13 @@ import { createServer } from "../server.js";
 import { setup, ouInput, gwInput, HOUR, T0 } from "./helpers.js";
 
 let s, server, base, csrf;
+let leagueCreds = null, leagueCalls = [], leagueAnswer = null;
 const start = async (cfg) => {
-  const srv = createServer({ service: s.service, auth: s.auth, challenges: s.challenges, rewards: s.rewards, admin: s.adminTools, league: s.league, config: cfg,
-    port: () => srv.address().port });
+  const srv = createServer({ service: s.service, auth: s.auth, challenges: s.challenges, rewards: s.rewards, admin: s.adminTools, audit: s.audit, limiter: s.limiter,
+    league: s.league, config: cfg, port: () => srv.address().port,
+    // The live League Admin is never called from tests: this stands in for it
+    leagueLogin: () => leagueCreds, leagueFetch: async (url, opts) => { leagueCalls.push({ url, body: JSON.parse(opts.body) });
+      return leagueAnswer; } });
   await new Promise((r) => srv.listen(0, "127.0.0.1", r));
   return srv;
 };
@@ -256,4 +260,28 @@ test("roles over HTTP: only a Super Admin grants; the grant shows up and is audi
   assert.equal(r.status, 200);
   assert.ok((await call("/api/admin/staff", { session: admin })).data.staff.some((u) => u.username === "httpstaffer" && u.roleGrantedBy === "boss"));
   assert.ok((await call("/api/admin/audit?action=role.", { session: admin })).data.rows.some((a) => a.action === "role.grant" && a.detail.after.role === "staff"));
+});
+
+test("league auto-login: staff/admin site accounts only; uses the login saved on this computer; the password never reaches the browser", async () => {
+  const player = await signup("leagueplayer");
+  assert.equal((await call("/api/auth/league-login", { method: "POST", body: {} })).status, 401);
+  assert.equal((await call("/api/auth/league-login", { method: "POST", body: {}, session: player })).status, 403);
+  const admin = await adminSession();
+  leagueCreds = null;
+  const notSet = await call("/api/auth/league-login", { method: "POST", body: {}, session: admin });
+  assert.deepEqual([notSet.status, notSet.data.code], [409, "league-not-set"]);
+  leagueCreds = { username: "day", password: "league-secret-pw" };
+  leagueAnswer = new Response(JSON.stringify({ username: "day", name: "boss", token: "1999999999999.Ym9zcw.abc" }), { status: 200 });
+  leagueCalls = [];
+  const ok = await call("/api/auth/league-login", { method: "POST", body: {}, session: admin });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.data, { user: "boss", token: "1999999999999.Ym9zcw.abc" });
+  assert.ok(!JSON.stringify(ok.data).includes("league-secret-pw"));
+  assert.deepEqual(leagueCalls[0].body, { action: "login", username: "day", password: "league-secret-pw", name: "boss" }); // shows as boss in the league log
+  leagueAnswer = new Response(JSON.stringify({ error: "Wrong username or password." }), { status: 401 });
+  const refused = await call("/api/auth/league-login", { method: "POST", body: {}, session: admin });
+  assert.equal(refused.status, 502);
+  assert.match(refused.data.error, /turned the saved login down/);
+  assert.ok(s.audit.list({ action: "league.login" }).rows.length === 1);
+  assert.ok(!JSON.stringify(s.audit.list({}).rows).includes("league-secret-pw"));
 });
