@@ -6,7 +6,9 @@
 //   POST /bot, GET /bot/deadlines, GET /bot/primetime (Authorization: Bearer <BOT_KEY>) -> the Discord bot (see below)
 //   GET /avatars?names=a,b -> Roblox headshots for player profiles (see avatars)
 //   GET /test, POST /test (Authorization: Bearer <GAME_KEY>) -> test log for the Roblox game (see gameTest)
-// Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
+//   POST /game (Authorization: Bearer <STATS_KEY>) -> a finished game from the Roblox game, saved as a result (see gameResult)
+// Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password);
+// STATS_KEY is the UFF stats server's key for POST /game (GAME_KEY also works there).
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
   renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, primetime: null, activity: [],
@@ -669,7 +671,7 @@ function adminDeadlines(env, data, body) {
 //            view: what the site and the bot get, updatedAt (changes whenever the view does) }
 const PT_LOCK_HOURS = 48;
 const PT_DEFAULTS = { perSeries: 1, topSeeds: 6 };
-const SITE_DATA = "https://uffleague.github.io/data.js";
+const SITE_DATA = "https://raw.githubusercontent.com/uffleague/uffleague/main/data.js"; // the repo itself, wherever the site is hosted
 const ptState = (data) => ({ manual: {}, labels: {}, auto: {}, teams: [], view: null, updatedAt: null, ...(data.primetime || {}),
   settings: { ...PT_DEFAULTS, ...((data.primetime || {}).settings || {}) } });
 
@@ -977,6 +979,87 @@ async function gameTest(req, env) {
   return json({ ok: true, received: body });
 }
 
+// A finished game from the Roblox game, passed on by the UFF stats server (uffstats on Heroku, POST /api/game).
+// It's matched to that week's scheduled game between the two teams and saved like a result entered on Admin,
+// box score included. A game that already has a result is left alone, so a score fixed on Admin isn't overwritten.
+//   POST /game  Authorization: Bearer <STATS_KEY or GAME_KEY>
+//   { week, home_team: "DET", away_team: "SJS", home_score, away_score, player_of_game?, game_date?: "YYYY-MM-DD",
+//     home_stats: { <Roblox username>: { passing: {...}, rushing: {...}, receiving: {...}, defense: {...} } }, away_stats }
+//   -> { ok, id, score } | 404 no such game on the schedule | 409 already has a result
+// The game's stat names (lowercase, no spaces or underscores) -> this site's box score columns.
+// The game doesn't track fumbles, drops, swats, pressures or yards allowed, so those stay 0.
+const GAME_STATS = {
+  passing: { comp: ["completions"], att: ["attempts"], yds: ["yards"], td: ["td"], int: ["int"], lng: ["longpass", "long"], sacked: ["timessacked"] },
+  rushing: { att: ["attempts"], yds: ["yards"], td: ["td"], lng: ["longrush", "long"] },
+  receiving: { tgt: ["targets"], rec: ["receptions"], yds: ["yards"], td: ["td"], lng: ["longreception", "long"] },
+  defense: { tak: ["flagpulls"], tfl: ["flagpullsforloss"], sck: ["sacks"], saf: ["forcedsafeties"], int: ["int"], pbu: ["passdeflections"], td: ["picksix"] }
+};
+const GAME_BYTES = 128 * 1024;
+function gameBox(stats) {
+  const box = { passing: [], rushing: [], receiving: [], defense: [] };
+  if (!stats || typeof stats !== "object") return box;
+  for (const [player, groups] of Object.entries(stats)) {
+    const name = str(player, 40);
+    if (!name || !groups || typeof groups !== "object") continue;
+    const byGroup = Object.fromEntries(Object.entries(groups).map(([k, v]) => [k.toLowerCase(), v]));
+    for (const [group, from] of Object.entries(GAME_STATS)) {
+      const raw = byGroup[group];
+      if (!raw || typeof raw !== "object") continue;
+      const got = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k.toLowerCase().replace(/[\s_]/g, ""), Number(v) || 0]));
+      const line = { player: name };
+      for (const f of STAT_FIELDS[group]) {
+        const k = (from[f] || []).find((x) => x in got);
+        line[f] = k ? got[k] : 0;
+      }
+      if (STAT_FIELDS[group].some((f) => line[f])) box[group].push(line);
+    }
+  }
+  return box;
+}
+async function gameResult(req, env) {
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  const key = String(req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  const keys = [env.STATS_KEY, env.GAME_KEY].filter(Boolean);
+  if (!key || !keys.some((k) => same(key, k))) return json({ error: "Wrong or missing game key." }, 401);
+  const text = await req.text();
+  if (text.length > GAME_BYTES) return json({ error: "That's too big (128 KB max)." }, 400);
+  let g;
+  try { g = JSON.parse(text); } catch (e) { return json({ error: "Send JSON." }, 400); }
+  const home = String(g.home_team || "").trim().toUpperCase();
+  const away = String(g.away_team || "").trim().toUpperCase();
+  const week = Number(g.week);
+  const scores = [Number(g.home_score), Number(g.away_score)];
+  if (!home || !away || home === away || !Number.isInteger(week) || scores.some((n) => !Number.isFinite(n))) {
+    return json({ error: "A game needs a week, both team codes and both scores." }, 400);
+  }
+  const data = await load(env);
+  const wk = data.schedule.find((w) => Number(w.week) === week);
+  const game = wk && (wk.games || []).find((x) => Array.isArray(x.teams) && x.teams.includes(home) && x.teams.includes(away));
+  if (!game) return json({ error: `There's no week ${week} game between ${home} and ${away} on the schedule.` }, 404);
+  const prev = data.results.find((x) => x.id === game.id);
+  if (prev && Array.isArray(prev.score)) {
+    return json({ error: `${game.id} already has a result (${prev.score.join("-")}). Remove it on Admin to replace it.`, id: game.id }, 409);
+  }
+  const sourceHash = await sha256(text);
+  const homeFirst = game.teams[0] === home;
+  const boxes = [gameBox(g.home_stats), gameBox(g.away_stats)];
+  const day = String(g.game_date || "").slice(0, 10);
+  const result = {
+    id: game.id,
+    score: homeFirst ? scores : [scores[1], scores[0]],
+    date: /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : (prev && prev.date) || new Date().toISOString().slice(0, 10),
+    potg: str(g.player_of_game, 40),
+    box: homeFirst ? boxes : [boxes[1], boxes[0]],
+    sourceHash,
+    from: "roblox"
+  };
+  data.results = [...data.results.filter((x) => x.id !== game.id), result];
+  const text2 = `Recorded ${game.id} from the Roblox game: ${game.teams[0]} ${result.score[0]}-${result.score[1]} ${game.teams[1]}`;
+  data.activity = [{ at: Date.now(), by: "Roblox game", action: "gameResult", text: text2 }, ...data.activity].slice(0, ACTIVITY_MAX);
+  await save(env, data);
+  return json({ ok: true, id: game.id, score: result.score });
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
@@ -991,6 +1074,7 @@ export default {
     }
     if (req.method === "POST" && path === "/bot") return botTransactions(req, env);
     if (path.replace(/\/+$/, "") === "/test") return gameTest(req, env);
+    if (req.method === "POST" && path.replace(/\/+$/, "") === "/game") return gameResult(req, env);
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
     const { ADMIN_USERNAME, ADMIN_PASSWORD_HASH } = env;

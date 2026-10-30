@@ -151,6 +151,13 @@
       teamLookup.set(t.name.toLowerCase(), t.name);
       if (t.code) teamLookup.set(t.code.toLowerCase(), t.name);
     })));
+    // A team renamed or given a new code on Admin -> Teams ("HAV" -> "RAP") is found by those too. It maps to the
+    // data.js name its edit is saved under; the team edits below rename it.
+    Object.entries(SAVED.teams || {}).forEach(([key, e]) => {
+      const as = key.startsWith("+") ? (e && e.name) || key : key;
+      if (e && e.code) teamLookup.set(String(e.code).toLowerCase(), as);
+      if (e && e.name) teamLookup.set(String(e.name).toLowerCase(), as);
+    });
     // A nickname the bot has differently ("Baltimore Bluebirds") still matches by its city when only one team has it
     const city = (n) => n.toLowerCase().split(/\s+/).slice(0, -1).join(" ");
     const botTeam = (name) => {
