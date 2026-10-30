@@ -399,6 +399,20 @@ export function createService({ db, league, config, now = Date.now }) {
     });
   }
 
+  // Voids every Game Winner market in one series that isn't settled yet (picks on them are voided too).
+  // Settled ones are left alone; posting the series again makes new markets.
+  async function voidSeriesWinners(admin, input = {}) {
+    needAdmin(admin);
+    const l = await view();
+    if (!l.ok) fail(503, `League data isn't available right now (${l.error || "no answer"}).`);
+    const series = Number(input.series);
+    const ids = new Set(l.view.games.filter((g) => g.series === series).map((g) => g.id));
+    const list = all("SELECT id, game_id FROM markets WHERE kind = 'game_winner' AND status NOT IN ('void', 'resolved')").filter((m) => ids.has(m.game_id));
+    if (!list.length) fail(400, `Series ${series} has no Game Winner markets to remove.`);
+    list.forEach((m) => voidMarket(admin, m.id, `Series ${series} Game Winner markets removed by an admin`));
+    return { series, removed: list.length };
+  }
+
   /* ---------- Demo mode: sample finals ---------- */
 
   async function postDemoResult(admin, input = {}) {
@@ -513,6 +527,6 @@ export function createService({ db, league, config, now = Date.now }) {
     };
   }
 
-  return { listMarkets, getMarket, predict, createMarket, createSeriesWinners, editMarket, setState, preview, resolve,
+  return { listMarkets, getMarket, predict, createMarket, createSeriesWinners, voidSeriesWinners, editMarket, setState, preview, resolve,
     voidMarket, postDemoResult, leaderboard, dashboard, auditLog, games, marketsByIds };
 }

@@ -5000,7 +5000,8 @@
             <label class="field">Picks close<input name="closesAt" type="datetime-local" required value="${pmLocalInput(Date.now() + 24 * 3600 * 1000)}"></label>
           </div>
           <p class="muted small">One Game Winner market per unplayed game in the series. Games that already have one are skipped; a game that kicks off earlier closes at kickoff.</p>
-          <div class="admin-actions"><button class="btn btn-primary btn-sm" ${pm.busy ? "disabled" : ""}>Post the series</button></div>
+          <div class="admin-actions"><button class="btn btn-primary btn-sm" ${pm.busy ? "disabled" : ""}>Post the series</button>
+            <button class="btn btn-ghost btn-sm" name="remove" value="1" ${pm.busy ? "disabled" : ""}>Remove this series</button></div>
         </form>
       </div>`;
       }
@@ -5170,6 +5171,10 @@
     }
     if (f.id === "pmSeries") {
       pm.form.series = Number(v.series);
+      if (e.submitter && e.submitter.name === "remove") {
+        if (!confirm(`Remove every Game Winner market in Series ${v.series} that isn't settled yet? Picks on them are voided.`)) return;
+        return pmDo(() => pmFetch("/admin/series-markets/void", { series: Number(v.series) }), (o) => `Series ${o.series}: ${o.removed} market${o.removed === 1 ? "" : "s"} removed. Post the series again to make new ones.`);
+      }
       return pmDo(() => pmFetch("/admin/series-markets", { series: Number(v.series), stake: v.stake === "" ? null : Number(v.stake), closesAt: pmFromInput(v.closesAt) }),
         (o) => `Series ${o.series}: ${o.created.length} market${o.created.length === 1 ? "" : "s"} posted${o.skipped.length ? `, ${o.skipped.length} skipped (${o.skipped.map((s) => `${s.gameId} ${s.why}`).join("; ")})` : ""}.`);
     }
