@@ -105,6 +105,7 @@ export function createRoutes({ service, auth, challenges, rewards, admin, league
     if (method === "GET" && path === "/admin/games") return { body: await service.games(user) };
     if (method === "GET" && path === "/admin/audit") return { body: { audit: service.auditLog(user, { marketId: q.get("market") }) } };
     if (method === "POST" && path === "/admin/markets") return { body: await service.createMarket(user, body) };
+    if (method === "POST" && path === "/admin/series-markets") return { body: await service.createSeriesWinners(user, body) };
     if (method === "POST" && path === "/admin/demo-result") return { body: await service.postDemoResult(user, body) };
     if (method === "GET" && (m = path.match(/^\/admin\/markets\/(\d+)\/preview$/))) return { body: await service.preview(user, m[1]) };
     if (method === "POST" && (m = path.match(/^\/admin\/markets\/(\d+)$/))) {

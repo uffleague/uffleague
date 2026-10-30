@@ -4969,9 +4969,32 @@
           <div class="admin-actions"><button class="btn btn-primary btn-sm" ${pm.busy ? "disabled" : ""}>Create market</button></div>
         </form>`;
     }
+    // Game Winner for every unplayed game in a series at once (series that still have games without one)
+    let seriesForm = "";
+    if (gs.data && cfg.league.ok) {
+      const bySeries = new Map();
+      gs.data.games.filter((x) => x.series != null && !x.sample).forEach((x) => bySeries.set(x.series, [...(bySeries.get(x.series) || []), x]));
+      const open = [...bySeries].filter(([, xs]) => xs.length).sort((a, b) => a[0] - b[0]);
+      if (open.length) {
+        const pick = open.find(([n]) => n === Number(f.series || 2)) || open[0]; // Series 2 is the one being posted now
+        seriesForm = `
+      <div class="card admin-card"><div class="admin-subhead">Game Winner for a whole series</div>
+        <form class="pm-create" id="pmSeries">
+          <div class="pm-fields">
+            <label class="field pm-grow">Series<select class="select" name="series">${open.map(([n, xs]) => `<option value="${n}" ${n === pick[0] ? "selected" : ""}>Series ${n}: ${xs.length} game${xs.length === 1 ? "" : "s"} (weeks ${[...new Set(xs.map((x) => x.week))].join(", ")})${xs.some((x) => !x.markets) ? "" : " &middot; all posted"}</option>`).join("")}</select></label>
+            <label class="field">Points for a correct pick<input name="stake" type="number" min="1" max="${gs.data.maxStake}" step="1" value="${gs.data.defaultStake}"></label>
+            <label class="field">Picks close<input name="closesAt" type="datetime-local" required value="${pmLocalInput(Date.now() + 24 * 3600 * 1000)}"></label>
+          </div>
+          <p class="muted small">One Game Winner market per unplayed game in the series. Games that already have one are skipped; a game that kicks off earlier closes at kickoff.</p>
+          <div class="admin-actions"><button class="btn btn-primary btn-sm" ${pm.busy ? "disabled" : ""}>Post the series</button></div>
+        </form>
+      </div>`;
+      }
+    }
     const list = ls.data ? ls.data.markets : [];
     return `
       <div class="card admin-card"><div class="admin-subhead">New market</div>${form}</div>
+      ${seriesForm}
       ${cfg.mode === "demo" ? pmDemoResults(gs) : ""}
       <div class="card admin-card"><div class="admin-subhead">All markets<span class="muted small">${list.length}</span></div>
         ${pmState(ls, "markets")}
@@ -5112,7 +5135,7 @@
 
   document.addEventListener("submit", async (e) => {
     const f = e.target;
-    if (!["pmCreate", "pmClose", "pmManual", "pmDemo", "chForm"].includes(f.id)) return;
+    if (!["pmCreate", "pmSeries", "pmClose", "pmManual", "pmDemo", "chForm"].includes(f.id)) return;
     e.preventDefault();
     if (f.id === "chForm") {
       const picks = {};
@@ -5130,6 +5153,11 @@
       const out = await pmDo(() => pmFetch("/admin/markets", body), (o) => `Market #${o.id} created.`);
       if (out) { pm.form = { kind: body.kind, gameId: body.gameId, playerTeam: v.playerTeam || "" }; pmRedraw(); }
       return;
+    }
+    if (f.id === "pmSeries") {
+      pm.form.series = Number(v.series);
+      return pmDo(() => pmFetch("/admin/series-markets", { series: Number(v.series), stake: v.stake === "" ? null : Number(v.stake), closesAt: pmFromInput(v.closesAt) }),
+        (o) => `Series ${o.series}: ${o.created.length} market${o.created.length === 1 ? "" : "s"} posted${o.skipped.length ? `, ${o.skipped.length} skipped (${o.skipped.map((s) => `${s.gameId} ${s.why}`).join("; ")})` : ""}.`);
     }
     if (f.id === "pmClose") return pmDo(() => pmFetch(`/admin/markets/${pm.id}`, { action: "edit", changes: { closesAt: pmFromInput(v.closesAt) } }), "Closing time saved.");
     if (f.id === "pmManual") {

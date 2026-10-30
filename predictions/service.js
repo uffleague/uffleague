@@ -201,6 +201,26 @@ export function createService({ db, league, config, now = Date.now }) {
     });
   }
 
+  // A Game Winner market for every unplayed game in one series. Games that already have one are skipped, and a game
+  // whose kickoff comes before the closing time closes at kickoff.
+  async function createSeriesWinners(admin, input = {}) {
+    needAdmin(admin);
+    const l = await view();
+    if (!l.ok) fail(503, `League data isn't available right now (${l.error || "no answer"}), so markets can't be made.`);
+    const series = Number(input.series), closesAt = Number(input.closesAt);
+    const games = l.view.games.filter((g) => g.series === series && !g.final);
+    if (!games.length) fail(400, "That series has no unplayed games.");
+    checkTimes(closesAt, null, null);
+    const created = [], skipped = [];
+    for (const g of games) {
+      if (get("SELECT id FROM markets WHERE kind = 'game_winner' AND game_id = ? AND status <> 'void'", g.id)) { skipped.push({ gameId: g.id, why: "already has one" }); continue; }
+      if (g.at != null && g.at <= now()) { skipped.push({ gameId: g.id, why: "already kicked off" }); continue; }
+      const { id } = await createMarket(admin, { kind: "game_winner", gameId: g.id, stake: input.stake, closesAt: g.at != null ? Math.min(closesAt, g.at) : closesAt });
+      created.push(id);
+    }
+    return { series, created, skipped };
+  }
+
   function marketFor(id) {
     const m = get("SELECT * FROM markets WHERE id = ?", Number(id));
     if (!m) fail(404, "That market doesn't exist.");
@@ -486,13 +506,13 @@ export function createService({ db, league, config, now = Date.now }) {
       stats: Object.entries(core.STATS).map(([key, s]) => ({ key, label: s.label })),
       defaultStake: config.defaultStake, maxStake: config.maxStake,
       games: l.view.games.filter((g) => !g.final).map((g) => ({
-        id: g.id, week: g.week, at: g.at, time: g.time, sample: !!g.sample, markets: marketsOn.get(g.id) || 0,
+        id: g.id, week: g.week, series: g.series ?? null, at: g.at, time: g.time, sample: !!g.sample, markets: marketsOn.get(g.id) || 0,
         teams: g.teams.map((name) => ({ ...teamInfo(l.view, name), players: [...(seen.get(name) || [])].sort((a, b) => a.localeCompare(b)) }))
       })),
       sampleGames: l.source === "demo" ? l.view.games.filter((g) => g.sample).map((g) => ({ id: g.id, teams: g.teams, final: g.final, score: g.score || null })) : []
     };
   }
 
-  return { listMarkets, getMarket, predict, createMarket, editMarket, setState, preview, resolve,
+  return { listMarkets, getMarket, predict, createMarket, createSeriesWinners, editMarket, setState, preview, resolve,
     voidMarket, postDemoResult, leaderboard, dashboard, auditLog, games, marketsByIds };
 }
