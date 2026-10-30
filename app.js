@@ -4696,7 +4696,8 @@
     const key = `list:${pm.kind}|${pm.status}|${pm.q}|${pm.sort}`;
     const params = new URLSearchParams({ kind: pm.kind, status: pm.status, q: pm.q, sort: pm.sort });
     const slot = pmLoad(key, `/markets?${params}`);
-    const list = slot.data ? slot.data.markets : [];
+    // Void markets (removed by an admin) aren't shown; a pick on one still shows as void in My Predictions
+    const list = slot.data ? slot.data.markets.filter((m) => m.status !== "void") : [];
     const what = pm.kind === "game_winner" ? "Game Winner" : "Player Over/Under";
     return `
       <div class="pm-filters">
@@ -5006,7 +5007,7 @@
       </div>`;
       }
     }
-    const list = ls.data ? ls.data.markets : [];
+    const list = ls.data ? ls.data.markets.filter((m) => m.status !== "void") : []; // removed ones stay in the audit history
     return `
       <div class="card admin-card"><div class="admin-subhead">New market</div>${form}</div>
       ${seriesForm}
