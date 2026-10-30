@@ -5,8 +5,7 @@
 //
 // Statuses: pending (waiting for staff) -> approved -> fulfilled; pending/approved -> rejected (points back);
 // pending -> cancelled by the person (points back); approved/fulfilled -> refunded by an admin (points back).
-import { randomUUID } from "node:crypto";
-import { tx } from "./db.js";
+import { tx } from "./txn.js";
 import { HttpError } from "./errors.js";
 import { need, plays } from "./roles.js";
 
@@ -247,5 +246,5 @@ export function createRewards({ db, ledger, audit, limiter, now = Date.now }) {
     return demo.length;
   }
 
-  return { catalog, adminCatalog, createReward, updateReward, redeem, mine, cancelOwn, requests, act, seedDemo, newKey: () => randomUUID() };
+  return { catalog, adminCatalog, createReward, updateReward, redeem, mine, cancelOwn, requests, act, seedDemo, newKey: () => crypto.randomUUID() };
 }

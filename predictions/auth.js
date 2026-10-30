@@ -1,20 +1,23 @@
 // UFF accounts on the local server: a username and a 5-digit PIN. Staff and admins are the same accounts with a role
 // (roles.js): signed in, they use admin tools right away.
 // A 5-digit PIN is only 100,000 possibilities, so it's kept from being guessed by the server, not by its length:
-//   - PINs are hashed with Argon2id plus a pepper (a secret key kept outside the database, see server.js), so a
-//     copied database alone can't be used to try PINs
+//   - PINs are hashed with a pepper (a secret key kept outside the database, see server.js), so a copied database
+//     alone can't be used to try PINs: Argon2id on this computer, PBKDF2 on Cloudflare (Workers don't have Argon2)
 //   - every failed sign-in counts against that username (locks that name for 1 min after 5 misses, doubling each
 //     miss after that, up to an hour) and against the address it came from (50 misses in 15 min locks it 15 min)
 //   - a username that doesn't exist gets the same answer, the same delay and the same lockouts as one that does
 // Nothing here ever logs or returns a PIN.
-import { argon2Sync, randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from "node:crypto";
-import { tx } from "./db.js";
+// Imported whole: Cloudflare's node:crypto has no argon2Sync, and a named import of it would fail to load there
+import * as nodeCrypto from "node:crypto";
+import { Buffer } from "node:buffer";
+import { tx } from "./txn.js";
 import { HttpError } from "./errors.js";
 import { createLedger } from "./ledger.js";
 import { createAudit } from "./audit.js";
 import { PERMISSIONS } from "./roles.js";
 
 const fail = (status, message) => { throw new HttpError(status, message); };
+const { randomBytes, randomUUID, timingSafeEqual, createHash, createHmac, pbkdf2Sync } = nodeCrypto;
 const sha = (s) => createHash("sha256").update(s).digest("hex");
 
 export const USERNAME = /^[A-Za-z0-9_]{3,20}$/;
@@ -43,29 +46,44 @@ export function pinProblem(pin) {
 // The first PINs anyone would try
 export const easyPin = (pin) => /^(\d)\1{4}$/.test(pin) || "0123456789".includes(pin) || "9876543210".includes(pin);
 
-export function hashSecret(secret, pepper) {
+// The PIN keyed with the pepper first, so the stretching below works on something that can't be guessed without it
+const peppered = (secret, pepper) => createHmac("sha256", pepper).update(secret).digest();
+
+// kind "argon2id" (this computer) or "pbkdf2" (Cloudflare); verifySecret checks either
+export function hashSecret(secret, pepper, kind = "argon2id", iterations = 10000) {
   const nonce = randomBytes(16);
-  const hash = argon2Sync("argon2id", { message: secret, nonce, secret: pepper, ...ARGON });
+  if (kind === "pbkdf2") {
+    const hash = pbkdf2Sync(peppered(secret, pepper), nonce, iterations, 32, "sha256");
+    return `pbkdf2$i=${iterations}$${nonce.toString("base64")}$${hash.toString("base64")}`;
+  }
+  const hash = nodeCrypto.argon2Sync("argon2id", { message: secret, nonce, secret: pepper, ...ARGON });
   return `argon2id$m=${ARGON.memory},t=${ARGON.passes},p=${ARGON.parallelism}$${nonce.toString("base64")}$${hash.toString("base64")}`;
 }
 function verifySecret(secret, stored, salt, pepper) {
+  if (stored.startsWith("pbkdf2$")) {
+    const [, params, nonce, hash] = stored.split("$");
+    const want = Buffer.from(hash, "base64");
+    const got = pbkdf2Sync(peppered(secret, pepper), Buffer.from(nonce, "base64"), Number(params.slice(2)), want.length, "sha256");
+    return timingSafeEqual(got, want);
+  }
   if (stored.startsWith("argon2id$")) {
     const [, params, nonce, hash] = stored.split("$");
     const p = Object.fromEntries(params.split(",").map((kv) => kv.split("=")));
     const want = Buffer.from(hash, "base64");
-    const got = argon2Sync("argon2id", { message: secret, nonce: Buffer.from(nonce, "base64"), secret: pepper,
+    const got = nodeCrypto.argon2Sync("argon2id", { message: secret, nonce: Buffer.from(nonce, "base64"), secret: pepper,
       parallelism: Number(p.p), tagLength: want.length, memory: Number(p.m), passes: Number(p.t) });
     return timingSafeEqual(got, want);
   }
   // Admin passwords saved before migration 002 (scrypt)
   const want = Buffer.from(stored, "hex");
-  const got = scryptSync(secret, salt, 32);
+  const got = nodeCrypto.scryptSync(secret, salt, 32);
   return got.length === want.length && timingSafeEqual(got, want);
 }
 
 export function createAuth({ db, config, now = Date.now }) {
   if (!Buffer.isBuffer(config.pepper) || config.pepper.length < 16) throw new Error("Accounts need a pepper (16+ random bytes).");
   const pepper = config.pepper;
+  const hashPin = (pin) => hashSecret(pin, pepper, config.pinHash, config.pinIterations);
   const L = { ...DEFAULT_LIMITS, ...(config.limits || {}) };
   const st = (sql) => db.prepare(sql);
   const get = (sql, ...a) => st(sql).get(...a);
@@ -73,7 +91,7 @@ export function createAuth({ db, config, now = Date.now }) {
   const ledger = createLedger({ db, now });
   const audit = createAudit({ db, now });
   let dummy = null; // a hash to check against when the username doesn't exist, so it takes just as long
-  const dummyHash = () => (dummy = dummy || hashSecret("00000", pepper));
+  const dummyHash = () => (dummy = dummy || hashPin("00000"));
 
   const publicUser = (u) => u && { id: u.id, accountId: u.account_id, username: u.username, role: u.role, status: u.status,
     isAdmin: u.role === "admin" || u.role === "super_admin", isStaff: u.role !== "user", perms: PERMISSIONS[u.role] || [],
@@ -169,7 +187,7 @@ export function createAuth({ db, config, now = Date.now }) {
     if (r.failures >= L.signupMax) tooMany(r.window_start + L.signupWindowMs - now());
     r.failures++;
     put(r);
-    const hash = hashSecret(pin, pepper);
+    const hash = hashPin(pin);
     const u = tx(db, () => {
       if (get("SELECT id FROM users WHERE username = ?", name)) fail(409, "That username is taken.");
       // Every new account is a plain user; roles are only ever given afterwards by a Super Admin (or the local bootstrap)
@@ -194,7 +212,7 @@ export function createAuth({ db, config, now = Date.now }) {
     const u = get("SELECT * FROM users WHERE username = ?", String(username ?? "").trim());
     if (!u) fail(404, "No account has that username.");
     tx(db, () => {
-      run("UPDATE users SET pass_hash = ?, pass_salt = '', credential = 'pin' WHERE id = ?", hashSecret(pin, pepper), u.id);
+      run("UPDATE users SET pass_hash = ?, pass_salt = '', credential = 'pin' WHERE id = ?", hashPin(pin), u.id);
       run("DELETE FROM sessions WHERE user_id = ?", u.id);
       run("DELETE FROM auth_throttle WHERE key = ?", `user:pin:${u.username.toLowerCase()}`);
     });

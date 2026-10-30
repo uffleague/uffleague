@@ -22,6 +22,7 @@ import { createRewards } from "./rewards.js";
 import { createAdminTools } from "./admin.js";
 import { CONFIG, SITE_ROOT, dbPath, loadPepper, loadLeagueLogin, saveLeagueLogin } from "./config.js";
 import { need } from "./roles.js";
+import { createRoutes } from "./routes.js";
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon" };
@@ -90,6 +91,17 @@ export function createServer({ service, auth, challenges, rewards, admin, audit,
     return { user: data.name || user.username, token: data.token };
   }
 
+  const route = createRoutes({ service, auth, challenges, rewards, admin, league, config, leagueSignIn,
+    async saveLeagueLogin(user, body) {
+      if (!user || !user.isAdmin) throw new HttpError(user ? 403 : 401, "Only Admin and Super Admin accounts can save the league login.");
+      const username = String(body.username || "").trim(), password = String(body.password || "");
+      if (!username || !password || username.length > 60 || password.length > 200) throw new HttpError(400, "Enter the league username and password.");
+      const signed = await leagueSignIn(user, { username, password });
+      saveLeague({ username, password });
+      if (audit) audit.log({ actorId: user.id, action: "league.login_saved", targetType: "user", targetId: user.accountId, detail: { leagueUsername: username } });
+      return signed;
+    } });
+
   const hostOk = (h) => {
     const p = String(port());
     return [`127.0.0.1:${p}`, `localhost:${p}`].includes(String(h || "").toLowerCase());
@@ -112,127 +124,11 @@ export function createServer({ service, auth, challenges, rewards, admin, audit,
     const token = cookieOf(req, SESSION);
     const user = auth.sessionUser(token);
     const body = method === "POST" ? await readJson(req) : {};
-    const ip = req.socket.remoteAddress || "";
-    const signedIn = (s) => send(res, 200, { user: s.user }, [...cookies, cookie(SESSION, s.token, config.sessionDays * 86400, { secure })]);
-    let m;
-
-    // Accounts: /api/auth/* and /api/account
-    if (url.pathname.startsWith("/api/auth/") || url.pathname.replace(/\/+$/, "") === "/api/account") {
-      const path = url.pathname.replace(/\/+$/, "");
-      if (method === "GET" && path === "/api/auth/session") return send(res, 200, { user }, cookies);
-      if (method === "POST" && path === "/api/auth/login") return signedIn(auth.signIn({ username: body.username, pin: body.pin, ip }));
-      if (method === "POST" && path === "/api/auth/signup") return signedIn(auth.createAccount({ username: body.username, pin: body.pin, confirmPin: body.confirmPin, ip }));
-      if (method === "POST" && path === "/api/auth/logout") {
-        auth.logout(token);
-        return send(res, 200, { ok: true }, [...cookies, cookie(SESSION, "", 0, { secure })]);
-      }
-      if (method === "GET" && path === "/api/account") return send(res, 200, auth.profile(user), cookies);
-      if (method === "POST" && path === "/api/auth/league-login") return send(res, 200, await leagueSignIn(user), cookies);
-      // An Admin saves the league login for everyone's auto-login; it's only kept if the live League Admin accepts it
-      if (method === "POST" && path === "/api/auth/league-login/save") {
-        if (!user || !user.isAdmin) throw new HttpError(user ? 403 : 401, "Only Admin and Super Admin accounts can save the league login.");
-        const username = String(body.username || "").trim(), password = String(body.password || "");
-        if (!username || !password || username.length > 60 || password.length > 200) throw new HttpError(400, "Enter the league username and password.");
-        const signed = await leagueSignIn(user, { username, password });
-        saveLeague({ username, password });
-        if (audit) audit.log({ actorId: user.id, action: "league.login_saved", targetType: "user", targetId: user.accountId, detail: { leagueUsername: username } });
-        return send(res, 200, signed, cookies);
-      }
-      throw new HttpError(404, "Not found.");
-    }
-
-    const p = url.pathname.replace(/\/+$/, "");
-    const q = url.searchParams;
-
-    // Challenges (public; entering needs an account)
-    if (p.startsWith("/api/challenges")) {
-      if (method === "GET" && p === "/api/challenges") return send(res, 200, { challenges: challenges.list(user) }, cookies);
-      if (method === "GET" && p === "/api/challenges/mine") return send(res, 200, { entries: challenges.myEntries(user) }, cookies);
-      if (method === "GET" && (m = p.match(/^\/api\/challenges\/(\d+)$/))) return send(res, 200, await challenges.detail(user, m[1]), cookies);
-      if (method === "POST" && (m = p.match(/^\/api\/challenges\/(\d+)\/enter$/))) {
-        const out = challenges.enter(user, m[1], body.picks || {});
-        return send(res, 200, { ...out, ...(await challenges.detail(user, m[1])) }, cookies);
-      }
-      throw new HttpError(404, "Not found.");
-    }
-    // Rewards (the catalog is public; redeeming and your history need an account)
-    if (p.startsWith("/api/rewards")) {
-      if (method === "GET" && p === "/api/rewards") return send(res, 200, rewards.catalog(user), cookies);
-      if (method === "GET" && p === "/api/rewards/mine") return send(res, 200, { redemptions: rewards.mine(user) }, cookies);
-      if (method === "POST" && p === "/api/rewards/redeem") return send(res, 200, rewards.redeem(user, { rewardId: body.rewardId, idempotencyKey: body.idempotencyKey }), cookies);
-      if (method === "POST" && (m = p.match(/^\/api\/rewards\/redemptions\/(\d+)\/cancel$/))) return send(res, 200, rewards.cancelOwn(user, m[1]), cookies);
-      throw new HttpError(404, "Not found.");
-    }
-    // UFF Admin: every function checks the permission (and the unlocked session) itself
-    if (p.startsWith("/api/admin")) {
-      if (!user) throw new HttpError(401, "Sign in first.");
-      if (method === "GET" && p === "/api/admin/overview") return send(res, 200, admin.overview(user), cookies);
-      if (method === "GET" && p === "/api/admin/users") return send(res, 200, { users: admin.search(user, q.get("q") || "") }, cookies);
-      if (method === "GET" && (m = p.match(/^\/api\/admin\/users\/([0-9a-f-]{36})$/))) return send(res, 200, admin.detail(user, m[1]), cookies);
-      if (method === "GET" && (m = p.match(/^\/api\/admin\/users\/([0-9a-f-]{36})\/ledger$/))) return send(res, 200, admin.history(user, m[1], q.get("before")), cookies);
-      if (method === "POST" && p === "/api/admin/users/status") return send(res, 200, admin.setStatus(user, body), cookies);
-      if (method === "POST" && p === "/api/admin/credits") return send(res, 200, admin.adjust(user, body), cookies);
-      if (method === "GET" && p === "/api/admin/credit-reasons") return send(res, 200, { reasons: admin.reasons }, cookies);
-      if (method === "GET" && p === "/api/admin/staff") return send(res, 200, { staff: admin.staffList(user) }, cookies);
-      if (method === "POST" && p === "/api/admin/roles") return send(res, 200, admin.setRole(user, body), cookies);
-      if (method === "GET" && p === "/api/admin/audit") {
-        return send(res, 200, admin.auditLog(user, { action: q.get("action") || "", actor: q.get("actor") || "", targetType: q.get("targetType") || "",
-          targetId: q.get("targetId") || "", beforeId: q.get("before") }), cookies);
-      }
-      if (method === "GET" && p === "/api/admin/challenges") return send(res, 200, { challenges: challenges.adminList(user) }, cookies);
-      if (method === "GET" && p === "/api/admin/challenges/leg-options") return send(res, 200, { markets: await challenges.legOptions(user) }, cookies);
-      if (method === "POST" && p === "/api/admin/challenges") return send(res, 200, challenges.create(user, body), cookies);
-      if (method === "GET" && (m = p.match(/^\/api\/admin\/challenges\/(\d+)\/settle-preview$/))) return send(res, 200, challenges.settlePreview(user, m[1]), cookies);
-      if (method === "POST" && (m = p.match(/^\/api\/admin\/challenges\/(\d+)$/))) {
-        const a = body.action;
-        const out = a === "update" ? challenges.update(user, m[1], body.challenge || {}) : a === "publish" ? challenges.publish(user, m[1])
-          : a === "extend" ? challenges.extend(user, m[1], body.entryDeadline) : a === "cancel" ? challenges.cancel(user, m[1], body.note) : a === "settle" ? challenges.settle(user, m[1]) : null;
-        if (!out) throw new HttpError(400, "Unknown action.");
-        return send(res, 200, out, cookies);
-      }
-      if (method === "GET" && p === "/api/admin/rewards") return send(res, 200, rewards.adminCatalog(user), cookies);
-      if (method === "POST" && p === "/api/admin/rewards") return send(res, 200, rewards.createReward(user, body), cookies);
-      if (method === "POST" && (m = p.match(/^\/api\/admin\/rewards\/(\d+)$/))) return send(res, 200, rewards.updateReward(user, m[1], body), cookies);
-      if (method === "GET" && p === "/api/admin/redemptions") return send(res, 200, { redemptions: rewards.requests(user, { status: q.get("status") || "" }) }, cookies);
-      if (method === "POST" && (m = p.match(/^\/api\/admin\/redemptions\/(\d+)$/))) return send(res, 200, rewards.act(user, m[1], body), cookies);
-      throw new HttpError(404, "Not found.");
-    }
-
-    const path = url.pathname.replace(/^\/api\/predictions/, "").replace(/\/+$/, "") || "/";
-    if (method === "GET" && path === "/config") {
-      const l = await league.get();
-      return send(res, 200, { mode: league.mode, label: league.label || "", league: { ok: l.ok, error: l.error, fetchedAt: l.fetchedAt },
-        startBalance: config.startBalance, minLeaderboard: config.minLeaderboard, user }, cookies);
-    }
-    if (method === "GET" && path === "/markets") {
-      const q = url.searchParams;
-      return send(res, 200, await service.listMarkets({ userId: user && user.id, kind: q.get("kind") || "", status: q.get("status") || "", q: q.get("q") || "", sort: q.get("sort") || "closing" }));
-    }
-    if (method === "GET" && (m = path.match(/^\/markets\/(\d+)$/))) return send(res, 200, await service.getMarket(m[1], user && user.id));
-    if (method === "POST" && (m = path.match(/^\/markets\/(\d+)\/predict$/))) {
-      const out = service.predict(user, m[1], String(body.selection || ""));
-      return send(res, 200, { ...out, ...(await service.getMarket(m[1], user.id)) });
-    }
-    if (method === "GET" && path === "/me") return send(res, 200, await service.dashboard(user));
-    if (method === "GET" && path === "/leaderboard") return send(res, 200, service.leaderboard());
-
-    // Admin only (service checks too)
-    if (!path.startsWith("/admin/")) throw new HttpError(404, "Not found.");
-    if (!user) throw new HttpError(401, "Sign in first.");
-    if (method === "GET" && path === "/admin/games") return send(res, 200, await service.games(user));
-    if (method === "GET" && path === "/admin/audit") return send(res, 200, { audit: service.auditLog(user, { marketId: url.searchParams.get("market") }) });
-    if (method === "POST" && path === "/admin/markets") return send(res, 200, await service.createMarket(user, body));
-    if (method === "POST" && path === "/admin/demo-result") return send(res, 200, await service.postDemoResult(user, body));
-    if (method === "GET" && (m = path.match(/^\/admin\/markets\/(\d+)\/preview$/))) return send(res, 200, await service.preview(user, m[1]));
-    if (method === "POST" && (m = path.match(/^\/admin\/markets\/(\d+)$/))) {
-      const id = m[1], a = body.action;
-      const out = a === "edit" ? service.editMarket(user, id, body.changes || {})
-        : a === "resolve" ? await service.resolve(user, id, body)
-        : a === "void" ? service.voidMarket(user, id, body.note)
-        : service.setState(user, id, a, body.note);
-      return send(res, 200, out);
-    }
-    throw new HttpError(404, "Not found.");
+    const out = await route({ method, url, body, user, token, ip: req.socket.remoteAddress || "" });
+    if (out.session === undefined) return send(res, 200, out.body, cookies);
+    // The session travels in an HttpOnly cookie here, never in the page
+    const { token: _t, ...shown } = out.body;
+    return send(res, 200, shown, [...cookies, cookie(SESSION, out.session, out.session ? config.sessionDays * 86400 : 0, { secure })]);
   }
 
   async function staticFile(req, res, url) {

@@ -2,7 +2,7 @@
 // Picks are free: making one never costs points, a wrong one never loses any, and a correct one earns the market's
 // points. Every balance change goes through ledger.js in the same transaction as the change itself, and the client
 // never sends a balance, an outcome or a stat: those come from the database and the league data (league.js).
-import { tx } from "./db.js";
+import { tx } from "./txn.js";
 import * as core from "./core.js";
 import { createLedger } from "./ledger.js";
 import { createAudit } from "./audit.js";

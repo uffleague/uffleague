@@ -1,7 +1,6 @@
 // The one place points change. Every change is a ledger row (append-only: the database refuses edits and deletes)
 // written together with the new balance, so users.balance always equals the sum of that user's rows.
 // Call post() inside a transaction (db.js tx) with whatever else the change belongs to.
-import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
 
 export function createLedger({ db, now = Date.now }) {
@@ -22,7 +21,7 @@ export function createLedger({ db, now = Date.now }) {
     // Only a reversal of a disputed payout may leave someone below 0 (they had spent the points already)
     if (after < 0 && !allowNegative) throw new HttpError(400, `That would leave a balance of ${after}. Balances can't go below 0.`);
     db.prepare("UPDATE users SET balance = ? WHERE id = ?").run(after, userId);
-    const txId = randomUUID();
+    const txId = crypto.randomUUID();
     db.prepare(`INSERT INTO ledger (tx_id, user_id, at, kind, delta, balance_before, balance_after, market_id, prediction_id, challenge_id,
       redemption_id, round, note, actor_id, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(txId, userId, now(), kind, delta, u.balance, after, marketId, predictionId, challengeId, redemptionId, round, note, actorId, idempotencyKey);

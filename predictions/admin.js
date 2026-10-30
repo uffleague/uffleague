@@ -1,6 +1,6 @@
 // UFF Admin: looking people up, adjusting their virtual points, roles and account status, and the audit log.
 // Every function checks the caller's permission itself (roles.js need), so no route can skip it.
-import { tx } from "./db.js";
+import { tx } from "./txn.js";
 import { HttpError } from "./errors.js";
 import { need, can, rank, ROLES, ROLE_LABEL } from "./roles.js";
 

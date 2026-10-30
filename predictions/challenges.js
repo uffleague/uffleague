@@ -2,7 +2,7 @@
 // answer every leg before the deadline, and each entry earns fixed points when the last leg settles.
 // Free to enter: nothing is ever taken from anyone's points, and a wrong leg just earns nothing.
 // Each leg IS a market (challenge_legs.market_id), so teams, players, lines and results come from that market.
-import { tx } from "./db.js";
+import { tx } from "./txn.js";
 import { HttpError } from "./errors.js";
 import { need, can, plays } from "./roles.js";
 import * as core from "./core.js";

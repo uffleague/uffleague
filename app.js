@@ -56,11 +56,12 @@
     { path: "legacy", label: "Legacy", icon: "legacy" },
     { path: "records", label: "Records", icon: "records" }
   ];
-  // UFF Predictions is a local test build: it's only listed when the site is opened from this computer
-  // (npm run predictions), where its local server is
-  // Accounts too: the header's Log In button becomes Sign In / your account, and the league staff login moves to the menu
+  // Accounts, UFF Predictions, parlays and rewards. On the live site they're on the Worker (worker/src/predictions.js);
+  // opened from this computer (npm run predictions), on the local server instead. SITE_ACCOUNTS = false hides them all.
+  // With accounts, the header's Log In button becomes Sign In / your account, and the league staff login moves to the menu
   const LOCAL_SITE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-  if (LOCAL_SITE) {
+  const SITE_ACCOUNTS = true;
+  if (SITE_ACCOUNTS) {
     NAV.splice(NAV.findIndex((n) => n.path === "predictions") + 1, 0, { path: "uff-predictions", label: "UFF Predictions", icon: "trend", top: true });
     NAV.splice(NAV.findIndex((n) => n.path === "uff-predictions") + 1, 0, { path: "rewards", label: "Rewards", icon: "awards" });
     NAV.push({ path: "admin", label: "League Admin", icon: "shield" });
@@ -2844,7 +2845,7 @@
   const setAdmin = (v) => { try { v ? sessionStorage.setItem(ADMIN_KEY, JSON.stringify(v)) : sessionStorage.removeItem(ADMIN_KEY); } catch (e) {} };
   let adminError = "";
   let adminFlash = "";
-  // League auto-login for staff site accounts (this computer only): off = they pressed Log out, so don't sign them straight back in
+  // League auto-login for staff site accounts: off = they pressed Log out, so don't sign them straight back in
   const leagueAuto = { busy: false, error: "", off: false };
 
   async function adminCall(body) {
@@ -3725,9 +3726,9 @@
         <div class="card stat-chip"><span class="eyebrow">Playoff bracket</span><span class="num">${po ? `${po.rounds.length} round${po.rounds.length === 1 ? "" : "s"}` : "None"}</span></div>
         <div class="card stat-chip"><span class="eyebrow">Legacy players</span><span class="num">${LEAGUE.legacy.players.length}</span></div>
       </div>
-      ${LOCAL_SITE && !(ACCT.user && ACCT.user.isStaff) ? `
+      ${SITE_ACCOUNTS && !(ACCT.user && ACCT.user.isStaff) ? `
       <div class="card admin-card admin-predictions-link">
-        <div class="admin-subhead">UFF Predictions<span class="muted small">this computer only</span></div>
+        <div class="admin-subhead">UFF Predictions</div>
         <p class="muted small">Over/Under and Game Winner markets, parlays, credits and rewards show up as tabs here once you're signed in to the site with an account that has an Admin role (that's separate from this league login).</p>
         <div class="admin-actions">
           <a class="btn btn-primary btn-sm" href="#/uff-predictions/manage">Add an Over/Under or Game Winner</a>
@@ -3757,9 +3758,9 @@
           ${tab[3]()}
         </div>`;
     }
-    // On this computer, a site account with a staff/admin role is signed in to the League Admin by the local server
-    // (it keeps the league login; see predictions/server.js leagueSignIn) instead of typing it
-    if (LOCAL_SITE && ACCT.user && ACCT.user.isStaff && !leagueAuto.off && !leagueAuto.error) {
+    // A site account with a staff/admin role is signed in to the League Admin by the server instead of typing it
+    // (the Worker makes the league token; the local server uses the league login saved on this computer)
+    if (SITE_ACCOUNTS && ACCT.user && ACCT.user.isStaff && !leagueAuto.off && !leagueAuto.error) {
       if (!leagueAuto.busy) {
         leagueAuto.busy = true;
         localApi("/api/auth/league-login", {})
@@ -3776,7 +3777,7 @@
             <img src="${LEAGUE.brandLogo}" alt="" class="login-logo">
             <h1>Admin Login</h1>
             <p class="muted">League staff only.</p>
-            ${LOCAL_SITE ? `<p class="muted small">The league staff login, not your site username and PIN.</p>` : ""}
+            ${SITE_ACCOUNTS ? `<p class="muted small">The league staff login, not your site username and PIN.</p>` : ""}
             <label class="field"><span>Username</span><input name="username" autocomplete="section-league username" required></label>
             <label class="field"><span>Password</span><input name="password" type="password" autocomplete="section-league current-password" required></label>
             ${LOCAL_SITE && ACCT.user && ACCT.user.isAdmin ? `
@@ -4131,24 +4132,39 @@
 
   // Every POST carries the CSRF token the server put in a readable cookie
   const csrfToken = () => (document.cookie.match(/(?:^|;\s*)uffp_csrf=([0-9a-f]{32})/) || [])[1] || "";
+  // On the live site the session is a token kept in this browser and sent to the Worker (cookies don't work across
+  // sites); on this computer it's the local server's HttpOnly cookie
+  const SESSION_KEY = "uffp_session";
+  const sessionToken = () => { try { return localStorage.getItem(SESSION_KEY) || ""; } catch (e) { return ""; } };
+  const keepSession = (t) => { try { t ? localStorage.setItem(SESSION_KEY, t) : localStorage.removeItem(SESSION_KEY); } catch (e) {} };
   async function localApi(url, body) {
-    const res = await fetch(url, body === undefined ? { cache: "no-store", credentials: "same-origin" }
-      : { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-csrf-token": csrfToken() }, body: JSON.stringify(body) });
+    let res;
+    if (LOCAL_SITE) {
+      res = await fetch(url, body === undefined ? { cache: "no-store", credentials: "same-origin" }
+        : { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-csrf-token": csrfToken() }, body: JSON.stringify(body) });
+    } else {
+      const t = sessionToken();
+      const headers = { ...(t ? { authorization: `Bearer ${t}` } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }) };
+      res = await fetch(API + url, body === undefined ? { cache: "no-store", headers } : { method: "POST", headers, body: JSON.stringify(body) });
+    }
     let data = {};
     try { data = await res.json(); } catch (e) {}
-    if (!res.ok) throw Object.assign(new Error(data.error || `The local server answered ${res.status}.`), { status: res.status, code: data.code });
+    if (!res.ok) throw Object.assign(new Error(data.error || `The server answered ${res.status}.`), { status: res.status, code: data.code });
+    if (!LOCAL_SITE && /^\/api\/auth\/(login|signup)$/.test(url) && data.token) keepSession(data.token);
     return data;
   }
 
   // Who's signed in, from the server (never from anything saved in the browser)
   async function loadAccount() {
-    if (!LOCAL_SITE) return;
+    if (!SITE_ACCOUNTS) return;
     try {
       ACCT.user = (await localApi("/api/auth/session")).user;
       ACCT.error = "";
+      if (!ACCT.user) keepSession(""); // ended or signed out elsewhere
     } catch (e) {
       ACCT.user = null;
-      ACCT.error = "The account server isn't answering. Start it with npm run predictions and open the address it prints.";
+      ACCT.error = LOCAL_SITE ? "The account server isn't answering. Start it with npm run predictions and open the address it prints."
+        : "The account server isn't answering. Try again in a minute.";
     }
     ACCT.ready = true;
     drawAccount();
@@ -4204,6 +4220,7 @@
 
   async function signOut() {
     try { await localApi("/api/auth/logout", {}); } catch (e) {}
+    keepSession("");
     const league = getAdmin();
     if (league && league.auto) setAdmin(null);
     leagueAuto.off = false; leagueAuto.error = "";
@@ -4256,7 +4273,7 @@
 
   function signInPage(parts) {
     const next = safeNext(parts[1]);
-    if (!LOCAL_SITE || ACCT.error) return authShell(`<div class="card auth-card">${authBrand("Account Access", "Sign in is optional: you can browse UFF without an account.")}${authUnavailable()}</div>`);
+    if (!SITE_ACCOUNTS || ACCT.error) return authShell(`<div class="card auth-card">${authBrand("Account Access", "Sign in is optional: you can browse UFF without an account.")}${authUnavailable()}</div>`);
     if (ACCT.user) return authShell(`
       <div class="card auth-card">
         ${authBrand("You're signed in", `Signed in as <b>${esc(ACCT.user.username)}</b>.`)}
@@ -4282,7 +4299,7 @@
 
   function createAccountPage(parts) {
     const next = safeNext(parts[1]);
-    if (!LOCAL_SITE || ACCT.error) return authShell(`<div class="card auth-card">${authBrand("Create Account", "Accounts are optional.")}${authUnavailable()}</div>`);
+    if (!SITE_ACCOUNTS || ACCT.error) return authShell(`<div class="card auth-card">${authBrand("Create Account", "Accounts are optional.")}${authUnavailable()}</div>`);
     if (ACCT.user) return signInPage(parts);
     return authShell(`
       <form class="card auth-card" id="signUpForm" novalidate>
@@ -4303,7 +4320,7 @@
   let accountData = null;
   function accountPage() {
     const head = pageHead("Your Account");
-    if (!LOCAL_SITE || ACCT.error) return `<div class="wrap">${head}${authUnavailable()}</div>`;
+    if (!SITE_ACCOUNTS || ACCT.error) return `<div class="wrap">${head}${authUnavailable()}</div>`;
     if (!ACCT.ready) return `<div class="wrap">${head}<div class="card pm-state"><span class="pm-spin"></span>Loading&hellip;</div></div>`;
     if (!ACCT.user) return `<div class="wrap">${head}${signInPrompt("Sign in to see your account", "#/account")}</div>`;
     if (!accountData) {
@@ -4464,7 +4481,7 @@
   // the local predictions server (predictions/server.js, npm run predictions), so the section only shows up when
   // the site is opened from this computer. The browser only ever sends a choice; the server works out everything else.
 
-  const PM_LOCAL = LOCAL_SITE;
+  const PM_LOCAL = SITE_ACCOUNTS;
   const PM_API = "/api/predictions";
   const PM_STATUS = [["", "All"], ["upcoming", "Upcoming"], ["open", "Open"], ["locked", "Locked"], ["completed", "Completed"]];
   const PM_SORTS = [["closing", "Closing soonest"], ["kickoff", "Kickoff"], ["popular", "Most picks"], ["newest", "Newest"]];
@@ -4621,7 +4638,8 @@
     const cs = pmLoad("config", "/config");
     if (!cs.data) {
       return `<div class="wrap">${head("Pick player stat lines and game winners for virtual points.")}${cs.loading ? pmState(cs, "UFF Predictions")
-        : `<div class="card pm-state pm-state--error"><b>The local predictions server isn't answering.</b><span>Start it with <code>npm run predictions</code> and open the address it prints (this page has to come from that server).</span><button type="button" class="btn btn-ghost btn-sm" data-pm="retry">Try again</button></div>`}</div>`;
+        : LOCAL_SITE ? `<div class="card pm-state pm-state--error"><b>The local predictions server isn't answering.</b><span>Start it with <code>npm run predictions</code> and open the address it prints (this page has to come from that server).</span><button type="button" class="btn btn-ghost btn-sm" data-pm="retry">Try again</button></div>`
+        : `<div class="card pm-state pm-state--error"><b>UFF Predictions isn't answering.</b><span>Try again in a minute.</span><button type="button" class="btn btn-ghost btn-sm" data-pm="retry">Try again</button></div>`}</div>`;
     }
     const cfg = cs.data;
     const admin = cfg.user && cfg.user.isAdmin;
@@ -5279,7 +5297,7 @@
         <div><h1>Rewards</h1><p class="muted">Hit your parlays, cash in your points: trade what you win from UFF parlays and picks for badges, titles, profile decorations and in-game cosmetics.</p></div>
         ${u && !u.isStaff ? `<div class="pm-account"><span class="pill pill-navy">${pmPts(u.balance)}</span></div>` : ""}
       </div>`;
-    if (!LOCAL_SITE) return `<div class="wrap">${head}${empty("Not available here", "Rewards are being tested and aren't on the live site yet.")}</div>`;
+    if (!SITE_ACCOUNTS) return `<div class="wrap">${head}${empty("Not available here", "Rewards are being tested and aren't on the live site yet.")}</div>`;
     if (ACCT.error) return `<div class="wrap">${head}${authUnavailable()}</div>`;
     return `
       <div class="wrap pm-page">
@@ -5441,7 +5459,7 @@
   function adminTabRow(active) {
     const session = getAdmin();
     const league = session && session.user ? ADMIN_TABS.map(([k, label, ic]) => [`#/admin/${k}`, label, ic, `league:${k}`]) : [];
-    const uff = LOCAL_SITE && ACCT.user && ACCT.user.isStaff
+    const uff = SITE_ACCOUNTS && ACCT.user && ACCT.user.isStaff
       ? UA_TABS.filter(([, , p]) => can_(p)).map(([k, label]) => [`#/uff-admin/${k}`, k === "overview" ? "Predictions Overview" : label, UA_ICONS[k], `uff:${k}`]) : [];
     const link = ([href, label, ic, key]) => `<a href="${href}" class="admin-tab ${key === active ? "active" : ""}" ${key === active ? 'aria-current="page"' : ""}>${icon(ic, "sm")}${label}</a>`;
     return `
@@ -5468,7 +5486,7 @@
         <div><h1>Admin</h1><p class="muted">League tools and UFF Predictions in one place. The server checks every action and records it in the audit log.</p></div>
         ${u && u.isStaff ? `<div class="pm-account"><span class="pill">${esc(u.username)} &middot; ${ROLE_NAMES[u.role]}</span></div>` : ""}
       </div>`;
-    if (!LOCAL_SITE) return `<div class="wrap">${head}${empty("Not available here", "UFF Admin is being tested and isn't on the live site yet.")}</div>`;
+    if (!SITE_ACCOUNTS) return `<div class="wrap">${head}${empty("Not available here", "UFF Admin is being tested and isn't on the live site yet.")}</div>`;
     if (ACCT.error) return `<div class="wrap">${head}${authUnavailable()}</div>`;
     if (!ACCT.ready) return `<div class="wrap">${head}<div class="card pm-state"><span class="pm-spin"></span>Loading&hellip;</div></div>`;
     if (!u) return `<div class="wrap">${head}${signInPrompt("Sign in to open Admin", "#/uff-admin", "Only accounts with a staff or admin role can use it.")}</div>`;
@@ -7278,7 +7296,7 @@
     (n) => `<a href="#/${n.path}" data-path="${n.path}">${icon(n.icon)}<span>${n.label}</span></a>`
   ).join("");
 
-  if (LOCAL_SITE) {
+  if (SITE_ACCOUNTS) {
     const adminLink = document.getElementById("adminLink");
     adminLink.insertAdjacentHTML("beforebegin", '<div class="acct" id="acctBox"></div>');
     adminLink.hidden = true;
@@ -7305,7 +7323,7 @@
     if (section !== "sign-in" && section !== "create-account") { signin.error = signup.error = ""; if (section !== lastSection) signin.step = 1; }
     // Admin's tab row includes the UFF Predictions tabs when the signed-in site account has a role: check it again
     // on the way in (a role may have been given or taken since the page loaded)
-    if (section === "admin" && LOCAL_SITE && lastSection !== "admin") {
+    if (section === "admin" && SITE_ACCOUNTS && lastSection !== "admin") {
       loadAccount().then(() => { if (location.hash.replace(/^#\/?/, "").split("/")[0] === "admin") render(); });
     }
     lastSection = section;

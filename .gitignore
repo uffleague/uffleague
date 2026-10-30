@@ -8,3 +8,4 @@ package-lock.json
 .wrangler/
 worker/.wrangler/
 worker/.dev.vars
+.claude/settings.local.json

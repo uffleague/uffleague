@@ -7,6 +7,9 @@
 //   GET /avatars?names=a,b -> Roblox headshots for player profiles (see avatars)
 //   GET /test, POST /test (Authorization: Bearer <GAME_KEY>) -> test log for the Roblox game (see gameTest)
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password).
+import { predictionsFetch } from "./predictions.js";
+export { PredictionsDB } from "./predictions.js";
+
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
   renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, primetime: null, activity: [],
@@ -669,7 +672,7 @@ function adminDeadlines(env, data, body) {
 //            view: what the site and the bot get, updatedAt (changes whenever the view does) }
 const PT_LOCK_HOURS = 48;
 const PT_DEFAULTS = { perSeries: 1, topSeeds: 6 };
-const SITE_DATA = "https://uffleague.github.io/data.js";
+const SITE_DATA = "https://uffleague.github.io/uffleague/data.js";
 const ptState = (data) => ({ manual: {}, labels: {}, auto: {}, teams: [], view: null, updatedAt: null, ...(data.primetime || {}),
   settings: { ...PT_DEFAULTS, ...((data.primetime || {}).settings || {}) } });
 
@@ -979,8 +982,10 @@ async function gameTest(req, env) {
 
 export default {
   async fetch(req, env) {
-    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const path = new URL(req.url).pathname;
+    // Accounts, predictions, parlays and rewards live in their own Durable Object (predictions.js); nothing else changes
+    if (path.startsWith("/api/")) return predictionsFetch(req, env);
+    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (req.method === "GET" && path.startsWith("/img/")) return serveImage(env, path.slice(5));
     if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/deadlines") return botReadDeadlines(req, env);
     if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/primetime") return botReadPrimetime(req, env);
