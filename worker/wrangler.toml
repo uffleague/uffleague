@@ -2,7 +2,24 @@
 name = "uff-admin"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
+# node:crypto and Buffer for the PIN hashes (predictions/auth.js)
+compatibility_flags = ["nodejs_compat"]
 
 [[kv_namespaces]]
 binding = "UFF"
 id = "0b794659841d44f9abc05cc76230ea05"
+
+# Accounts, predictions, parlays, points and rewards (worker/src/predictions.js): one SQLite-backed Durable Object
+[[durable_objects.bindings]]
+name = "PREDICTIONS"
+class_name = "PredictionsDB"
+
+[[migrations]]
+tag = "predictions-v1"
+new_sqlite_classes = ["PredictionsDB"]
+
+# The database migrations are bundled as text (predictions/migrations/*.sql)
+[[rules]]
+type = "Text"
+globs = ["**/*.sql"]
+fallthrough = true

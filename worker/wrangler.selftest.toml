@@ -1,0 +1,19 @@
+# Test only, never deployed: `npx wrangler dev -c wrangler.selftest.toml` then open /selftest (see dev/selftest.js)
+name = "uff-predictions-selftest"
+main = "dev/selftest.js"
+compatibility_date = "2026-10-01"
+# node:crypto and Buffer for the PIN hashes (predictions/auth.js)
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "SELFTEST"
+class_name = "SelfTestDB"
+
+[[migrations]]
+tag = "selftest-v1"
+new_sqlite_classes = ["SelfTestDB"]
+
+[[rules]]
+type = "Text"
+globs = ["**/*.sql", "**/data.js"]
+fallthrough = true

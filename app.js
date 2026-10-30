@@ -12,6 +12,11 @@
     legacy: '<path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8Z"/>',
     records: '<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5v-15Z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9 7.5h6M9 11h4"/>',
     arrow: '<path d="m9 6 6 6-6 6"/>',
+    arrowR: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c.8-4 3.8-6.5 7.5-6.5s6.7 2.5 7.5 6.5"/>',
+    lock: '<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><path d="M12 14.5v2.5"/>',
+    eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="M4 4l16 16"/><path d="M9.9 5.8A9.7 9.7 0 0 1 12 5.5C18 5.5 21.5 12 21.5 12a17.8 17.8 0 0 1-3 3.8M6.6 6.6C3.9 8.4 2.5 12 2.5 12S6 18.5 12 18.5c1.6 0 3-.4 4.2-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     updates: '<path d="M4 10v4a1 1 0 0 0 1 1h2l5 4V5L7 9H5a1 1 0 0 0-1 1Z"/><path d="M16 9a3.5 3.5 0 0 1 0 6M18.5 6.5a7 7 0 0 1 0 11"/>',
     search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
@@ -51,6 +56,16 @@
     { path: "legacy", label: "Legacy", icon: "legacy" },
     { path: "records", label: "Records", icon: "records" }
   ];
+  // Accounts, UFF Predictions, parlays and rewards. On the live site they're on the Worker (worker/src/predictions.js);
+  // opened from this computer (npm run predictions), on the local server instead. SITE_ACCOUNTS = false hides them all.
+  // With accounts, the header's Log In button becomes Sign In / your account, and the league staff login moves to the menu
+  const LOCAL_SITE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  const SITE_ACCOUNTS = true;
+  if (SITE_ACCOUNTS) {
+    NAV.splice(NAV.findIndex((n) => n.path === "predictions") + 1, 0, { path: "uff-predictions", label: "UFF Predictions", icon: "trend", top: true });
+    NAV.splice(NAV.findIndex((n) => n.path === "uff-predictions") + 1, 0, { path: "rewards", label: "Rewards", icon: "awards" });
+    NAV.push({ path: "admin", label: "League Admin", icon: "shield" });
+  }
 
   const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
@@ -2837,6 +2852,8 @@
   const setAdmin = (v) => { try { v ? sessionStorage.setItem(ADMIN_KEY, JSON.stringify(v)) : sessionStorage.removeItem(ADMIN_KEY); } catch (e) {} };
   let adminError = "";
   let adminFlash = "";
+  // League auto-login for staff site accounts: off = they pressed Log out, so don't sign them straight back in
+  const leagueAuto = { busy: false, error: "", off: false };
 
   async function adminCall(body) {
     const offline = "Couldn't reach the admin server. Check your internet and try again.";
@@ -3716,6 +3733,16 @@
         <div class="card stat-chip"><span class="eyebrow">Playoff bracket</span><span class="num">${po ? `${po.rounds.length} round${po.rounds.length === 1 ? "" : "s"}` : "None"}</span></div>
         <div class="card stat-chip"><span class="eyebrow">Legacy players</span><span class="num">${LEAGUE.legacy.players.length}</span></div>
       </div>
+      ${SITE_ACCOUNTS && !(ACCT.user && ACCT.user.isStaff) ? `
+      <div class="card admin-card admin-predictions-link">
+        <div class="admin-subhead">UFF Predictions</div>
+        <p class="muted small">Over/Under and Game Winner markets, parlays, credits and rewards show up as tabs here once you're signed in to the site with an account that has an Admin role (that's separate from this league login).</p>
+        <div class="admin-actions">
+          <a class="btn btn-primary btn-sm" href="#/uff-predictions/manage">Add an Over/Under or Game Winner</a>
+          <a class="btn btn-ghost btn-sm" href="#/uff-admin/challenges">Multi-pick challenges</a>
+          <a class="btn btn-ghost btn-sm" href="#/uff-admin">Admin</a>
+        </div>
+      </div>` : ""}
       ${activitySection(25)}`;
   }
 
@@ -3733,24 +3760,36 @@
             </div>
             <button class="btn btn-ghost" id="adminLogout">Log out</button>
           </div>
-          <nav class="admin-tabs" aria-label="Admin sections">
-            ${ADMIN_TABS.map(([k, label, ic]) => `
-              <a href="#/admin/${k}" class="admin-tab ${k === tab[0] ? "active" : ""}" ${k === tab[0] ? 'aria-current="page"' : ""}>${icon(ic, "sm")}${label}</a>`).join("")}
-          </nav>
+          ${adminTabRow(`league:${tab[0]}`)}
           ${flashBox()}
           ${tab[3]()}
         </div>`;
+    }
+    // A site account with a staff/admin role is signed in to the League Admin by the server instead of typing it
+    // (the Worker makes the league token; the local server uses the league login saved on this computer)
+    if (SITE_ACCOUNTS && ACCT.user && ACCT.user.isStaff && !leagueAuto.off && !leagueAuto.error) {
+      if (!leagueAuto.busy) {
+        leagueAuto.busy = true;
+        localApi("/api/auth/league-login", {})
+          .then((s) => { setAdmin({ user: s.user, token: s.token, auto: true }); adminError = ""; }, (err) => { leagueAuto.error = err.message; })
+          .then(() => { leagueAuto.busy = false; if (location.hash.replace(/^#\/?/, "").split("/")[0] === "admin") render(); });
+      }
+      return `<div class="wrap"><div class="card pm-state league-auto"><span class="pm-spin"></span>Signing ${esc(ACCT.user.username)} in to the League Admin&hellip;</div></div>`;
     }
     return `
       <div class="wrap">
         <div class="login-wrap">
           <form class="card login-card" id="adminLogin" autocomplete="on">
+            ${leagueAuto.error ? `<p class="login-notice">Automatic sign-in: ${esc(leagueAuto.error)}</p>` : ""}
             <img src="${LEAGUE.brandLogo}" alt="" class="login-logo">
             <h1>Admin Login</h1>
             <p class="muted">League staff only.</p>
-            <label class="field"><span>Username</span><input name="username" autocomplete="username" required></label>
-            <label class="field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
-            <label class="field"><span>Your name <span class="muted">(shows in the activity log)</span></span><input name="name" autocomplete="nickname" maxlength="30" required></label>
+            ${SITE_ACCOUNTS ? `<p class="muted small">The league staff login, not your site username and PIN.</p>` : ""}
+            <label class="field"><span>Username</span><input name="username" autocomplete="section-league username" required></label>
+            <label class="field"><span>Password</span><input name="password" type="password" autocomplete="section-league current-password" required></label>
+            ${LOCAL_SITE && ACCT.user && ACCT.user.isAdmin ? `
+            <label class="ua-check login-save"><input type="checkbox" name="saveAuto" checked> Save for automatic sign-in on this computer (staff and admin site accounts skip this form)</label>`
+            : `<label class="field"><span>Your name <span class="muted">(shows in the activity log)</span></span><input name="name" autocomplete="nickname" maxlength="30" required></label>`}
             ${adminError ? `<p class="login-error">${adminError}</p>` : ""}
             <button class="btn btn-primary login-btn" type="submit">Log in</button>
           </form>
@@ -4081,6 +4120,1995 @@
         ${bracketBoard(po, rounds, match, champBox)}
       </div>`;
   }
+
+  // ---- UFF accounts (local test build) ----
+  // Optional: everything on the site can be browsed without one. An account (username + 5-digit PIN) is only for
+  // things that need one, like making picks. The local server (predictions/server.js) checks every PIN and keeps
+  // the session in an HttpOnly cookie; this page never stores a PIN and only asks the server who's signed in.
+
+  const ACCT = { ready: false, user: null, error: "" };
+  const ROLE_NAMES = { user: "Player", staff: "Staff", admin: "Admin", super_admin: "Super Admin" };
+  const AUTH_FEATURES = [
+    { href: "#/stats", icon: "stats", title: "Track Stats", text: "Real game stats & leaderboards" },
+    { href: "#/uff-predictions", icon: "predict", title: "Make Predictions", text: "Test your knowledge and earn points" },
+    { href: "#/uff-predictions/leaders", icon: "awards", title: "Compete", text: "See how you rank in the community" },
+    { href: "#/teams", icon: "football", title: "Be Part of UFF", text: "The ultimate flag football experience" }
+  ];
+  const signin = { step: 1, username: "", error: "", busy: false };
+  const signup = { username: "", error: "", busy: false };
+
+  // Every POST carries the CSRF token the server put in a readable cookie
+  const csrfToken = () => (document.cookie.match(/(?:^|;\s*)uffp_csrf=([0-9a-f]{32})/) || [])[1] || "";
+  // On the live site the session is a token kept in this browser and sent to the Worker (cookies don't work across
+  // sites); on this computer it's the local server's HttpOnly cookie
+  const SESSION_KEY = "uffp_session";
+  const sessionToken = () => { try { return localStorage.getItem(SESSION_KEY) || ""; } catch (e) { return ""; } };
+  const keepSession = (t) => { try { t ? localStorage.setItem(SESSION_KEY, t) : localStorage.removeItem(SESSION_KEY); } catch (e) {} };
+  async function localApi(url, body) {
+    let res;
+    if (LOCAL_SITE) {
+      res = await fetch(url, body === undefined ? { cache: "no-store", credentials: "same-origin" }
+        : { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-csrf-token": csrfToken() }, body: JSON.stringify(body) });
+    } else {
+      const t = sessionToken();
+      const headers = { ...(t ? { authorization: `Bearer ${t}` } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }) };
+      res = await fetch(API + url, body === undefined ? { cache: "no-store", headers } : { method: "POST", headers, body: JSON.stringify(body) });
+    }
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) throw Object.assign(new Error(data.error || `The server answered ${res.status}.`), { status: res.status, code: data.code });
+    if (!LOCAL_SITE && /^\/api\/auth\/(login|signup)$/.test(url) && data.token) keepSession(data.token);
+    return data;
+  }
+
+  // Who's signed in, from the server (never from anything saved in the browser)
+  async function loadAccount() {
+    if (!SITE_ACCOUNTS) return;
+    try {
+      ACCT.user = (await localApi("/api/auth/session")).user;
+      ACCT.error = "";
+      if (!ACCT.user) keepSession(""); // ended or signed out elsewhere
+    } catch (e) {
+      ACCT.user = null;
+      ACCT.error = LOCAL_SITE ? "The account server isn't answering. Start it with npm run predictions and open the address it prints."
+        : "The account server isn't answering. Try again in a minute.";
+    }
+    ACCT.ready = true;
+    drawAccount();
+  }
+  // After signing in or out: everything that depends on who's signed in loads again
+  function accountChanged(user) {
+    ACCT.user = user;
+    pm.data = {};
+    accountData = null;
+    leagueAuto.off = false; leagueAuto.error = ""; // a new account gets its own try at the league auto-login
+    drawAccount();
+  }
+
+  // Where to go after signing in: a page on this site, never a sign-in page
+  const safeNext = (enc) => {
+    let n = "";
+    try { n = decodeURIComponent(enc || ""); } catch (e) {}
+    return /^#\/(?!sign-in|create-account)[\w\-/%.]*$/.test(n) ? n : "";
+  };
+  const nextPart = (next) => (next ? `/${encodeURIComponent(next)}` : "");
+  const here = () => location.hash || "#/";
+
+  // The header: Sign In, or the username with Profile / My Predictions / Sign Out
+  function drawAccount() {
+    const box = document.getElementById("acctBox");
+    if (!box) return;
+    const u = ACCT.user;
+    if (!ACCT.ready) { box.innerHTML = ""; return; }
+    if (!u) {
+      const onAuth = /^#\/(sign-in|create-account)/.test(location.hash);
+      box.innerHTML = `<a href="#/sign-in${onAuth ? "" : nextPart(here())}" class="head-login ${onAuth ? "active" : ""}">Sign In</a>`;
+      return;
+    }
+    box.innerHTML = `
+      <button type="button" class="head-login acct-btn" id="acctBtn" aria-haspopup="true" aria-expanded="false" aria-controls="acctMenu" aria-label="Account menu: ${esc(u.username)}">
+        ${icon("user", "sm")}<span class="acct-name">${esc(u.username)}</span>
+      </button>
+      <div class="acct-menu" id="acctMenu" hidden>
+        <div class="acct-menu-head"><b>${esc(u.username)}</b><span>${u.isStaff ? ROLE_NAMES[u.role] : `${Number(u.balance).toLocaleString("en-US")} virtual points`}</span></div>
+        <a href="#/account">${icon("user", "sm")}Profile</a>
+        ${u.isStaff ? `<a href="#/uff-admin">${icon("shield", "sm")}Admin</a>` : `<a href="#/uff-predictions/me">${icon("predict", "sm")}My Predictions</a>
+        <a href="#/rewards/mine">${icon("awards", "sm")}My Redemptions</a>`}
+        <button type="button" data-acct="signout">${icon("arrowR", "sm")}Sign Out</button>
+      </div>`;
+  }
+  const acctMenuOpen = (open) => {
+    const btn = document.getElementById("acctBtn"), menu = document.getElementById("acctMenu");
+    if (!btn || !menu) return;
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    if (open) { const first = menu.querySelector("a, button"); if (first) first.focus(); }
+  };
+
+  async function signOut() {
+    try { await localApi("/api/auth/logout", {}); } catch (e) {}
+    keepSession("");
+    const league = getAdmin();
+    if (league && league.auto) setAdmin(null);
+    leagueAuto.off = false; leagueAuto.error = "";
+    accountChanged(null);
+    render(); // the page you're on stays; anything that needs an account asks you to sign in again
+  }
+
+  const authFeatures = () => `
+    <nav class="auth-features" aria-label="What you can do with UFF">
+      ${AUTH_FEATURES.map((f) => `
+        <a class="auth-feature" href="${f.href}">
+          <span class="auth-feature-ico">${icon(f.icon)}</span>
+          <span><b>${f.title}</b><span>${f.text}</span></span>
+        </a>`).join("")}
+    </nav>`;
+  const authShell = (card) => `
+    <div class="auth-page">
+      <div class="wrap auth-wrap">${card}</div>
+      <div class="wrap">${authFeatures()}</div>
+    </div>`;
+  const authBrand = (title, sub) => `
+    <div class="auth-brand">
+      <img src="${LEAGUE.brandLogo}" alt="">
+      <span><span class="auth-brand-name">UFF</span><span class="auth-brand-sub">United Flag Football</span></span>
+    </div>
+    <h1 class="auth-title">${title}</h1>
+    <p class="auth-sub">${sub}</p>`;
+  const authError = (msg) => `<p class="auth-error" role="alert" id="authError" ${msg ? "" : "hidden"}>${esc(msg)}</p>`;
+  const pinField = (id, label, placeholder, autocomplete, describedBy = "") => `
+    <div class="auth-field">
+      <label for="${id}">${label}</label>
+      <div class="auth-input">
+        ${icon("lock", "auth-ico")}
+        <input id="${id}" name="${id}" type="password" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" minlength="5"
+          autocomplete="${autocomplete}" placeholder="${placeholder}" required data-pin ${describedBy ? `aria-describedby="${describedBy}"` : ""}>
+        <button type="button" class="auth-eye" data-show-pin="${id}" aria-pressed="false" aria-label="Show PIN">${icon("eye", "sm")}</button>
+      </div>
+    </div>`;
+  const usernameField = (value, autocomplete, focusFirst = true) => `
+    <div class="auth-field">
+      <label for="authUser">Username</label>
+      <div class="auth-input">
+        ${icon("user", "auth-ico")}
+        <input id="authUser" name="username" type="text" value="${esc(value)}" placeholder="Type in user" autocomplete="${autocomplete}"
+          autocapitalize="none" spellcheck="false" maxlength="20" required pattern="[A-Za-z0-9_]{3,20}" ${focusFirst ? "data-autofocus" : ""}>
+      </div>
+    </div>`;
+  const spinOr = (busy, label) => (busy ? `<span class="pm-spin"></span>Checking&hellip;` : `${label}${icon("arrowR", "sm")}`);
+  const authUnavailable = () => `<div class="auth-unavailable" role="alert"><b>Accounts aren't available right now.</b> ${esc(ACCT.error || "Accounts are being tested and aren't on the live site yet.")} You can still browse everything.</div>`;
+
+  function signInPage(parts) {
+    const next = safeNext(parts[1]);
+    if (!SITE_ACCOUNTS || ACCT.error) return authShell(`<div class="card auth-card">${authBrand("Account Access", "Sign in is optional: you can browse UFF without an account.")}${authUnavailable()}</div>`);
+    if (ACCT.user) return authShell(`
+      <div class="card auth-card">
+        ${authBrand("You're signed in", `Signed in as <b>${esc(ACCT.user.username)}</b>.`)}
+        <a class="btn btn-primary auth-submit" href="${esc(next || "#/uff-predictions")}">Continue${icon("arrowR", "sm")}</a>
+        <div class="auth-or"><span>or</span></div>
+        <a class="auth-alt" href="#/account">Go to your profile${icon("arrow", "sm")}</a>
+      </div>`);
+    const step2 = signin.step === 2;
+    return authShell(`
+      <form class="card auth-card" id="signInForm" novalidate>
+        ${authBrand("Account Access", step2 ? "Enter your 5-digit PIN." : "Enter your details to continue.")}
+        ${step2 ? `
+          <div class="auth-who"><span>${icon("user", "sm")}${esc(signin.username)}</span><button type="button" class="auth-link" data-auth="change">Not you?</button></div>
+          <input type="text" name="username" value="${esc(signin.username)}" autocomplete="username" hidden aria-hidden="true" tabindex="-1">
+          ${pinField("authPin", "5-Digit PIN", "Enter your 5 digit pin", "current-password")}`
+        : usernameField(signin.username, "username")}
+        ${authError(signin.error)}
+        <button class="btn btn-primary auth-submit" id="authSubmit" ${signin.busy ? "disabled aria-busy=\"true\"" : ""}>${spinOr(signin.busy, "Continue")}</button>
+        <div class="auth-or"><span>or</span></div>
+        <a class="auth-alt" href="#/create-account${nextPart(next)}">Create an account${icon("arrow", "sm")}</a>
+      </form>`);
+  }
+
+  function createAccountPage(parts) {
+    const next = safeNext(parts[1]);
+    if (!SITE_ACCOUNTS || ACCT.error) return authShell(`<div class="card auth-card">${authBrand("Create Account", "Accounts are optional.")}${authUnavailable()}</div>`);
+    if (ACCT.user) return signInPage(parts);
+    return authShell(`
+      <form class="card auth-card" id="signUpForm" novalidate>
+        ${authBrand("Create Account", "Pick a username and a 5-digit PIN. No email needed.")}
+        ${usernameField(signup.username, "username")}
+        <p class="auth-hint" id="userHint">3-20 letters, numbers or underscores. This is your UFF account name; it isn't linked to a player profile.</p>
+        ${pinField("newPin", "5-Digit PIN", "Enter your 5 digit pin", "new-password", "pinHint")}
+        ${pinField("newPin2", "Confirm PIN", "Enter it again", "new-password")}
+        <p class="auth-hint" id="pinHint">Exactly 5 digits. Avoid easy ones like 11111 or 12345. There's no PIN reset by email yet, so keep it somewhere safe.</p>
+        ${authError(signup.error)}
+        <button class="btn btn-primary auth-submit" id="authSubmit" ${signup.busy ? "disabled aria-busy=\"true\"" : ""}>${signup.busy ? `<span class="pm-spin"></span>Creating&hellip;` : `Create Account${icon("arrowR", "sm")}`}</button>
+        <div class="auth-or"><span>or</span></div>
+        <a class="auth-alt" href="#/sign-in${nextPart(next)}">Already have an account? Sign In${icon("arrow", "sm")}</a>
+      </form>`);
+  }
+
+  // The signed-in person's own account
+  let accountData = null;
+  function accountPage() {
+    const head = pageHead("Your Account");
+    if (!SITE_ACCOUNTS || ACCT.error) return `<div class="wrap">${head}${authUnavailable()}</div>`;
+    if (!ACCT.ready) return `<div class="wrap">${head}<div class="card pm-state"><span class="pm-spin"></span>Loading&hellip;</div></div>`;
+    if (!ACCT.user) return `<div class="wrap">${head}${signInPrompt("Sign in to see your account", "#/account")}</div>`;
+    if (!accountData) {
+      accountData = { loading: true };
+      localApi("/api/account").then((d) => { accountData = d; }, (e) => { accountData = { error: e.message }; if (e.status === 401) accountChanged(null); })
+        .then(() => { if (location.hash.startsWith("#/account")) render(); });
+    }
+    const d = accountData;
+    if (!d.user) return `<div class="wrap">${head}${d.error ? `<div class="card pm-state pm-state--error"><b>Couldn't load your account.</b><span>${esc(d.error)}</span></div>` : `<div class="card pm-state"><span class="pm-spin"></span>Loading&hellip;</div>`}</div>`;
+    const u = d.user;
+    return `
+      <div class="wrap">
+        ${head}
+        <div class="card admin-card acct-profile">
+          <div class="acct-profile-top">
+            <span class="acct-avatar">${icon("user")}</span>
+            <div><h2>${esc(u.username)}</h2><span class="muted small">${u.isStaff ? ROLE_NAMES[u.role] : "UFF account"} &middot; member since ${fmtDate(new Date(u.createdAt).toISOString().slice(0, 10))}</span></div>
+          </div>
+          ${u.isStaff ? "" : `
+          <div class="stat-chips pm-chips">
+            <div class="card stat-chip"><span class="eyebrow">Virtual points</span><span class="num">${Number(u.balance).toLocaleString("en-US")}</span></div>
+            <div class="card stat-chip"><span class="eyebrow">Picks</span><span class="num">${d.picks.total}</span><span class="muted small">${d.picks.pending} active</span></div>
+            <div class="card stat-chip"><span class="eyebrow">Record</span><span class="num">${d.picks.won}-${d.picks.lost}</span><span class="muted small">correct-incorrect</span></div>
+          </div>`}
+          <dl class="acct-facts">
+            <div><dt>Account ID</dt><dd><code>${esc(u.accountId)}</code></dd></div>
+            <div><dt>Sign-in</dt><dd>Username + 5-digit PIN</dd></div>
+            <div><dt>Forgot your PIN?</dt><dd>There's no reset by email or text yet. A league admin can set a new PIN for you.</dd></div>
+            <div><dt>Player profile</dt><dd>Your account isn't linked to a UFF player profile.</dd></div>
+          </dl>
+          <div class="admin-actions">
+            ${u.isStaff ? `<a class="btn btn-ghost btn-sm" href="#/uff-admin">Open Admin</a>` : `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/me">My Predictions</a><a class="btn btn-ghost btn-sm" href="#/rewards/mine">My Redemptions</a>`}
+            <button type="button" class="btn btn-ghost btn-sm" data-acct="signout">Sign Out</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Shown in place of anything that needs an account
+  const signInPrompt = (title, next, text = "Accounts are free and optional. Browsing UFF never needs one.") => `
+    <div class="card signin-prompt">
+      <span class="auth-feature-ico">${icon("lock")}</span>
+      <div><b>${esc(title)}</b><p class="muted small">${esc(text)}</p></div>
+      <div class="signin-prompt-actions">
+        <a class="btn btn-primary btn-sm" href="#/sign-in${nextPart(next)}">Sign In${icon("arrowR", "sm")}</a>
+        <a class="btn btn-ghost btn-sm" href="#/create-account${nextPart(next)}">Create an account</a>
+      </div>
+    </div>`;
+
+  // Keeps only digits in a PIN box (a pasted "04 213" becomes "04213") and turns Continue on only when it could work
+  function authReady() {
+    const form = document.querySelector("#signInForm, #signUpForm");
+    const btn = document.getElementById("authSubmit");
+    if (!form || !btn || btn.getAttribute("aria-busy")) return;
+    const user = form.querySelector("#authUser");
+    const pins = [...form.querySelectorAll("[data-pin]")];
+    btn.disabled = !((!user || /^[A-Za-z0-9_]{3,20}$/.test(user.value.trim())) && pins.every((p) => /^\d{5}$/.test(p.value)));
+  }
+  const showAuthError = (msg) => {
+    const el = document.getElementById("authError");
+    if (el) { el.textContent = msg; el.hidden = !msg; }
+  };
+  const focusAuth = () => {
+    const el = document.querySelector("#authPin, [data-autofocus]");
+    if (el && window.matchMedia("(min-width: 700px)").matches) el.focus(); // no surprise keyboard on phones
+    authReady();
+  };
+  const authParts = () => location.hash.replace(/^#\/?/, "").split("/");
+
+  document.addEventListener("input", (e) => {
+    if (e.target.matches && e.target.matches("[data-pin]")) {
+      const digits = e.target.value.replace(/\D/g, "").slice(0, 5);
+      if (digits !== e.target.value) e.target.value = digits;
+    }
+    if (e.target.closest && e.target.closest("#signInForm, #signUpForm")) { showAuthError(""); authReady(); }
+  });
+
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest ? e.target.closest("[data-show-pin], [data-auth], [data-acct], #acctBtn") : null;
+    // Clicking anywhere else closes the account menu
+    if (!t || t.id !== "acctBtn") { const m = document.getElementById("acctMenu"); if (m && !m.hidden && !(e.target.closest && e.target.closest("#acctMenu"))) acctMenuOpen(false); }
+    if (!t) return;
+    if (t.id === "acctBtn") return acctMenuOpen(document.getElementById("acctMenu").hidden);
+    if (t.dataset.showPin) {
+      const input = document.getElementById(t.dataset.showPin);
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      t.setAttribute("aria-pressed", String(show));
+      t.setAttribute("aria-label", show ? "Hide PIN" : "Show PIN");
+      t.innerHTML = icon(show ? "eyeOff" : "eye", "sm");
+      return input.focus();
+    }
+    if (t.dataset.auth === "change") { signin.step = 1; signin.error = ""; render(); return focusAuth(); }
+    if (t.dataset.acct === "signout") { e.preventDefault(); acctMenuOpen(false); return signOut(); }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.getElementById("acctMenu") && !document.getElementById("acctMenu").hidden) {
+      acctMenuOpen(false);
+      document.getElementById("acctBtn").focus();
+    }
+  });
+
+  document.addEventListener("submit", async (e) => {
+    const f = e.target;
+    if (!["signInForm", "signUpForm"].includes(f.id)) return;
+    e.preventDefault();
+    const next = safeNext(authParts()[1]);
+    const go = (user) => {
+      accountChanged(user);
+      signin.step = 1; signin.username = ""; signup.username = "";
+      location.hash = next || (user.isStaff ? "#/uff-admin" : "#/uff-predictions");
+    };
+    if (f.id === "signInForm") {
+      if (signin.busy) return;
+      if (signin.step === 1) {
+        // Step 1 only checks the format here: whether the name exists is never revealed
+        const name = f.querySelector("#authUser").value.trim();
+        if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) return showAuthError(name ? "Usernames are 3-20 letters, numbers or underscores." : "Enter your username.");
+        signin.username = name; signin.step = 2; signin.error = "";
+        render();
+        return focusAuth();
+      }
+      const pin = f.querySelector("#authPin").value;
+      if (!/^\d{5}$/.test(pin)) return showAuthError("Your PIN is exactly 5 digits.");
+      signin.busy = true; signin.error = ""; render();
+      try {
+        const { user } = await localApi("/api/auth/login", { username: signin.username, pin });
+        signin.busy = false;
+        return go(user);
+      } catch (err) {
+        signin.busy = false; signin.error = err.message;
+        render();
+        return focusAuth();
+      }
+    }
+    if (f.id === "signUpForm") {
+      if (signup.busy) return;
+      const name = f.querySelector("#authUser").value.trim(), pin = f.querySelector("#newPin").value, pin2 = f.querySelector("#newPin2").value;
+      signup.username = name;
+      const problem = !/^[A-Za-z0-9_]{3,20}$/.test(name) ? "Usernames are 3-20 letters, numbers or underscores."
+        : !/^\d{5}$/.test(pin) ? "Your PIN is exactly 5 digits." : pin !== pin2 ? "The two PINs don't match." : "";
+      if (problem) return showAuthError(problem);
+      signup.busy = true; signup.error = ""; render();
+      try {
+        const { user } = await localApi("/api/auth/signup", { username: name, pin, confirmPin: pin2 });
+        signup.busy = false;
+        return go(user);
+      } catch (err) {
+        signup.busy = false; signup.error = err.message;
+        render();
+        return focusAuth();
+      }
+    }
+  });
+
+  // ---- UFF Predictions (local test build) ----
+  // Player Over/Under and Game Winner picks for virtual points (no cash value). Markets, picks and points live on
+  // the local predictions server (predictions/server.js, npm run predictions), so the section only shows up when
+  // the site is opened from this computer. The browser only ever sends a choice; the server works out everything else.
+
+  const PM_LOCAL = SITE_ACCOUNTS;
+  const PM_API = "/api/predictions";
+  const PM_STATUS = [["", "All"], ["upcoming", "Upcoming"], ["open", "Open"], ["locked", "Locked"], ["completed", "Completed"]];
+  const PM_SORTS = [["closing", "Closing soonest"], ["kickoff", "Kickoff"], ["popular", "Most picks"], ["newest", "Newest"]];
+  const PM_STATUS_LABEL = { upcoming: "Upcoming", open: "Open", locked: "Locked", resolved: "Completed", void: "Void" };
+  const PM_RESULT = { won: "Correct", lost: "Incorrect", push: "Push", void: "Void", pending: "Pending" };
+  const pm = { data: {}, kind: "player_ou", status: "", q: "", sort: "closing", view: "", id: null,
+    confirm: null, msg: "", err: "", busy: false, auth: false, preview: null, form: { kind: "player_ou" } };
+
+  // Paths starting /api/ are other parts of the local server (challenges); the rest are under /api/predictions
+  const pmFetch = (path, body) => localApi(path.startsWith("/api/") ? path : PM_API + path, body);
+  // Loads into pm.data[key] once and redraws the page when it arrives
+  function pmLoad(key, path) {
+    if (pm.data[key]) return pm.data[key];
+    const slot = (pm.data[key] = { loading: true });
+    pmFetch(path).then((data) => { slot.data = data; }, (err) => { slot.error = err.message; slot.status = err.status; slot.code = err.code; })
+      .then(() => { slot.loading = false; if (pm.data[key] === slot) pmRedraw(); });
+    return slot;
+  }
+  // Everything but the server settings is loaded again (after a pick, an admin change or a new page)
+  const pmFresh = () => Object.keys(pm.data).forEach((k) => { if (k !== "config") delete pm.data[k]; });
+  function pmRedraw() {
+    if (location.hash.replace(/^#\/?/, "").split("/")[0] !== "uff-predictions") return;
+    const y = window.scrollY;
+    const el = document.activeElement;
+    const focus = el && el.id && app.contains(el) ? { id: el.id, at: el.selectionStart } : null;
+    app.innerHTML = uffPredictionsPage();
+    fillAvatars();
+    window.scrollTo(0, y);
+    const back = focus && document.getElementById(focus.id);
+    if (back) { back.focus(); if (focus.at != null && back.setSelectionRange) back.setSelectionRange(focus.at, focus.at); }
+  }
+
+  const pmWhen = (ms) => new Date(ms).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const pmPts = (n) => `${Number(n).toLocaleString("en-US")} pts`;
+  const pmPct = (o) => (o.pct == null ? "&ndash;" : `${o.pct}%`);
+  const pmLine = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  const pmPicks = (n) => (n ? `${n} pick${n === 1 ? "" : "s"}` : "No picks yet");
+  const pmLocalInput = (ms) => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 6e4); return d.toISOString().slice(0, 16); };
+  const pmFromInput = (v) => (v ? new Date(v).getTime() : null);
+  const pmTeamLogo = (t, size = "") => (TEAMS.some((x) => x.name === t.name) || !t.logo ? anyTeamLogo(t.name, size)
+    : `<img class="team-logo custom ${size}" src="${esc(t.logo)}" alt="${esc(t.name)} logo">`);
+  const pmShort = (t) => (TEAMS.some((x) => x.name === t.name) ? teamShort(t.name) : t.code || t.name);
+  const pmStatus = (m) => `<span class="pm-status pm-status--${m.status}">${PM_STATUS_LABEL[m.status]}${m.hold ? ` &middot; ${m.hold === "postponed" ? "Postponed" : "Disputed"}` : ""}</span>`;
+  const pmSample = (m) => (m.sample ? `<span class="pm-sample">Sample</span>` : "");
+  const pmTitle = (m) => (m.kind === "game_winner" ? `${m.teams[0].name} vs ${m.teams[1].name}` : `${m.player}: ${m.stat.label} ${pmLine(m.line)}`);
+  const pmChoice = (m, key) => {
+    const o = m.options.find((x) => x.key === key);
+    return m.kind === "game_winner" ? (o ? o.label : key) : `${key === "over" ? "Over" : "Under"} ${pmLine(m.line)}`;
+  };
+  function pmWhenText(m) {
+    if (m.status === "open") return `Closes <b data-kickoff="${m.closesAt}">${untilKickoff(m.closesAt) || "now"}</b>`;
+    if (m.status === "upcoming") return `Opens ${pmWhen(m.opensAt)}`;
+    if (m.status === "locked") return m.hold === "disputed" ? "Result disputed" : m.hold === "postponed" ? "Game postponed" : `Closed ${pmWhen(m.closesAt)}`;
+    if (m.status === "void") return "Void: points returned";
+    return m.resolution ? `Result: ${pmOutcome(m)}` : "Settled";
+  }
+  function pmOutcome(m) {
+    const r = m.resolution;
+    if (!r) return "";
+    if (r.outcome === "void") return "Void";
+    if (r.outcome === "push") return m.kind === "game_winner" ? "Tie (push)" : `Push at ${pmLine(r.value)}`;
+    return m.kind === "game_winner" ? `${pmChoice(m, r.outcome)} won${r.score ? ` ${r.score[0]}-${r.score[1]}` : ""}`
+      : `${r.outcome === "over" ? "Over" : "Under"} (${pmLine(r.value)})`;
+  }
+  const pmBar = (m) => `<div class="pm-bar" role="img" aria-label="${m.total ? `${m.options[0].pct}% ${esc(m.options[0].label)}` : "No picks yet"}">${m.total ? `<span style="width:${m.options[0].pct}%"></span>` : ""}</div>`;
+  const pmMine = (m) => m.mine ? `<span class="pm-mine pm-mine--${m.mine.result}">You: ${esc(m.kind === "game_winner" ? pmShort(m.teams[m.mine.selection === "a" ? 0 : 1]) : m.mine.selection === "over" ? "Over" : "Under")}${m.mine.result !== "pending" ? ` &middot; ${PM_RESULT[m.mine.result]}` : ""}</span>` : "";
+  const pmAvatar = (name) => `<span class="pm-av">${playerArt(name)}</span>`;
+
+  function pmCard(m) {
+    const opp = m.playerTeam && m.teams.find((t) => t.name !== m.playerTeam.name);
+    const body = m.kind === "game_winner"
+      ? m.teams.map((t, i) => `
+          <div class="pm-team-row">
+            <span class="pm-team">${pmTeamLogo(t, "md")}<span><b>${esc(t.name)}</b>${t.record ? `<span class="muted small">${pmRecord(t)}</span>` : ""}</span></span>
+            <span class="pm-pct">${pmPct(m.options[i])}</span>
+          </div>`).join("")
+      : `
+          <div class="pm-player">
+            ${pmAvatar(m.player)}
+            <span class="pm-player-who"><b>${esc(m.player)}</b><span class="muted small">${m.playerTeam ? `${pmTeamLogo(m.playerTeam)} ${esc(pmShort(m.playerTeam))}` : ""}${opp ? ` vs ${esc(pmShort(opp))}` : ""}</span></span>
+            <span class="pm-line"><span class="eyebrow">${esc(m.stat.short)}</span><b>${pmLine(m.line)}</b></span>
+          </div>
+          <div class="pm-ou"><span>Over <b>${pmPct(m.options[0])}</b></span><span>Under <b>${pmPct(m.options[1])}</b></span></div>`;
+    return `
+      <a class="card pm-card" href="#/uff-predictions/m/${m.id}">
+        <div class="pm-card-top">${pmStatus(m)}${pmSample(m)}<span class="muted small">${m.week ? `Week ${m.week} &middot; ` : ""}${esc(m.gameId)}</span></div>
+        ${body}
+        ${pmBar(m)}
+        <div class="pm-card-foot"><span>${pmPicks(m.total)} &middot; +${m.stake} pts if correct</span>${pmMine(m) || `<span>${pmWhenText(m)}</span>`}</div>
+      </a>`;
+  }
+  const pmRecord = (t) => (t.record ? `${t.record.w}-${t.record.l}` : "");
+
+  // A step line of the first choice's share of picks after each pick
+  function pmChart(m) {
+    const h = m.history || [];
+    if (h.length < 2) return `<p class="muted small">The chart starts after the second pick.</p>`;
+    const W = 560, H = 170, L = 34, R = 10, T = 10, B = 24;
+    const t0 = h[0].at, t1 = Math.max(h[h.length - 1].at, t0 + 1);
+    const x = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R);
+    const y = (p) => T + (1 - p / 100) * (H - T - B);
+    let d = `M${x(h[0].at).toFixed(1)} ${y(h[0].pct[0]).toFixed(1)}`;
+    h.slice(1).forEach((s) => { d += ` H${x(s.at).toFixed(1)} V${y(s.pct[0]).toFixed(1)}`; });
+    const grid = [0, 50, 100].map((p) => `<line x1="${L}" x2="${W - R}" y1="${y(p)}" y2="${y(p)}" class="pm-grid"/><text x="${L - 6}" y="${y(p) + 4}" text-anchor="end">${p}%</text>`).join("");
+    const last = h[h.length - 1];
+    return `
+      <svg class="pm-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(m.options[0].label)} share of picks over time, now ${last.pct[0]}%">
+        ${grid}
+        <path d="${d}" class="pm-line-path"/>
+        <circle cx="${x(last.at)}" cy="${y(last.pct[0])}" r="4" class="pm-dot"/>
+        <text x="${L}" y="${H - 6}">${esc(pmWhen(h[0].at))}</text>
+        <text x="${W - R}" y="${H - 6}" text-anchor="end">${esc(pmWhen(last.at))}</text>
+      </svg>
+      <p class="muted small">${esc(m.options[0].label)}'s share of picks after each of the ${h.length} picks. It shows what people picked, not how likely it is to happen.</p>`;
+  }
+
+  // Balance after each change, as a small line
+  function pmBalanceChart(ledger) {
+    if (ledger.length < 2) return "";
+    const W = 560, H = 120, P = 8;
+    const vals = ledger.map((l) => l.balance);
+    const lo = Math.min(...vals), hi = Math.max(...vals), span = Math.max(1, hi - lo);
+    const pts = vals.map((v, i) => `${(P + (i / (vals.length - 1)) * (W - 2 * P)).toFixed(1)},${(P + (1 - (v - lo) / span) * (H - 2 * P)).toFixed(1)}`).join(" ");
+    return `
+      <svg class="pm-chart pm-chart--small" viewBox="0 0 ${W} ${H}" role="img" aria-label="Virtual points over time, from ${vals[0]} to ${vals[vals.length - 1]}">
+        <polyline points="${pts}" class="pm-line-path"/>
+      </svg>
+      <p class="muted small">Low ${pmPts(lo)} &middot; high ${pmPts(hi)} &middot; ${ledger.length} changes</p>`;
+  }
+
+  const pmState = (slot, what) => slot.loading ? `<div class="card pm-state"><span class="pm-spin"></span>Loading ${what}&hellip;</div>`
+    : slot.error ? `<div class="card pm-state pm-state--error"><b>Couldn't load ${what}.</b><span>${esc(slot.error)}</span><button type="button" class="btn btn-ghost btn-sm" data-pm="retry">Try again</button></div>` : "";
+
+  // Your points by the page title (your name and Sign Out are in the header's account menu)
+  function pmAccount(cfg) {
+    const u = cfg.user;
+    if (u) return u.isStaff ? "" : `<div class="pm-account"><span class="pill pill-navy">${pmPts(u.balance)}</span></div>`;
+    return `<div class="pm-account"><a class="btn btn-primary btn-sm" href="#/sign-in${nextPart(here())}">Sign in to pick${icon("arrowR", "sm")}</a></div>`;
+  }
+  const pmCfg = () => (pm.data.config && pm.data.config.data) || null;
+
+  function uffPredictionsPage() {
+    const head = (sub) => `
+      <div class="page-head page-head--row">
+        <div>
+          <h1>UFF Predictions</h1>
+          <p class="muted">${sub}</p>
+        </div>
+        ${pmCfg() ? pmAccount(pmCfg()) : ""}
+      </div>`;
+    if (!PM_LOCAL) {
+      return `<div class="wrap">${head("Pick player stat lines and game winners.")}${empty("Not available here", "UFF Predictions is being tested and isn't on the live site yet.")}</div>`;
+    }
+    const cs = pmLoad("config", "/config");
+    if (!cs.data) {
+      return `<div class="wrap">${head("Pick player stat lines and game winners for virtual points.")}${cs.loading ? pmState(cs, "UFF Predictions")
+        : LOCAL_SITE ? `<div class="card pm-state pm-state--error"><b>The local predictions server isn't answering.</b><span>Start it with <code>npm run predictions</code> and open the address it prints (this page has to come from that server).</span><button type="button" class="btn btn-ghost btn-sm" data-pm="retry">Try again</button></div>`
+        : `<div class="card pm-state pm-state--error"><b>UFF Predictions isn't answering.</b><span>Try again in a minute.</span><button type="button" class="btn btn-ghost btn-sm" data-pm="retry">Try again</button></div>`}</div>`;
+    }
+    const cfg = cs.data;
+    const admin = cfg.user && cfg.user.isAdmin;
+    const tabs = [["", "Markets"], ["challenges", "Challenges"], ["me", "My Predictions"], ["leaders", "Leaderboard"], ...(admin ? [["manage", "Manage"]] : [])];
+    const section = pm.view === "m" ? "" : pm.view === "c" ? "challenges" : pm.view;
+    const banners = `
+      ${cfg.mode === "demo" ? `<div class="pm-banner pm-banner--demo"><b>Demo mode.</b> ${esc(cfg.label)}</div>` : ""}
+      ${!cfg.league.ok ? `<div class="pm-banner pm-banner--error"><b>UFF league data isn't loading</b> (${esc(cfg.league.error || "no answer")}). Markets can be viewed, but new ones can't be made or settled until it's back.</div>` : ""}
+      <div class="pm-banner">Virtual points only: they have no cash value and can't be bought, traded, transferred or redeemed. Percentages show what the community picked, not how likely anything is.</div>`;
+    let body;
+    if (pm.view === "m") body = pmMarketPage(cfg);
+    else if (pm.view === "challenges") body = pmChallengesPage(cfg);
+    else if (pm.view === "c") body = pmChallengePage(cfg);
+    else if (pm.view === "me") body = pmMePage(cfg);
+    else if (pm.view === "leaders") body = pmLeadersPage(cfg);
+    else if (pm.view === "manage") body = admin ? pmManagePage(cfg) : empty("Admins only", `Market management is for UFF admins. <a class="link-strong" href="#/uff-admin">Admin</a>`);
+    else body = pmMarketsPage(cfg);
+    return `
+      <div class="wrap pm-page">
+        ${head("Pick player stat lines and game winners for virtual points, then see how your picks stack up.")}
+        ${banners}
+        <nav class="segmented pm-tabs" aria-label="UFF Predictions">${tabs.map(([k, label]) =>
+          `<a href="#/uff-predictions${k ? `/${k}` : ""}" class="${section === k ? "active" : ""}">${label}</a>`).join("")}</nav>
+        ${pm.msg ? `<div class="admin-flash">${esc(pm.msg)}</div>` : ""}
+        ${pm.err ? `<p class="login-error pm-err">${esc(pm.err)}</p>` : ""}
+        ${body}
+        ${pm.confirm ? pmConfirm() : ""}
+        ${pm.prompt && !cfg.user ? `<div class="pm-modal" role="dialog" aria-modal="true" aria-label="Sign in to make a pick">${signInPrompt("Sign in to make a pick", here(), "Picks use virtual points, so they need a free account. Browsing markets doesn't.")}</div>` : ""}
+      </div>`;
+  }
+
+  function pmMarketsPage() {
+    const key = `list:${pm.kind}|${pm.status}|${pm.q}|${pm.sort}`;
+    const params = new URLSearchParams({ kind: pm.kind, status: pm.status, q: pm.q, sort: pm.sort });
+    const slot = pmLoad(key, `/markets?${params}`);
+    const list = slot.data ? slot.data.markets : [];
+    const what = pm.kind === "game_winner" ? "Game Winner" : "Player Over/Under";
+    return `
+      <div class="pm-filters">
+        <div class="segmented">${[["player_ou", "Player Over/Under"], ["game_winner", "Game Winner"]].map(([k, l]) =>
+          `<a href="#" data-pm-kind="${k}" class="${pm.kind === k ? "active" : ""}">${l}</a>`).join("")}</div>
+        <div class="filter-row pm-status-row">${PM_STATUS.map(([k, l]) =>
+          `<button type="button" class="filter ${pm.status === k ? "active" : ""}" data-pm-status="${k}">${l}</button>`).join("")}</div>
+        <div class="pm-search-row">
+          <label class="search">${icon("search")}<input id="pmSearch" type="search" aria-label="Search markets" placeholder="${pm.kind === "game_winner" ? "Search teams or game" : "Search players, teams or stats"}" value="${esc(pm.q)}"></label>
+          <select class="select" id="pmSort" aria-label="Sort">${PM_SORTS.map(([k, l]) => `<option value="${k}" ${pm.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+        </div>
+      </div>
+      ${pmState(slot, "markets")}
+      ${slot.data ? list.length ? `<div class="pm-grid">${list.map(pmCard).join("")}</div>`
+        : empty(`No ${what} markets${pm.status || pm.q ? " match" : " yet"}`, pm.status || pm.q ? "Try another filter or search." : "Admins add markets for upcoming UFF games. Check back soon.") : ""}`;
+  }
+
+  function pmMarketPage(cfg) {
+    const slot = pmLoad(`market:${pm.id}`, `/markets/${pm.id}`);
+    const back = `<a class="link pm-back" href="#/uff-predictions">&larr; All markets</a>`;
+    if (!slot.data) return back + (slot.status === 404 ? empty("Market not found", "It may have been removed.") : pmState(slot, "this market"));
+    const m = slot.data.market;
+    const admin = cfg.user && cfg.user.isAdmin;
+    const staff = cfg.user && cfg.user.isStaff;
+    const canPick = m.status === "open" && !m.mine && !staff;
+    const opp = m.playerTeam && m.teams.find((t) => t.name !== m.playerTeam.name);
+    const hero = m.kind === "game_winner" ? `
+      <div class="pm-hero pm-hero--teams">
+        ${m.teams.map((t, i) => `
+          <div class="pm-hero-team">
+            ${pmTeamLogo(t, "lg")}
+            <div><b>${esc(t.name)}</b><span class="muted small">${t.record ? `Record ${pmRecord(t)}` : "No record yet"}</span></div>
+          </div>${i === 0 ? `<span class="pm-vs">vs</span>` : ""}`).join("")}
+      </div>` : `
+      <div class="pm-hero">
+        ${pmAvatar(m.player)}
+        <div class="pm-hero-who">
+          <a class="link-strong pm-hero-name" href="#/players/${encodeURIComponent(m.player)}">${esc(m.player)}</a>
+          <span class="muted">${m.playerTeam ? `${pmTeamLogo(m.playerTeam)} ${esc(m.playerTeam.name)}` : ""}${opp ? ` vs ${pmTeamLogo(opp)} ${esc(opp.name)}` : ""}</span>
+          <span class="pm-hero-stat"><span class="eyebrow">${esc(m.stat.label)}</span><b>${pmLine(m.line)}</b></span>
+        </div>
+      </div>`;
+    const choices = m.options.map((o) => {
+      const picked = m.mine && m.mine.selection === o.key;
+      const won = m.resolution && m.resolution.outcome === o.key;
+      const t = m.kind === "game_winner" ? m.teams[o.key === "a" ? 0 : 1] : null;
+      return `
+        <button type="button" class="pm-choice ${picked ? "picked" : ""} ${won ? "won" : ""}" data-pm-pick="${o.key}" ${canPick ? "" : "disabled"}>
+          <span class="pm-choice-name">${t ? pmTeamLogo(t, "md") : ""}<span>${m.kind === "game_winner" ? `${esc(t.name)} win` : `${o.key === "over" ? "Over" : "Under"} ${pmLine(m.line)}`}</span></span>
+          <span class="pm-choice-pct">${pmPct(o)}<span class="muted small">${o.count} pick${o.count === 1 ? "" : "s"}</span></span>
+          ${picked ? `<span class="pm-choice-tag">Your pick</span>` : won ? `<span class="pm-choice-tag">Result</span>` : ""}
+        </button>`;
+    }).join("");
+    const why = staff ? "Staff and admin accounts run the markets, so they don't make picks."
+      : m.mine ? `You picked <b>${esc(pmChoice(m, m.mine.selection))}</b> on ${pmWhen(m.mine.createdAt)}${m.mine.result === "won" ? ` &middot; +${m.mine.stake} pts` : ""}${m.mine.result !== "pending" ? ` &middot; <b>${PM_RESULT[m.mine.result]}</b>` : ". Picks can't be changed."}`
+      : m.status === "open" ? (cfg.user ? `Picks are free: a correct pick earns ${m.stake} virtual points, and a wrong one costs nothing.` : `<a href="#/sign-in${nextPart(here())}" class="link-strong">Sign in</a> or <a href="#/create-account${nextPart(here())}" class="link-strong">create an account</a> to make a pick.`)
+      : m.status === "upcoming" ? `Picks open ${pmWhen(m.opensAt)}.` : "Picks are closed.";
+    const stats = m.kind === "player_ou" ? pmPlayerStats(m) : pmTeamStats(m);
+    return `
+      ${back}
+      <div class="card pm-detail">
+        <div class="pm-card-top">${pmStatus(m)}${pmSample(m)}<span class="muted small">${esc(m.kindLabel)} &middot; ${m.week ? `Week ${m.week} &middot; ` : ""}Game ${esc(m.gameId)}</span></div>
+        ${hero}
+        <div class="pm-facts">
+          <span><span class="eyebrow">Kickoff</span>${m.kickoffAt ? pmWhen(m.kickoffAt) : esc(m.gameTime || "Not set yet")}</span>
+          <span><span class="eyebrow">Picks close</span>${pmWhen(m.closesAt)}</span>
+          <span><span class="eyebrow">Points if correct</span>+${m.stake}</span>
+          <span><span class="eyebrow">Community</span>${pmPicks(m.total)}</span>
+        </div>
+        ${m.resolution ? `<div class="pm-result pm-result--${m.status}"><b>${esc(pmOutcome(m))}</b><span class="muted small">${m.resolution.source === "manual" ? "Settled by hand: " : m.resolution.source === "void" ? "" : m.resolution.source === "demo_result" ? "From a sample result: " : "From the official result: "}${esc(m.resolution.note || "")} &middot; ${pmWhen(m.resolution.at)}</span></div>` : ""}
+        <div class="pm-choices">${choices}</div>
+        ${pmBar(m)}
+        <p class="muted small pm-why">${why}</p>
+      </div>
+      <div class="pm-cols">
+        <div class="card admin-card"><div class="admin-subhead">Community picks over time</div>${pmChart(m)}</div>
+        <div class="card admin-card">${stats}</div>
+      </div>
+      <div class="card admin-card pm-rules">
+        <div class="admin-subhead">How this settles</div>
+        <ul>${m.rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
+      </div>
+      ${admin ? pmAdminPanel(m) : ""}`;
+  }
+
+  function pmPlayerStats(m) {
+    const s = m.stats;
+    if (!s.played) return `<div class="admin-subhead">${esc(m.stat.label)} this season</div><p class="muted small">No box scores with ${esc(m.player)} in them yet.</p>`;
+    return `
+      <div class="admin-subhead">${esc(m.stat.label)} this season</div>
+      <div class="stat-chips pm-chips">
+        <div class="card stat-chip"><span class="eyebrow">Average</span><span class="num">${pmLine(Math.round(s.average * 10) / 10)}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Best</span><span class="num">${s.high}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Over ${pmLine(m.line)}</span><span class="num">${s.over}/${s.played}</span></div>
+      </div>
+      <table class="pm-log">
+        <thead><tr><th>Game</th><th>Opponent</th><th class="pm-n">${esc(m.stat.short)}</th><th></th></tr></thead>
+        <tbody>${s.games.slice().reverse().map((g) => `
+          <tr><td>${g.week ? `Wk ${g.week}` : esc(g.gameId)}</td><td>${g.opponent ? `${anyTeamLogo(g.opponent)} ${esc(teamShort(g.opponent))}` : ""}</td>
+          <td class="pm-n">${g.value}</td><td>${g.value > m.line ? `<span class="pm-ou-tag over">Over</span>` : g.value < m.line ? `<span class="pm-ou-tag">Under</span>` : `<span class="pm-ou-tag">Push</span>`}</td></tr>`).join("")}</tbody>
+      </table>
+      <p class="muted small">From UFF box scores (last ${s.games.length} of ${s.played} games), against this market's line.</p>`;
+  }
+  function pmTeamStats(m) {
+    return `
+      <div class="admin-subhead">Recent results</div>
+      ${m.stats.teams.map((games, i) => `
+        <div class="pm-recent">
+          <span class="pm-team">${pmTeamLogo(m.teams[i])}<b>${esc(pmShort(m.teams[i]))}</b></span>
+          ${games.length ? games.map((g) => `<span class="pm-wl pm-wl--${g.result}" title="${esc(`${g.result} ${g.score[0]}-${g.score[1]} vs ${g.opponent}`)}">${g.result}</span>`).join("") : `<span class="muted small">No games played yet</span>`}
+        </div>`).join("")}
+      <p class="muted small">Last five finals for each team (hover for the score).</p>`;
+  }
+
+  function pmConfirm() {
+    const slot = pm.data[`market:${pm.confirm.id}`];
+    const m = slot && slot.data && slot.data.market;
+    if (!m) return "";
+    const what = m.kind === "game_winner" ? `<b>${esc(pmChoice(m, pm.confirm.selection))}</b> to beat ${esc(m.teams[pm.confirm.selection === "a" ? 1 : 0].name)}`
+      : `<b>${esc(m.player)}</b> to finish <b>${pm.confirm.selection === "over" ? "over" : "under"} ${pmLine(m.line)}</b> ${esc(m.stat.label.toLowerCase())}`;
+    return `
+      <div class="pm-modal" role="dialog" aria-modal="true" aria-labelledby="pmConfirmTitle">
+        <div class="card pm-modal-card">
+          <h2 id="pmConfirmTitle">Confirm your pick</h2>
+          <p>You're picking ${what} in game ${esc(m.gameId)}.</p>
+          <ul class="pm-modal-facts">
+            <li>Free: nothing comes off your points. A correct pick earns <b>${m.stake}</b>; a wrong one costs nothing.</li>
+            ${m.pushPossible ? `<li>Exactly ${pmLine(m.line)} is a push: no points either way, and it doesn't count toward accuracy.</li>` : ""}
+            <li>Picks can't be changed or taken back once made.</li>
+            <li>Virtual points only: no cash value.</li>
+          </ul>
+          <div class="admin-actions">
+            <button type="button" class="btn btn-primary" data-pm="confirm" ${pm.busy ? "disabled" : ""}>${pm.busy ? "Saving&hellip;" : "Confirm pick"}</button>
+            <button type="button" class="btn btn-ghost" data-pm="cancel">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function pmMePage(cfg) {
+    if (!cfg.user) return signInPrompt("Sign in to see your predictions", "#/uff-predictions/me", "Your picks, points and accuracy are saved to your account.");
+    if (cfg.user.isStaff) return empty("Staff and admins don't make picks", "Sign in with a player account to play.");
+    const slot = pmLoad("me", "/me");
+    if (!slot.data) return pmState(slot, "your predictions");
+    const d = slot.data, r = d.record;
+    const row = (m) => `
+      <a class="pm-row" href="#/uff-predictions/m/${m.id}">
+        <span class="pm-row-main"><b>${esc(pmTitle(m))}</b><span class="muted small">${esc(m.kindLabel)} &middot; Game ${esc(m.gameId)}${m.sample ? " &middot; Sample" : ""}</span></span>
+        <span class="pm-row-pick">${esc(pmChoice(m, m.mine.selection))}<span class="muted small">${m.mine.result === "won" ? `+${m.mine.stake} pts` : `+${m.mine.stake} if correct`} &middot; ${pmWhen(m.mine.createdAt)}</span></span>
+        <span class="pm-row-state">${m.mine.result === "pending" ? `${pmStatus(m)}<span class="muted small">${pmWhenText(m)}</span>`
+          : `<span class="pm-mine pm-mine--${m.mine.result}">${PM_RESULT[m.mine.result]}</span><span class="muted small">${esc(pmOutcome(m))}</span>`}</span>
+      </a>`;
+    return `
+      <div class="stat-chips pm-chips">
+        <div class="card stat-chip"><span class="eyebrow">Virtual points</span><span class="num">${d.user.balance.toLocaleString("en-US")}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Accuracy</span><span class="num">${r.accuracy == null ? "&ndash;" : `${Math.round(r.accuracy * 100)}%`}</span><span class="muted small">${r.won} correct &middot; ${r.lost} incorrect</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Streak</span><span class="num">${r.streak ? `${r.streak.type}${r.streak.n}` : "&ndash;"}</span><span class="muted small">Best: ${r.bestStreak} correct in a row</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Leaderboard</span><span class="num">${d.rank ? `#${d.rank.rank}` : "&ndash;"}</span><span class="muted small">${d.rank ? `of ${d.rank.of}` : `after ${d.minSettled} decided picks`}</span></div>
+        <div class="card stat-chip"><span class="eyebrow">Active</span><span class="num">${r.pending}</span><span class="muted small">${r.push} push &middot; ${r.void} void</span></div>
+      </div>
+      <p class="muted small">Accuracy counts only correct and incorrect picks; pushes and voids don't count. It's kept apart from your points.</p>
+      <div class="pm-cols">
+        <div class="card admin-card"><div class="admin-subhead">Active picks<span class="muted small">${d.active.length}</span></div>
+          ${d.active.length ? `<div class="pm-rows">${d.active.map(row).join("")}</div>` : `<p class="muted small">No active picks. <a class="link-strong" href="#/uff-predictions">Find a market</a>.</p>`}</div>
+        <div class="card admin-card"><div class="admin-subhead">Virtual points over time</div>${pmBalanceChart(d.ledger) || `<p class="muted small">Your balance history shows up after your first pick.</p>`}</div>
+      </div>
+      <div class="card admin-card"><div class="admin-subhead">Results<span class="muted small">${d.completed.length}</span></div>
+        ${d.completed.length ? `<div class="pm-rows">${d.completed.map(row).join("")}</div>` : `<p class="muted small">Settled picks show up here.</p>`}</div>
+      ${pmMyChallenges()}`;
+  }
+
+  function pmLeadersPage(cfg) {
+    const slot = pmLoad("leaders", "/leaderboard");
+    if (!slot.data) return pmState(slot, "the leaderboard");
+    const d = slot.data;
+    const me = cfg.user && cfg.user.username;
+    return `
+      <div class="pm-cols">
+        <div class="card table-card">
+          <div class="table-title">Accuracy<span class="muted small">at least ${d.minSettled} decided picks</span></div>
+          ${d.accuracy.length ? `<table class="pm-log pm-board"><thead><tr><th>#</th><th>Player</th><th class="pm-n">Accuracy</th><th class="pm-n">Record</th></tr></thead><tbody>
+            ${d.accuracy.map((r) => `<tr class="${r.username === me ? "pm-me" : ""}"><td>${r.rank}</td><td>${esc(r.username)}</td><td class="pm-n">${Math.round(r.accuracy * 1000) / 10}%</td><td class="pm-n">${r.won}-${r.lost}</td></tr>`).join("")}
+          </tbody></table>` : `<p class="muted small pm-pad">Nobody has ${d.minSettled} decided picks yet.</p>`}
+        </div>
+        <div class="card table-card">
+          <div class="table-title">Virtual points<span class="muted small">separate from accuracy</span></div>
+          ${d.points.length ? `<table class="pm-log pm-board"><thead><tr><th>#</th><th>Player</th><th class="pm-n">Points</th><th class="pm-n">Picks</th></tr></thead><tbody>
+            ${d.points.map((r) => `<tr class="${r.username === me ? "pm-me" : ""}"><td>${r.rank}</td><td>${esc(r.username)}</td><td class="pm-n">${r.total.toLocaleString("en-US")}</td><td class="pm-n">${r.picks}</td></tr>`).join("")}
+          </tbody></table><p class="muted small pm-pad">Virtual points from correct picks, challenges and league awards (picks are free, so nothing is ever lost on one).</p>` : `<p class="muted small pm-pad">No picks yet.</p>`}
+        </div>
+      </div>
+      <p class="muted small">Only usernames and totals are shown here; nobody else can see which side you picked.</p>`;
+  }
+
+  /* -- Admin -- */
+
+  function pmAdminPanel(m) {
+    const done = m.status === "resolved" || m.status === "void";
+    const auditSlot = pmLoad(`audit:${m.id}`, `/admin/audit?market=${m.id}`);
+    const p = pm.preview && pm.preview.id === m.id ? pm.preview : null;
+    const btn = (action, label, ok = true) => ok ? `<button type="button" class="btn btn-ghost btn-sm" data-pm-admin="${action}" ${pm.busy ? "disabled" : ""}>${label}</button>` : "";
+    return `
+      <div class="card admin-card pm-admin">
+        <div class="admin-subhead">Manage this market<span class="muted small">admin</span></div>
+        ${done && m.status === "void" ? `<p class="muted small">This market is void. It can't be changed.</p>` : `
+        <div class="admin-actions">
+          ${btn("open", "Open picks", !done && m.status !== "open" && m.hold !== "disputed")}
+          ${btn("lock", "Lock picks", !done && m.storedStatus !== "locked")}
+          ${btn("postpone", "Game postponed", !done && m.hold !== "postponed")}
+          ${btn("clearHold", "Clear hold", !done && !!m.hold)}
+          ${btn("preview", "Check result", !done)}
+          ${btn("dispute", m.status === "resolved" ? "Dispute (reverse points)" : "Mark disputed", m.status !== "void" && m.hold !== "disputed")}
+        </div>
+        ${p ? `<div class="pm-preview ${p.ready ? "" : "pm-preview--wait"}"><b>${!p.ready ? "Not ready" : p.outcome === "void" ? "Would void (points back)" : p.outcome === "push" ? "Would settle: Push (points back)" : `Would settle: ${esc(pmChoice(m, p.outcome))}`}</b><span>${esc(p.reason)}</span>
+          ${p.ready && m.status === "locked" ? `<button type="button" class="btn btn-primary btn-sm" data-pm-admin="resolve">Settle from this result</button>` : p.ready ? `<span class="muted small">Lock picks first, then settle.</span>` : ""}</div>` : ""}
+        ${done ? "" : `
+        <form class="pm-admin-form" id="pmClose">
+          <label class="field">Picks close<input type="datetime-local" name="closesAt" value="${pmLocalInput(m.closesAt)}" required></label>
+          <button class="btn btn-ghost btn-sm">Save closing time</button>
+        </form>
+        <form class="pm-admin-form" id="pmManual">
+          ${m.kind === "player_ou"
+            ? `<label class="field">${esc(m.stat.label)} (final)<input name="value" type="number" min="0" step="any" required></label>`
+            : `<label class="field">${esc(pmShort(m.teams[0]))} score<input name="scoreA" type="number" min="0" step="1" required></label><label class="field">${esc(pmShort(m.teams[1]))} score<input name="scoreB" type="number" min="0" step="1" required></label>`}
+          <label class="field pm-grow">Where the result came from<input name="note" required minlength="5" maxlength="300" placeholder="e.g. Corrected box score from the league office"></label>
+          <button class="btn btn-ghost btn-sm" ${m.status === "locked" ? "" : "disabled title=\"Lock picks first\""}>Settle by hand</button>
+        </form>`}
+        <form class="pm-admin-form" id="pmReason">
+          <label class="field pm-grow">Reason (needed to void or dispute)<input name="note" id="pmNote" maxlength="300" placeholder="e.g. Game canceled"></label>
+          ${m.status === "void" ? "" : `<button type="button" class="btn btn-ghost btn-sm pm-danger" data-pm-admin="void">Void &amp; refund everyone</button>`}
+        </form>`}
+        <div class="admin-subhead admin-subhead--small">History</div>
+        ${auditSlot.data ? pmAuditRows(auditSlot.data.audit) : pmState(auditSlot, "history")}
+      </div>`;
+  }
+  function pmAuditRows(rows) {
+    if (!rows.length) return `<p class="muted small">Nothing yet.</p>`;
+    const show = (d) => Object.entries(d).filter(([, v]) => v !== null && v !== "" && v !== undefined).map(([k, v]) =>
+      `${k}: ${v && typeof v === "object" && "from" in v ? `${fmtAudit(k, v.from)} &rarr; ${fmtAudit(k, v.to)}` : fmtAudit(k, v)}`).join(" &middot; ");
+    return `<div class="pm-audit">${rows.map((r) => `
+      <div class="activity-row"><span class="activity-text"><b>${esc(r.action)}</b>${r.marketId ? ` <a class="link" href="#/uff-predictions/m/${r.marketId}">#${r.marketId}</a>` : ""} by ${esc(r.by || "?")} <span class="muted small">${show(r.detail)}</span></span>
+      <span class="activity-time">${pmWhen(r.at)}</span></div>`).join("")}</div>`;
+  }
+  const fmtAudit = (k, v) => esc(/At$|_at$/.test(k) && Number(v) > 1e12 ? pmWhen(Number(v)) : typeof v === "object" ? JSON.stringify(v) : String(v));
+
+  function pmManagePage(cfg) {
+    const gs = pmLoad("admin:games", "/admin/games");
+    const ls = pmLoad("admin:list", "/markets?sort=newest");
+    const au = pmLoad("admin:audit", "/admin/audit");
+    const f = pm.form;
+    let form = pmState(gs, "the schedule");
+    if (gs.data) {
+      const games = gs.data.games;
+      const g = games.find((x) => x.id === f.gameId) || null;
+      const team = g && (g.teams.find((t) => t.name === f.playerTeam) || null);
+      // Players for the picker: the team's roster on the site plus everyone in its box scores
+      const tSite = team && TEAMS.find((t) => t.name === team.name);
+      const players = team ? [...new Set([...(tSite ? [...(ROSTERS[tSite.slug] || new Map()).values()] : []), ...team.players])].sort((a, b) => a.localeCompare(b)) : [];
+      const closeDefault = g && g.at ? g.at : Date.now() + 24 * 3600 * 1000;
+      form = !cfg.league.ok ? `<p class="muted small">League data isn't loading, so markets can't be made right now.</p>` : !games.length ? `<p class="muted small">There are no unplayed games on the schedule.</p>` : `
+        <form class="pm-create" id="pmCreate">
+          <div class="pm-fields">
+            <label class="field">Type<select class="select" name="kind" data-pm-form>${[["player_ou", "Player Over/Under"], ["game_winner", "Game Winner"]].map(([k, l]) => `<option value="${k}" ${f.kind === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+            <label class="field pm-grow">Game<select class="select" name="gameId" data-pm-form required>
+              <option value="">Pick a scheduled game</option>
+              ${games.map((x) => `<option value="${esc(x.id)}" ${x.id === f.gameId ? "selected" : ""}>${x.sample ? "[SAMPLE] " : ""}${x.week ? `Wk ${x.week} &middot; ` : ""}${esc(x.id)}: ${esc(x.teams[0].name)} vs ${esc(x.teams[1].name)}${x.at ? ` &middot; ${esc(pmWhen(x.at))}` : " &middot; no kickoff time"}${x.markets ? ` (${x.markets} market${x.markets === 1 ? "" : "s"})` : ""}</option>`).join("")}
+            </select></label>
+          </div>
+          ${f.kind === "player_ou" ? `
+          <div class="pm-fields">
+            <label class="field">Player's team<select class="select" name="playerTeam" data-pm-form ${g ? "" : "disabled"}><option value="">Team</option>${g ? g.teams.map((t) => `<option ${t.name === f.playerTeam ? "selected" : ""}>${esc(t.name)}</option>`).join("") : ""}</select></label>
+            <label class="field pm-grow">Player<input name="player" list="pmPlayers" data-pm-input value="${esc(f.player || "")}" placeholder="${team ? "Type or pick a player" : "Pick the team first"}" ${team ? "" : "disabled"} required maxlength="40"></label>
+            <datalist id="pmPlayers">${players.map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
+            <label class="field">Stat<select class="select" name="statKey" data-pm-form>${gs.data.stats.map((s) => `<option value="${s.key}" ${(f.statKey || "pass_yds") === s.key ? "selected" : ""}>${esc(s.label)}</option>`).join("")}</select></label>
+            <label class="field">Line<input name="line" type="number" min="0" step="0.5" required data-pm-input value="${esc(f.line ?? "")}" placeholder="e.g. 499.5"></label>
+          </div>
+          <p class="muted small">A whole-number line can land exactly on it (a push: points back). Use .5 for no pushes.</p>` : ""}
+          <div class="pm-fields">
+            <label class="field">Points for a correct pick<input name="stake" type="number" min="1" max="${gs.data.maxStake}" step="1" data-pm-input value="${esc(f.stake ?? gs.data.defaultStake)}"></label>
+            <label class="field">Opens (blank = now)<input name="opensAt" type="datetime-local" data-pm-input value="${esc(f.opensAt || "")}"></label>
+            <label class="field">Picks close<input name="closesAt" type="datetime-local" required data-pm-input value="${esc(f.closesAt || pmLocalInput(closeDefault))}"></label>
+          </div>
+          ${g && g.at ? `<p class="muted small">Kickoff ${pmWhen(g.at)}. Picks have to close by then.</p>` : g ? `<p class="muted small">This game has no kickoff time on the schedule, so set the closing time carefully.</p>` : ""}
+          <div class="admin-actions"><button class="btn btn-primary btn-sm" ${pm.busy ? "disabled" : ""}>Create market</button></div>
+        </form>`;
+    }
+    const list = ls.data ? ls.data.markets : [];
+    return `
+      <div class="card admin-card"><div class="admin-subhead">New market</div>${form}</div>
+      ${cfg.mode === "demo" ? pmDemoResults(gs) : ""}
+      <div class="card admin-card"><div class="admin-subhead">All markets<span class="muted small">${list.length}</span></div>
+        ${pmState(ls, "markets")}
+        ${ls.data ? list.length ? `<div class="pm-rows">${list.map((m) => `
+          <a class="pm-row" href="#/uff-predictions/m/${m.id}">
+            <span class="pm-row-main"><b>#${m.id} ${esc(pmTitle(m))}</b><span class="muted small">${esc(m.kindLabel)} &middot; Game ${esc(m.gameId)}${m.sample ? " &middot; Sample" : ""}</span></span>
+            <span class="pm-row-pick">${pmPicks(m.total)}<span class="muted small">+${m.stake} pts if correct</span></span>
+            <span class="pm-row-state">${pmStatus(m)}<span class="muted small">${pmWhenText(m)}</span></span>
+          </a>`).join("")}</div>` : `<p class="muted small">No markets yet.</p>` : ""}
+      </div>
+      <div class="card admin-card"><div class="admin-subhead">Audit history</div>${au.data ? pmAuditRows(au.data.audit) : pmState(au, "history")}</div>`;
+  }
+
+  function pmDemoResults(gs) {
+    if (!gs.data) return "";
+    const games = gs.data.sampleGames;
+    return `
+      <div class="card admin-card">
+        <div class="admin-subhead">Post a sample final<span class="pm-sample">Demo only</span></div>
+        <p class="muted small">Sample games only. This stands in for a real box score so settling can be tested; it never touches the real schedule.</p>
+        <form class="pm-create" id="pmDemo">
+          <div class="pm-fields">
+            <label class="field pm-grow">Sample game<select class="select" name="gameId" required>${games.map((g) => `<option value="${esc(g.id)}">${esc(g.id)}: ${esc(g.teams[0])} vs ${esc(g.teams[1])}${g.final ? ` (final ${g.score[0]}-${g.score[1]})` : ""}</option>`).join("")}</select></label>
+            <label class="field">First team score<input name="scoreA" type="number" min="0" step="1" required></label>
+            <label class="field">Second team score<input name="scoreB" type="number" min="0" step="1" required></label>
+          </div>
+          <label class="field">Stat lines (one per line: player, stat, number, team a or b)<textarea class="admin-textarea" name="lines" rows="4" placeholder="biglester1, pass_yds, 512, a&#10;97ISP, rec_yds, 140, a"></textarea></label>
+          <p class="muted small">Stats: ${gs.data.stats.map((s) => `${s.key}`).join(", ")}. A player left out counts as not having played.</p>
+          <div class="admin-actions"><button class="btn btn-primary btn-sm" ${pm.busy ? "disabled" : ""}>Post sample final</button></div>
+        </form>
+      </div>`;
+  }
+
+  // Every alias that leads to this player, so their box score lines are found under any old name
+  const pmAliasesOf = (name) => [...ALIASES.keys()].filter((k) => rawAlias(k).toLowerCase() === name.toLowerCase());
+
+  async function pmDo(work, okMsg) {
+    pm.busy = true; pm.err = ""; pm.msg = "";
+    pmRedraw();
+    try {
+      const out = await work();
+      pm.msg = typeof okMsg === "function" ? okMsg(out) : okMsg || "";
+      pmFresh();
+      delete pm.data.config; // balance and sign-in may have changed
+      loadAccount(); // the header's points too
+      return out;
+    } catch (err) {
+      pm.err = err.message;
+      if (err.status === 401) delete pm.data.config;
+      return null;
+    } finally {
+      pm.busy = false;
+      pmRedraw();
+    }
+  }
+
+  // Called by render() for #/uff-predictions[/m/<id> | /me | /leaders | /manage]
+  function pmRoute(parts) {
+    const view = parts[1] || "";
+    const id = view === "m" || view === "c" ? Number(parts[2]) : null;
+    if (view !== pm.view || id !== pm.id) { pm.msg = pm.err = ""; pm.preview = null; pm.confirm = null; pm.prompt = false; }
+    pm.view = view; pm.id = id;
+    pmFresh();
+    // Who's signed in and their balance can change elsewhere (a settled market, another tab): check again,
+    // keeping the last answer on screen until the new one comes
+    if (pm.data.config && pm.data.config.data) {
+      pmFetch("/config").then((data) => { pm.data.config = { data }; pmRedraw(); }, () => {});
+    }
+  }
+
+  let pmSearchWait = null;
+  document.addEventListener("input", (e) => {
+    if (e.target.id === "pmSearch") {
+      clearTimeout(pmSearchWait);
+      pmSearchWait = setTimeout(() => { pm.q = e.target.value.trim(); pmRedraw(); }, 250);
+    }
+    if (e.target.matches("[data-pm-input]")) pm.form[e.target.name] = e.target.value;
+  });
+  document.addEventListener("change", (e) => {
+    if (e.target.id === "pmSort") { pm.sort = e.target.value; pmRedraw(); }
+    if (e.target.matches("[data-pm-form]")) {
+      pm.form[e.target.name] = e.target.value;
+      if (e.target.name === "gameId" || e.target.name === "kind") { pm.form.playerTeam = ""; pm.form.player = ""; pm.form.closesAt = ""; }
+      if (e.target.name === "playerTeam") pm.form.player = "";
+      pmRedraw();
+    }
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && (pm.confirm || pm.prompt) && !pm.busy) { pm.confirm = null; pm.prompt = false; pmRedraw(); } });
+
+  document.addEventListener("click", async (e) => {
+    const t = e.target.closest("[data-pm], [data-pm-kind], [data-pm-status], [data-pm-pick], [data-pm-admin]");
+    if (!t || !app.contains(t)) {
+      if ((pm.confirm || pm.prompt) && e.target.classList && e.target.classList.contains("pm-modal") && !pm.busy) { pm.confirm = null; pm.prompt = false; pmRedraw(); }
+      return;
+    }
+    e.preventDefault();
+    const d = t.dataset;
+    if (d.pmKind) { pm.kind = d.pmKind; return pmRedraw(); }
+    if (d.pmStatus !== undefined) { pm.status = d.pmStatus; return pmRedraw(); }
+    if (d.pmPick) {
+      // A guest gets a sign-in prompt (and comes back here afterwards)
+      if (!pmCfg().user) { pm.prompt = true; pmRedraw(); const a = document.querySelector(".pm-modal .btn-primary"); if (a) a.focus(); return; }
+      pm.confirm = { id: pm.id, selection: d.pmPick };
+      pmRedraw();
+      const ok = document.querySelector("[data-pm='confirm']");
+      if (ok) ok.focus();
+      return;
+    }
+    if (d.pm === "retry") { pm.data = {}; return pmRedraw(); }
+    if (d.pm === "cancel") { pm.confirm = null; return pmRedraw(); }
+    if (d.pm === "confirm" && pm.confirm) {
+      const { id, selection } = pm.confirm;
+      // Saved or refused (closed, already picked, not enough points), the dialog closes and the page says which
+      await pmDo(() => pmFetch(`/markets/${id}/predict`, { selection }), "Pick saved. It's on My Predictions.");
+      pm.confirm = null;
+      return pmRedraw();
+    }
+    if (d.pmAdmin) {
+      const id = pm.id, a = d.pmAdmin;
+      const note = (document.getElementById("pmNote") || {}).value || "";
+      if (a === "preview") {
+        pm.busy = true; pm.err = ""; pmRedraw();
+        try { pm.preview = { id, ...(await pmFetch(`/admin/markets/${id}/preview`)) }; } catch (err) { pm.err = err.message; }
+        pm.busy = false;
+        return pmRedraw();
+      }
+      if (a === "void" && !confirm("Void this market and give every pick its points back? This can't be undone.")) return;
+      if (a === "dispute" && !note.trim()) { pm.err = "Write what's disputed in the Reason box first."; return pmRedraw(); }
+      if (a === "void" && !note.trim()) { pm.err = "Write why it's void in the Reason box first (for example: game canceled)."; return pmRedraw(); }
+      if (a === "dispute" && pm.data[`market:${id}`] && pm.data[`market:${id}`].data.market.status === "resolved" &&
+        !confirm("Disputing takes back every payout from this market until it's settled again. Go ahead?")) return;
+      pm.preview = null;
+      const labels = { open: "Picks are open.", lock: "Picks are locked.", postpone: "Marked postponed: picks stay, no new ones.", clearHold: "Hold cleared.",
+        dispute: "Marked disputed.", void: "Market void: everyone got their points back.", resolve: "Settled." };
+      return pmDo(() => pmFetch(`/admin/markets/${id}`, { action: a, note }), (out) => (out && out.already ? "That was already settled; nothing changed." : labels[a]));
+    }
+  });
+
+  document.addEventListener("submit", async (e) => {
+    const f = e.target;
+    if (!["pmCreate", "pmClose", "pmManual", "pmDemo", "chForm"].includes(f.id)) return;
+    e.preventDefault();
+    if (f.id === "chForm") {
+      const picks = {};
+      f.querySelectorAll("input[type=radio]:checked").forEach((r) => { picks[r.name.slice(4)] = r.value; });
+      const legs = new Set([...f.querySelectorAll("input[type=radio]")].map((r) => r.name));
+      if (Object.keys(picks).length < legs.size) { pm.err = "Answer every leg first."; pm.msg = ""; return pmRedraw(); }
+      return pmDo(() => pmFetch(`/api/challenges/${pm.id}/enter`, { picks }), (o) => (o.updated ? "Entry updated. You can still change it until the deadline." : "Entry submitted. Good luck!"));
+    }
+    const v = Object.fromEntries(new FormData(f));
+    if (f.id === "pmCreate") {
+      const body = { kind: pm.form.kind || "player_ou", gameId: v.gameId, stake: v.stake === "" ? null : Number(v.stake),
+        opensAt: pmFromInput(v.opensAt), closesAt: pmFromInput(v.closesAt) };
+      if (body.kind === "player_ou") Object.assign(body, { player: v.player, playerTeam: v.playerTeam, statKey: v.statKey || "pass_yds",
+        line: v.line === "" ? null : Number(v.line), playerNames: pmAliasesOf(String(v.player || "")) });
+      const out = await pmDo(() => pmFetch("/admin/markets", body), (o) => `Market #${o.id} created.`);
+      if (out) { pm.form = { kind: body.kind, gameId: body.gameId, playerTeam: v.playerTeam || "" }; pmRedraw(); }
+      return;
+    }
+    if (f.id === "pmClose") return pmDo(() => pmFetch(`/admin/markets/${pm.id}`, { action: "edit", changes: { closesAt: pmFromInput(v.closesAt) } }), "Closing time saved.");
+    if (f.id === "pmManual") {
+      if (!confirm("Settle this market by hand with these numbers? Points are paid right away.")) return;
+      return pmDo(() => pmFetch(`/admin/markets/${pm.id}`, { action: "resolve", mode: "manual", ...v }), (o) => (o.already ? "That was already settled; nothing changed." : "Settled by hand."));
+    }
+    if (f.id === "pmDemo") {
+      const lines = String(v.lines || "").split(/\r?\n/).map((l) => l.split(",").map((s) => s.trim())).filter((p) => p[0])
+        .map(([player, statKey, value, side]) => ({ player, statKey, value: Number(value), side: /^b$/i.test(side || "") ? 1 : 0 }));
+      const out = await pmDo(() => pmFetch("/admin/demo-result", { gameId: v.gameId, scoreA: Number(v.scoreA), scoreB: Number(v.scoreB), lines }),
+        (o) => `Sample final posted for ${o.gameId}. Lock its markets, then use Check result.`);
+      if (out) f.reset();
+    }
+  });
+
+  // ---- Challenges (in UFF Predictions) ----
+  // Multi-pick challenges: answer every leg (each one an existing market) before the deadline. Free to enter;
+  // correct answers earn the fixed points shown, and nothing is ever taken.
+
+  const CH_STATUS = { open: "Open", locked: "Locked", settled: "Completed", cancelled: "Cancelled", draft: "Draft" };
+  const chStatus = (c) => `<span class="pm-status pm-status--${c.status === "settled" ? "resolved" : c.status === "cancelled" ? "void" : c.status === "draft" ? "upcoming" : c.status}">${CH_STATUS[c.status] || esc(c.status)}</span>`;
+  const chAward = (c) => [c.pointsPerLeg ? `${c.pointsPerLeg} pts per correct leg` : "", c.perfectBonus ? `${c.perfectBonus}-pt perfect bonus` : ""].filter(Boolean).join(" + ");
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  function pmChallengesPage() {
+    const slot = pmLoad("challenges", "/api/challenges");
+    if (!slot.data) return pmState(slot, "challenges");
+    const list = slot.data.challenges;
+    const intro = `<p class="muted small pm-intro">Multi-pick challenges: answer every leg before the deadline. Free to enter. Nothing is ever taken from your points, and correct answers earn the fixed points shown.</p>`;
+    if (!list.length) return intro + empty("No challenges yet", "UFF staff post multi-pick challenges here.");
+    return `${intro}
+      <div class="pm-grid">${list.map((c) => `
+        <a class="card pm-card ch-card" href="#/uff-predictions/c/${c.id}">
+          <div class="pm-card-top">${chStatus(c)}${c.sample ? `<span class="pm-sample">Sample</span>` : ""}<span class="muted small">${plural(c.legCount, "leg", "legs")}</span></div>
+          <b class="ch-title">${esc(c.title)}</b>
+          ${c.description ? `<span class="muted small ch-desc">${esc(c.description)}</span>` : ""}
+          <div class="ch-award"><span class="eyebrow">Up to</span><b>${c.maxAward}</b><span class="muted small">pts &middot; ${esc(chAward(c))}</span></div>
+          <div class="pm-card-foot"><span>${plural(c.entries, "entry", "entries")}</span>${c.mine
+            ? `<span class="pm-mine pm-mine--${c.mine.result === "scored" ? (c.mine.award > 0 ? "won" : "lost") : c.mine.result === "void" ? "void" : "pending"}">${c.mine.result === "pending" ? "Entered" : c.mine.result === "void" ? "Void" : `+${c.mine.award} pts`}</span>`
+            : `<span>${c.status === "open" ? `Closes <b data-kickoff="${c.entryDeadline}">${untilKickoff(c.entryDeadline) || "now"}</b>` : CH_STATUS[c.status]}</span>`}</div>
+        </a>`).join("")}</div>`;
+  }
+
+  function chLeg(l, canEnter) {
+    const m = l.market;
+    if (!m) return "";
+    const result = l.mine && l.mine.result !== "pending" ? l.mine.result : null;
+    const opts = m.options.map((o) => {
+      const t = m.kind === "game_winner" ? m.teams[o.key === "a" ? 0 : 1] : null;
+      const label = t ? `${t.name} win` : `${o.key === "over" ? "Over" : "Under"} ${pmLine(m.line)}`;
+      const isResult = l.outcome === o.key;
+      return `
+        <label class="ch-opt ${isResult ? "won" : ""}">
+          <input type="radio" name="leg-${l.id}" value="${o.key}" ${l.mine && l.mine.selection === o.key ? "checked" : ""} ${canEnter ? "" : "disabled"} required>
+          ${t ? pmTeamLogo(t, "md") : ""}<span>${esc(label)}</span>${isResult ? `<span class="pm-choice-tag">Result</span>` : ""}
+        </label>`;
+    }).join("");
+    const who = m.kind === "player_ou"
+      ? `<div class="pm-player">${pmAvatar(m.player)}<span class="pm-player-who"><b>${esc(m.player)}</b><span class="muted small">${m.playerTeam ? `${pmTeamLogo(m.playerTeam)} ${esc(pmShort(m.playerTeam))} &middot; ` : ""}${esc(m.stat.label)}</span></span><span class="pm-line"><span class="eyebrow">Line</span><b>${pmLine(m.line)}</b></span></div>`
+      : `<div class="ch-teams">${m.teams.map((t) => `<span class="pm-team">${pmTeamLogo(t, "md")}<span><b>${esc(t.name)}</b>${t.record ? `<span class="muted small">${t.record.w}-${t.record.l}</span>` : ""}</span></span>`).join(`<span class="pm-vs">vs</span>`)}</div>`;
+    const tag = result ? `<span class="pm-mine pm-mine--${result}">${result === "won" ? "Correct" : result === "lost" ? "Incorrect" : "Void"}</span>`
+      : l.outcome === "void" ? `<span class="pm-mine pm-mine--void">Void</span>` : l.outcome ? `<span class="pm-mine">Settled</span>` : "";
+    return `
+      <fieldset class="card ch-leg">
+        <legend class="ch-leg-head"><span class="ch-leg-num">Leg ${l.position}</span><span class="muted small">${esc(m.kindLabel)} &middot; Game ${esc(m.gameId)}${m.kickoffAt ? ` &middot; ${pmWhen(m.kickoffAt)}` : ""}</span>${tag}</legend>
+        ${who}
+        <div class="ch-opts">${opts}</div>
+        <a class="link small" href="#/uff-predictions/m/${m.id}">Market details and stats</a>
+      </fieldset>`;
+  }
+
+  function pmChallengePage(cfg) {
+    const slot = pmLoad(`challenge:${pm.id}`, `/api/challenges/${pm.id}`);
+    const back = `<a class="link pm-back" href="#/uff-predictions/challenges">&larr; All challenges</a>`;
+    if (!slot.data) return back + (slot.status === 404 ? empty("Challenge not found", "It may not be published yet.") : pmState(slot, "this challenge"));
+    const c = slot.data.challenge;
+    const user = cfg.user;
+    const canEnter = c.status === "open" && !(user && user.isStaff);
+    const mine = c.mine;
+    const result = c.status === "settled" && mine
+      ? `<div class="pm-result pm-result--resolved"><b>${mine.result === "void" ? "Void: no leg counted" : `${mine.correct} of ${mine.correct + mine.wrong} correct &middot; +${mine.award} pts`}</b><span class="muted small">${mine.voided ? `${plural(mine.voided, "void leg", "void legs")} didn't count.` : "Every leg counted."}</span></div>`
+      : c.status === "cancelled" ? `<div class="pm-result"><b>Cancelled</b><span class="muted small">${esc(c.cancelNote || "")} No points were given or taken.</span></div>` : "";
+    const why = user && user.isStaff ? "Staff and admin accounts run challenges, so they can't enter."
+      : c.status === "open" ? (mine ? `Entry saved ${pmWhen(mine.updatedAt)}. You can change your answers until the deadline.` : user ? "Answer every leg, then submit. It's free." : "")
+      : c.status === "locked" ? (mine ? "Your entry is locked. Points are added once every leg has settled." : "Entries are closed.") : "";
+    return `
+      ${back}
+      <form class="card pm-detail ch-detail" id="chForm" novalidate>
+        <div class="pm-card-top">${chStatus(c)}${c.sample ? `<span class="pm-sample">Sample</span>` : ""}<span class="muted small">${plural(c.legCount, "leg", "legs")} &middot; ${plural(c.entries, "entry", "entries")}</span></div>
+        <h2 class="ch-h">${esc(c.title)}</h2>
+        ${c.description ? `<p class="muted ch-lead">${esc(c.description)}</p>` : ""}
+        <div class="pm-facts">
+          <span><span class="eyebrow">Entry deadline</span>${pmWhen(c.entryDeadline)}</span>
+          <span><span class="eyebrow">Per correct leg</span>${c.pointsPerLeg} pts</span>
+          <span><span class="eyebrow">Perfect bonus</span>${c.perfectBonus} pts</span>
+          <span><span class="eyebrow">Most you can earn</span>${c.maxAward} pts</span>
+        </div>
+        ${result}
+        <div class="ch-legs">${c.legs.map((l) => chLeg(l, canEnter)).join("")}</div>
+        ${canEnter ? (user ? `<button class="btn btn-primary ch-submit" ${pm.busy ? "disabled" : ""}>${mine ? "Update entry" : "Submit entry"}</button>`
+          : signInPrompt("Sign in to enter this challenge", here(), "Challenges are free. Your answers are saved to your account.")) : ""}
+        ${why ? `<p class="muted small pm-why">${why}</p>` : ""}
+      </form>
+      <div class="card admin-card pm-rules"><div class="admin-subhead">Scoring rules</div><ul>${c.rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>`;
+  }
+
+  // On My Predictions
+  function pmMyChallenges() {
+    const slot = pmLoad("mychallenges", "/api/challenges/mine");
+    if (!slot.data) return pmState(slot, "your challenge entries");
+    const list = slot.data.entries;
+    return `
+      <div class="card admin-card"><div class="admin-subhead">Challenge entries<span class="muted small">${list.length}</span></div>
+        ${list.length ? `<div class="pm-rows">${list.map((c) => `
+          <a class="pm-row" href="#/uff-predictions/c/${c.id}">
+            <span class="pm-row-main"><b>${esc(c.title)}</b><span class="muted small">${plural(c.legCount, "leg", "legs")} &middot; deadline ${pmWhen(c.entryDeadline)}</span></span>
+            <span class="pm-row-pick">${c.mine.result === "scored" ? `${c.mine.correct} of ${c.mine.correct + c.mine.wrong} correct` : c.mine.result === "void" ? "Void" : "Waiting on results"}<span class="muted small">${c.status === "open" ? "Answers can still change" : "Locked"}</span></span>
+            <span class="pm-row-state">${chStatus(c)}<span class="muted small">${c.mine.result === "scored" ? `+${c.mine.award} pts` : ""}</span></span>
+          </a>`).join("")}</div>` : `<p class="muted small">No entries yet. <a class="link-strong" href="#/uff-predictions/challenges">See challenges</a>.</p>`}
+      </div>`;
+  }
+
+  // ---- Shared: a section's data, loaded once and redrawn when it arrives ----
+
+  function sectionLoader(store, section, page) {
+    const redraw = () => {
+      if (location.hash.replace(/^#\/?/, "").split("/")[0] !== section) return;
+      const y = window.scrollY;
+      const el = document.activeElement;
+      const focus = el && el.id && app.contains(el) ? { id: el.id, at: el.selectionStart } : null;
+      app.innerHTML = page();
+      fillAvatars();
+      window.scrollTo(0, y);
+      const back = focus && document.getElementById(focus.id);
+      if (back) { back.focus(); try { if (focus.at != null) back.setSelectionRange(focus.at, focus.at); } catch (e) {} }
+    };
+    const load = (key, path) => {
+      if (store[key]) return store[key];
+      const slot = (store[key] = { loading: true });
+      localApi(path).then((d) => { slot.data = d; }, (e) => { slot.error = e.message; slot.status = e.status; slot.code = e.code; })
+        .then(() => { slot.loading = false; if (store[key] === slot) redraw(); });
+      return slot;
+    };
+    const fresh = () => Object.keys(store).forEach((k) => delete store[k]);
+    return { load, redraw, fresh };
+  }
+  const newKey = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`);
+
+  // ---- Rewards (Redeem) ----
+  // League-approved, non-monetary awards bought with earned virtual points. The server checks the balance and stock
+  // and takes the points once per request (a retry sends the same request id).
+
+  const rw = { data: {}, view: "", confirm: null, busy: false, msg: "", err: "" };
+  const rwL = sectionLoader(rw.data, "rewards", () => rewardsPage());
+  const RD_LABEL = { pending: "Pending", approved: "Approved", fulfilled: "Fulfilled", rejected: "Rejected", cancelled: "Cancelled", refunded: "Refunded" };
+  const rdStatus = (st) => `<span class="rd-status rd-status--${st}">${RD_LABEL[st] || esc(st)}</span>`;
+  const rewardArt = (r) => (r.image ? `<img class="rw-img" src="${esc(r.image)}" alt="">` : `<span class="rw-ico">${icon(ICONS[r.icon] ? r.icon : "star")}</span>`);
+
+  function rewardsRoute(parts) {
+    const view = parts[1] === "mine" ? "mine" : "";
+    if (view !== rw.view) { rw.msg = rw.err = ""; rw.confirm = null; }
+    rw.view = view;
+    rwL.fresh();
+    // Balance, role or sign-in may have changed elsewhere: ask the server again, then redraw
+    loadAccount().then(() => rwL.redraw());
+  }
+
+  function rewardsPage() {
+    const u = ACCT.user;
+    const head = `
+      <div class="page-head page-head--row">
+        <div><h1>Rewards</h1><p class="muted">Hit your parlays, cash in your points: trade what you win from UFF parlays and picks for badges, titles, profile decorations and in-game cosmetics.</p></div>
+        ${u && !u.isStaff ? `<div class="pm-account"><span class="pill pill-navy">${pmPts(u.balance)}</span></div>` : ""}
+      </div>`;
+    if (!SITE_ACCOUNTS) return `<div class="wrap">${head}${empty("Not available here", "Rewards are being tested and aren't on the live site yet.")}</div>`;
+    if (ACCT.error) return `<div class="wrap">${head}${authUnavailable()}</div>`;
+    return `
+      <div class="wrap pm-page">
+        ${head}
+        <div class="pm-banner">Virtual points have no cash value. Rewards can't be bought with money, exchanged for money, transferred or resold.</div>
+        <nav class="segmented pm-tabs" aria-label="Rewards">${[["", "Rewards"], ["mine", "My Redemptions"]].map(([k, l]) =>
+          `<a href="#/rewards${k ? `/${k}` : ""}" class="${rw.view === k ? "active" : ""}">${l}</a>`).join("")}</nav>
+        ${rw.msg ? `<div class="admin-flash">${esc(rw.msg)}</div>` : ""}
+        ${rw.err && !rw.confirm ? `<p class="login-error pm-err" role="alert">${esc(rw.err)}</p>` : ""}
+        ${rw.view === "mine" ? myRedemptions() : rewardsCatalog()}
+        ${rw.confirm ? redeemModal() : ""}
+      </div>`;
+  }
+
+  function rewardsCatalog() {
+    const slot = rwL.load("catalog", "/api/rewards");
+    if (!slot.data) return pmState(slot, "rewards");
+    const d = slot.data, u = ACCT.user;
+    const cards = d.rewards.map((r) => {
+      const short = u && !u.isStaff ? r.cost - u.balance : 0;
+      const avail = r.left === 0 ? "Out of stock" : r.perUserLimit && r.mine >= r.perUserLimit ? "Limit reached" : r.left == null ? "Available" : `${r.left} left`;
+      const btn = u && u.isStaff ? `<span class="muted small">Staff accounts can't redeem.</span>`
+        : !r.available ? `<button type="button" class="btn btn-ghost btn-sm" disabled>${avail}</button>`
+        : u && short > 0 ? `<button type="button" class="btn btn-ghost btn-sm" disabled>Need ${short.toLocaleString("en-US")} more points</button>`
+        : `<button type="button" class="btn btn-primary btn-sm" data-rw-redeem="${r.id}">Redeem${icon("arrowR", "sm")}</button>`;
+      return `
+        <div class="card rw-card">
+          <div class="rw-top">${rewardArt(r)}<div class="rw-who"><b class="rw-name">${esc(r.name)}</b><span class="muted small">${esc(r.categoryLabel)}</span></div>${r.demo ? `<span class="pm-sample">Demo</span>` : ""}</div>
+          ${r.description ? `<p class="rw-desc">${esc(r.description)}</p>` : ""}
+          ${r.requirements ? `<p class="muted small"><b>Requirements:</b> ${esc(r.requirements)}</p>` : ""}
+          <div class="rw-meta"><span class="rw-cost">${r.cost.toLocaleString("en-US")}<span>pts</span></span>
+            <span class="muted small">${avail}${r.perUserLimit ? ` &middot; ${r.perUserLimit} per person` : ""}<br>${r.requiresApproval ? "Needs staff approval" : "No approval needed"}</span></div>
+          ${btn}
+        </div>`;
+    }).join("");
+    return `
+      ${d.rewards.length ? `<div class="rw-grid">${cards}
+        <div class="card rw-card rw-soon" aria-label="More rewards coming soon">
+          <span class="rw-ico">${icon("star")}</span>
+          <b class="rw-name">More coming soon</b>
+          <p class="muted small">New rewards get added through the season. Keep hitting your parlays and stacking points.</p>
+        </div></div>` : empty("No rewards yet", "UFF staff haven't set up any rewards yet. Check back later.")}
+      <div class="card admin-card pm-rules"><div class="admin-subhead">How redeeming works</div><ul>${d.policy.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></div>`;
+  }
+
+  function redeemModal() {
+    const slot = rw.data.catalog;
+    const r = slot && slot.data && slot.data.rewards.find((x) => x.id === rw.confirm.id);
+    if (!r) return "";
+    const u = ACCT.user;
+    if (!u) return `<div class="pm-modal" role="dialog" aria-modal="true" aria-label="Sign in to redeem">${signInPrompt("Sign in to redeem rewards", "#/rewards", "Rewards use the virtual points saved to your account.")}</div>`;
+    return `
+      <div class="pm-modal" role="dialog" aria-modal="true" aria-labelledby="rwTitle">
+        <div class="card pm-modal-card">
+          <h2 id="rwTitle">Redeem this reward?</h2>
+          <div class="rw-top">${rewardArt(r)}<div class="rw-who"><b class="rw-name">${esc(r.name)}</b><span class="muted small">${esc(r.categoryLabel)}</span></div></div>
+          <ul class="pm-modal-facts">
+            <li>Costs <b>${r.cost.toLocaleString("en-US")}</b> points: your balance goes from ${u.balance.toLocaleString("en-US")} to <b>${(u.balance - r.cost).toLocaleString("en-US")}</b>.</li>
+            <li>${r.requiresApproval ? "UFF staff review it first. If they reject it, your points come back." : "No approval needed. Staff hand it out in game."}</li>
+            <li>You can cancel while it's pending and get your points back.</li>
+            <li>No cash value. It can't be transferred or resold.</li>
+          </ul>
+          ${rw.err ? `<p class="login-error" role="alert">${esc(rw.err)}</p>` : ""}
+          <div class="admin-actions">
+            <button type="button" class="btn btn-primary" data-rw="confirm" ${rw.busy ? "disabled" : ""}>${rw.busy ? "Sending&hellip;" : rw.err ? "Try again" : "Confirm"}</button>
+            <button type="button" class="btn btn-ghost" data-rw="cancel">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function myRedemptions() {
+    const u = ACCT.user;
+    if (!ACCT.ready) return `<div class="card pm-state"><span class="pm-spin"></span>Loading&hellip;</div>`;
+    if (!u) return signInPrompt("Sign in to see your redemptions", "#/rewards/mine");
+    const slot = rwL.load("mine", "/api/rewards/mine");
+    if (!slot.data) return pmState(slot, "your redemptions");
+    const list = slot.data.redemptions;
+    if (!list.length) return empty("No redemptions yet", `<a class="link-strong" href="#/rewards">Browse rewards</a>`);
+    return `
+      <div class="card admin-card"><div class="pm-rows">${list.map((r) => `
+        <div class="pm-row rd-row">
+          <span class="pm-row-main"><b>${esc(r.rewardName)}</b><span class="muted small">${r.cost.toLocaleString("en-US")} pts &middot; requested ${pmWhen(r.createdAt)}</span></span>
+          <span class="pm-row-pick">${rdStatus(r.status)}<span class="muted small">${[r.decision && r.decision.note ? `Staff: ${esc(r.decision.note)}` : "",
+            r.fulfillment ? `Fulfilled ${pmWhen(r.fulfillment.at)}${r.fulfillment.note ? `: ${esc(r.fulfillment.note)}` : ""}` : "",
+            r.refund ? `Points returned${r.refund.note ? ` (${esc(r.refund.note)})` : ""}` : ""].filter(Boolean).join(" &middot; ")}</span></span>
+          <span class="pm-row-state">${r.status === "pending" ? `<button type="button" class="btn btn-ghost btn-sm" data-rw-cancel="${r.id}">Cancel request</button>` : ""}</span>
+        </div>`).join("")}</div></div>`;
+  }
+
+  document.addEventListener("click", async (e) => {
+    const t = e.target.closest ? e.target.closest("[data-rw], [data-rw-redeem], [data-rw-cancel]") : null;
+    if (!t) {
+      if (rw.confirm && !rw.busy && e.target.classList && e.target.classList.contains("pm-modal") && location.hash.startsWith("#/rewards")) { rw.confirm = null; rw.err = ""; rwL.redraw(); }
+      return;
+    }
+    if (!app.contains(t)) return;
+    e.preventDefault();
+    if (t.dataset.rwRedeem) {
+      // One request id per attempt: pressing Confirm again after an error retries the same request
+      rw.confirm = { id: Number(t.dataset.rwRedeem), key: newKey() };
+      rw.msg = rw.err = "";
+      rwL.redraw();
+      const b = document.querySelector(".pm-modal .btn-primary");
+      if (b) b.focus();
+      return;
+    }
+    if (t.dataset.rw === "cancel") { rw.confirm = null; rw.err = ""; return rwL.redraw(); }
+    if (t.dataset.rw === "confirm" && rw.confirm && !rw.busy) {
+      rw.busy = true; rw.err = "";
+      rwL.redraw();
+      try {
+        const out = await localApi("/api/rewards/redeem", { rewardId: rw.confirm.id, idempotencyKey: rw.confirm.key });
+        const r = out.redemption;
+        rw.msg = r.status === "pending" ? `Requested ${r.rewardName}. It's waiting for staff approval (see My Redemptions).` : `Redeemed ${r.rewardName}. Staff will hand it out (see My Redemptions).`;
+        rw.confirm = null;
+      } catch (err) {
+        rw.err = err.message; // the dialog stays open, so trying again sends the same request id
+      }
+      rw.busy = false;
+      rwL.fresh();
+      await loadAccount();
+      return rwL.redraw();
+    }
+    if (t.dataset.rwCancel) {
+      if (!confirm("Cancel this request? Your points come back.")) return;
+      try { await localApi(`/api/rewards/redemptions/${t.dataset.rwCancel}/cancel`, {}); rw.msg = "Request cancelled. Your points are back."; rw.err = ""; } catch (err) { rw.err = err.message; }
+      rwL.fresh();
+      await loadAccount();
+      rwL.redraw();
+    }
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && rw.confirm && !rw.busy && location.hash.startsWith("#/rewards")) { rw.confirm = null; rw.err = ""; rwL.redraw(); } });
+
+  // ---- UFF Admin ----
+  // Challenges, users, credits, rewards, redemptions, permissions and the audit log. The server checks every request
+  // (role, permission, and that admin tools are unlocked on this session); this page only shows what the role allows.
+
+  const UA_TABS = [["overview", "Overview", "admin.view"], ["challenges", "Prediction Challenges", "challenges.manage_own"], ["users", "User Management", "users.view"],
+    ["credits", "Credits Management", "credits.manage"], ["rewards", "Rewards Catalog", "rewards.manage"], ["redemptions", "Redemption Requests", "redemptions.review"],
+    ["permissions", "Admin Permissions", "roles.manage"], ["audit", "Audit Logs", "audit.view"]];
+  const PERM_LABEL = { "admin.view": "See the admin overview", "challenges.manage_own": "Build and run their own challenges", "challenges.manage_all": "Manage every challenge",
+    "redemptions.review": "Approve, reject and fulfill reward requests", "redemptions.refund": "Refund reward requests", "markets.manage": "Create and settle markets",
+    "users.view": "Look up accounts", "users.suspend": "Suspend and reactivate accounts", "credits.manage": "Adjust virtual points", "rewards.manage": "Edit the rewards catalog",
+    "audit.view": "Read the audit log", "roles.manage": "Give and take away roles" };
+  const LEDGER_LABEL = { grant: "Starting points", stake: "Pick (held)", payout: "Correct pick", refund: "Returned", reversal: "Taken back (dispute)", challenge_award: "Challenge award",
+    admin_credit: "Admin: added", admin_debit: "Admin: removed", admin_set: "Admin: set balance", redeem: "Redeemed", redeem_refund: "Redemption refund" };
+  const ua = { data: {}, tab: "overview", msg: "", err: "", busy: false, confirm: null, builder: null, reward: null, rdFilter: "pending",
+    q: { users: "", credits: "", permissions: "" }, sel: { users: null, credits: null, permissions: null }, adjust: null, history: null,
+    audit: { action: "", actor: "", before: null, stack: [] } };
+  const uaL = sectionLoader(ua.data, "uff-admin", () => uffAdminPage());
+  function uffAdminChanged() { uaL.fresh(); }
+  const can_ = (p) => !!(ACCT.user && (ACCT.user.perms || []).includes(p));
+  const UA_ICONS = { overview: "predict", challenges: "trend", users: "teams", credits: "stats", rewards: "awards", redemptions: "updates", permissions: "shield", audit: "records" };
+
+  // One Admin tab row for both halves of Admin: the league's sections (they save to the live site, so they need the
+  // league staff login) and, on this computer, UFF Predictions' sections (a site account with a staff/admin role).
+  // active = "league:<tab>" or "uff:<tab>"
+  function adminTabRow(active) {
+    const session = getAdmin();
+    const league = session && session.user ? ADMIN_TABS.map(([k, label, ic]) => [`#/admin/${k}`, label, ic, `league:${k}`]) : [];
+    const uff = SITE_ACCOUNTS && ACCT.user && ACCT.user.isStaff
+      ? UA_TABS.filter(([, , p]) => can_(p)).map(([k, label]) => [`#/uff-admin/${k}`, k === "overview" ? "Predictions Overview" : label, UA_ICONS[k], `uff:${k}`]) : [];
+    const link = ([href, label, ic, key]) => `<a href="${href}" class="admin-tab ${key === active ? "active" : ""}" ${key === active ? 'aria-current="page"' : ""}>${icon(ic, "sm")}${label}</a>`;
+    return `
+      <nav class="admin-tabs" aria-label="Admin sections">
+        ${league.map(link).join("")}
+        ${!league.length && uff.length ? `<a href="#/admin" class="admin-tab">${icon("shield", "sm")}League tools (log in)</a>` : ""}
+        ${uff.length ? `<span class="admin-tabs-group">UFF Predictions</span>${uff.map(link).join("")}` : ""}
+      </nav>`;
+  }
+
+  function uaRoute(parts) {
+    const tab = UA_TABS.some(([k]) => k === parts[1]) ? parts[1] : "overview";
+    if (tab !== ua.tab) { ua.msg = ua.err = ""; ua.confirm = null; }
+    ua.tab = tab;
+    uaL.fresh();
+    // A role or an unlock can change (or run out) while the page is open: always ask the server again
+    loadAccount().then(() => uaL.redraw());
+  }
+
+  function uffAdminPage() {
+    const u = ACCT.user;
+    const head = `
+      <div class="page-head page-head--row">
+        <div><h1>Admin</h1><p class="muted">League tools and UFF Predictions in one place. The server checks every action and records it in the audit log.</p></div>
+        ${u && u.isStaff ? `<div class="pm-account"><span class="pill">${esc(u.username)} &middot; ${ROLE_NAMES[u.role]}</span></div>` : ""}
+      </div>`;
+    if (!SITE_ACCOUNTS) return `<div class="wrap">${head}${empty("Not available here", "UFF Admin is being tested and isn't on the live site yet.")}</div>`;
+    if (ACCT.error) return `<div class="wrap">${head}${authUnavailable()}</div>`;
+    if (!ACCT.ready) return `<div class="wrap">${head}<div class="card pm-state"><span class="pm-spin"></span>Loading&hellip;</div></div>`;
+    if (!u) return `<div class="wrap">${head}${signInPrompt("Sign in to open Admin", "#/uff-admin", "Only accounts with a staff or admin role can use it.")}</div>`;
+    if (!u.isStaff) return `<div class="wrap">${head}${empty("No admin access", "Your account doesn't have a staff or admin role. A Super Admin can give one on Admin Permissions.")}</div>`;
+    const tabs = UA_TABS.filter(([, , p]) => can_(p));
+    if (!tabs.some(([k]) => k === ua.tab)) ua.tab = "overview";
+    const body = { overview: uaOverview, challenges: uaChallenges, users: uaUsers, credits: uaCredits, rewards: uaRewards,
+      redemptions: uaRedemptions, permissions: uaPermissions, audit: uaAudit }[ua.tab]();
+    return `
+      <div class="wrap pm-page ua-page">
+        ${head}
+        ${adminTabRow(`uff:${ua.tab}`)}
+        ${ua.msg ? `<div class="admin-flash" role="status">${esc(ua.msg)}</div>` : ""}
+        ${ua.err && !ua.confirm ? `<p class="login-error pm-err" role="alert">${esc(ua.err)}</p>` : ""}
+        ${body}
+        ${ua.confirm ? uaConfirmModal() : ""}
+      </div>`;
+  }
+
+  // One confirm dialog for every sensitive change: what will happen, an optional reason, then the server call
+  function uaConfirmModal() {
+    const c = ua.confirm;
+    return `
+      <div class="pm-modal" role="dialog" aria-modal="true" aria-labelledby="uaConfirmTitle">
+        <div class="card pm-modal-card">
+          <h2 id="uaConfirmTitle">${esc(c.title)}</h2>
+          ${c.body}
+          ${c.reason ? `<label class="field">${esc(c.reason)}<input id="uaReason" maxlength="300" ${c.reasonOptional ? "" : "required"} autocomplete="off"></label>` : ""}
+          ${ua.err ? `<p class="login-error" role="alert">${esc(ua.err)}</p>` : ""}
+          <div class="admin-actions">
+            <button type="button" class="btn ${c.danger ? "btn-ghost pm-danger" : "btn-primary"}" data-ua="confirm-yes" ${ua.busy ? "disabled" : ""}>${ua.busy ? "Working&hellip;" : esc(c.label || "Confirm")}</button>
+            <button type="button" class="btn btn-ghost" data-ua="confirm-no" ${ua.busy ? "disabled" : ""}>Cancel</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  const uaAsk = (c) => {
+    ua.err = "";
+    ua.confirm = c;
+    uaL.redraw();
+    const el = document.getElementById("uaReason") || document.querySelector("[data-ua='confirm-yes']");
+    if (el) el.focus();
+  };
+
+  // Runs a server call; on success the section reloads and the message shows
+  async function uaRun(work, ok) {
+    ua.busy = true; ua.err = "";
+    uaL.redraw();
+    try {
+      const out = await work();
+      ua.msg = typeof ok === "function" ? ok(out) : ok;
+      ua.confirm = null;
+      uaL.fresh();
+      return out;
+    } catch (err) {
+      ua.err = err.message;
+      return null;
+    } finally {
+      ua.busy = false;
+      uaL.redraw();
+    }
+  }
+
+  function uaOverview() {
+    const slot = uaL.load("overview", "/api/admin/overview");
+    if (!slot.data) return pmState(slot, "the overview");
+    const d = slot.data, c = d.challenges, r = d.redemptions;
+    const chip = (label, num, sub = "") => `<div class="card stat-chip"><span class="eyebrow">${label}</span><span class="num">${num}</span>${sub ? `<span class="muted small">${sub}</span>` : ""}</div>`;
+    return `
+      <div class="stat-chips pm-chips">
+        ${chip("Accounts", d.users.total, `${d.users.staff} with a role &middot; ${d.users.suspended} suspended`)}
+        ${chip("Live challenges", c.published || 0, `${c.draft || 0} drafts &middot; ${c.settled || 0} settled`)}
+        ${chip("Requests to review", r.pending || 0, `${r.approved || 0} approved, waiting to be fulfilled`)}
+        ${chip("Rewards on offer", d.rewards.enabled, `${d.rewards.total} in the catalog`)}
+        ${d.points ? chip("Points held by players", d.points.held.toLocaleString("en-US"), d.points.mismatches
+          ? `<b class="ua-bad">${d.points.mismatches} balance(s) don't match the ledger</b>` : `Ledger check: every balance matches (${d.points.ledgerRows} rows)`) : ""}
+      </div>
+      <div class="pm-cols">
+        <div class="card admin-card"><div class="admin-subhead">Your access<span class="muted small">${esc(d.you.roleLabel)}</span></div>
+          <ul class="ua-perms">${d.you.perms.map((p) => `<li>${esc(PERM_LABEL[p] || p)}</li>`).join("")}</ul>
+          </div>
+        <div class="card admin-card"><div class="admin-subhead">Shortcuts</div><div class="ua-links">
+          ${can_("markets.manage") ? `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/manage">Markets (UFF Predictions &rarr; Manage)</a>` : ""}
+          ${can_("challenges.manage_own") ? `<button type="button" class="btn btn-ghost btn-sm" data-ua="new-challenge">New challenge</button>` : ""}
+          ${can_("redemptions.review") ? `<a class="btn btn-ghost btn-sm" href="#/uff-admin/redemptions">Review requests (${r.pending || 0})</a>` : ""}
+          ${can_("credits.manage") ? `<a class="btn btn-ghost btn-sm" href="#/uff-admin/credits">Adjust credits</a>` : ""}
+          <a class="btn btn-ghost btn-sm" href="#/rewards">Rewards page</a>
+        </div></div>
+      </div>`;
+  }
+
+  /* -- Prediction Challenges -- */
+
+  function uaChallenges() {
+    if (ua.builder) return uaBuilder();
+    const slot = uaL.load("challenges", "/api/admin/challenges");
+    if (!slot.data) return pmState(slot, "challenges");
+    const list = slot.data.challenges;
+    const actions = (c) => !c.canManage ? `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/c/${c.id}">View</a>` : [
+      c.storedStatus === "draft" ? `<button type="button" class="btn btn-ghost btn-sm" data-ua-ch="edit" data-id="${c.id}">Edit</button><button type="button" class="btn btn-primary btn-sm" data-ua-ch="publish" data-id="${c.id}">Publish</button>` : "",
+      c.status === "open" ? `<button type="button" class="btn btn-ghost btn-sm" data-ua-ch="extend" data-id="${c.id}">Extend deadline</button>` : "",
+      c.storedStatus === "published" ? `<button type="button" class="btn btn-ghost btn-sm" data-ua-ch="settle" data-id="${c.id}">Settle</button>` : "",
+      ["draft", "published"].includes(c.storedStatus) ? `<button type="button" class="btn btn-ghost btn-sm pm-danger" data-ua-ch="cancel" data-id="${c.id}">Cancel</button>` : "",
+      c.storedStatus !== "draft" ? `<a class="btn btn-ghost btn-sm" href="#/uff-predictions/c/${c.id}">View</a>` : ""].join("");
+    return `
+      <div class="admin-actions ua-bar"><button type="button" class="btn btn-primary btn-sm" data-ua="new-challenge">New challenge</button></div>
+      <div class="card admin-card">${list.length ? `<div class="ua-table-wrap"><table class="pm-log ua-table">
+        <thead><tr><th>#</th><th>Challenge</th><th>Status</th><th class="pm-n">Legs</th><th class="pm-n">Entries</th><th>Deadline</th><th><span class="sr-hide">Actions</span></th></tr></thead>
+        <tbody>${list.map((c) => `<tr>
+          <td>${c.id}</td>
+          <td><b>${esc(c.title)}</b>${c.sample ? ` <span class="pm-sample">Sample</span>` : ""}<div class="muted small">by ${esc(c.owner)} &middot; up to ${c.maxAward} pts</div></td>
+          <td>${chStatus(c)}</td><td class="pm-n">${c.legCount}</td><td class="pm-n">${c.entries}</td><td class="small">${pmWhen(c.entryDeadline)}</td>
+          <td class="ua-row-actions">${actions(c)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="muted small">No challenges yet.</p>`}
+      </div>`;
+  }
+
+  function uaBuilder() {
+    const b = ua.builder;
+    const slot = uaL.load("legopts", "/api/admin/challenges/leg-options");
+    if (!slot.data) return pmState(slot, "open markets");
+    const markets = slot.data.markets;
+    const byId = new Map(markets.map((m) => [m.id, m]));
+    const label = (id) => (byId.get(id) ? byId.get(id).label : `Market #${id} (no longer taking picks)`);
+    const firstClose = b.legs.map((id) => byId.get(id)).filter(Boolean).reduce((min, m) => Math.min(min, m.closesAt), Infinity);
+    const per = Number(b.per) || 0, bonus = Number(b.bonus) || 0;
+    const max = b.legs.length * per + (b.legs.length >= 2 ? bonus : 0);
+    const legRow = (id, i) => {
+      const m = byId.get(id);
+      return `
+        <li class="ua-leg">
+          <span class="ch-leg-num">${i + 1}</span>
+          <span class="ua-leg-main"><b>${esc(label(id))}</b><span class="muted small">${m ? `${m.kind === "game_winner" ? "Game Winner" : "Player Over/Under"} &middot; Game ${esc(m.gameId)} &middot; picks close ${pmWhen(m.closesAt)}` : ""}</span></span>
+          <span class="ua-leg-btns">
+            <button type="button" class="btn btn-ghost btn-sm" data-ua-leg="up" data-i="${i}" ${i ? "" : "disabled"} aria-label="Move leg ${i + 1} up">&uarr;</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-ua-leg="down" data-i="${i}" ${i < b.legs.length - 1 ? "" : "disabled"} aria-label="Move leg ${i + 1} down">&darr;</button>
+            <button type="button" class="btn btn-ghost btn-sm pm-danger" data-ua-leg="remove" data-i="${i}">Remove</button>
+          </span>
+        </li>`;
+    };
+    return `
+      <div class="admin-actions ua-bar"><button type="button" class="btn btn-ghost btn-sm" data-ua="close-builder">&larr; All challenges</button></div>
+      <div class="pm-cols ua-builder">
+        <form class="card admin-card" id="uaChallengeForm" novalidate>
+          <div class="admin-subhead">${b.id ? `Edit draft #${b.id}` : "New challenge"}</div>
+          <label class="field">Title<input name="title" maxlength="80" required value="${esc(b.title)}" data-ua-b></label>
+          <label class="field">Description<textarea class="admin-textarea" name="description" rows="2" maxlength="600" data-ua-b>${esc(b.description)}</textarea></label>
+          <div class="pm-fields">
+            <label class="field">Entry deadline<input type="datetime-local" name="deadline" required value="${esc(b.deadline)}" data-ua-b></label>
+            <label class="field">Points per correct leg<input type="number" name="per" min="0" max="1000" step="1" value="${esc(b.per)}" data-ua-b></label>
+            <label class="field">Perfect-entry bonus<input type="number" name="bonus" min="0" max="5000" step="1" value="${esc(b.bonus)}" data-ua-b></label>
+          </div>
+          ${firstClose !== Infinity ? `<p class="muted small">Every leg has to stay open until the deadline: set it no later than ${pmWhen(firstClose)}.</p>` : ""}
+          <div class="admin-subhead admin-subhead--small">Legs (${b.legs.length})</div>
+          ${b.legs.length ? `<ol class="ua-legs">${b.legs.map(legRow).join("")}</ol>` : `<p class="muted small">Add at least two legs. Each leg is an existing market.</p>`}
+          <label class="field">Add a leg<select class="select" id="uaAddLeg">
+            <option value="">Pick an open market</option>
+            ${markets.filter((m) => !b.legs.includes(m.id)).map((m) => `<option value="${m.id}">${m.sample ? "[SAMPLE] " : ""}#${m.id} ${esc(m.label)} (picks close ${esc(pmWhen(m.closesAt))})</option>`).join("")}
+          </select></label>
+          ${markets.length ? "" : `<p class="muted small">No markets are taking picks. Make some on <a class="link-strong" href="#/uff-predictions/manage">UFF Predictions &rarr; Manage</a> first.</p>`}
+          <div class="admin-actions">
+            <button class="btn btn-ghost btn-sm" ${ua.busy ? "disabled" : ""}>${b.id ? "Save draft" : "Create draft"}</button>
+            ${b.id ? `<button type="button" class="btn btn-primary btn-sm" data-ua-ch="publish" data-id="${b.id}">Publish</button>` : ""}
+          </div>
+        </form>
+        <div class="card admin-card ua-preview">
+          <div class="admin-subhead">Preview<span class="muted small">what players see</span></div>
+          <h3 class="ch-h">${esc(b.title || "Untitled challenge")}</h3>
+          ${b.description ? `<p class="muted small">${esc(b.description)}</p>` : ""}
+          <p class="small">Deadline: ${b.deadline ? pmWhen(new Date(b.deadline).getTime()) : "not set"}<br>Up to <b>${max}</b> pts (${per} per correct leg${bonus ? ` + ${bonus} for a perfect entry` : ""})</p>
+          <ol class="ua-preview-legs">${b.legs.map((id) => `<li>${esc(label(id))}</li>`).join("")}</ol>
+          <p class="muted small">Free to enter. Nothing is ever taken from anyone's points.</p>
+        </div>
+      </div>`;
+  }
+
+  /* -- Accounts: search shared by User Management, Credits and Permissions -- */
+
+  const uaSearch = (scope) => `
+    <form class="ua-search" data-ua-search="${scope}" role="search">
+      <label class="search">${icon("search")}<input id="uaQ-${scope}" name="q" placeholder="Type a UFF username" value="${esc(ua.q[scope])}" autocomplete="off" aria-label="Search usernames" maxlength="20"></label>
+      <button class="btn btn-ghost btn-sm">Search</button>
+    </form>`;
+  function uaResults(scope) {
+    if (!ua.q[scope]) return "";
+    const slot = uaL.load(`search:${ua.q[scope]}`, `/api/admin/users?q=${encodeURIComponent(ua.q[scope])}`);
+    if (!slot.data) return pmState(slot, "accounts");
+    const list = slot.data.users;
+    if (!list.length) return `<p class="muted small">No usernames start with &ldquo;${esc(ua.q[scope])}&rdquo;.</p>`;
+    return `<div class="ua-results">${list.map((u) => `
+      <button type="button" class="ua-result ${ua.sel[scope] === u.accountId ? "active" : ""}" data-ua-pick="${scope}" data-id="${u.accountId}">
+        <b>${esc(u.username)}</b><span class="muted small">${ROLE_NAMES[u.role]} &middot; ${u.status} &middot; ${u.balance.toLocaleString("en-US")} pts</span>
+      </button>`).join("")}</div>`;
+  }
+  const uaPerson = (scope) => (ua.sel[scope] ? uaL.load(`user:${ua.sel[scope]}`, `/api/admin/users/${ua.sel[scope]}`) : null);
+  const facts = (u) => `
+    <dl class="acct-facts">
+      <div><dt>Username</dt><dd>${esc(u.username)}</dd></div>
+      <div><dt>Account ID</dt><dd><code>${esc(u.accountId)}</code></dd></div>
+      <div><dt>Role</dt><dd>${ROLE_NAMES[u.role]}${u.roleGrantedAt ? ` &middot; since ${pmWhen(u.roleGrantedAt)}${u.roleGrantedBy ? ` by ${esc(u.roleGrantedBy)}` : " (local setup)"}` : ""}</dd></div>
+      <div><dt>Status</dt><dd>${u.status === "active" ? "Active" : "<b class='ua-bad'>Suspended</b>"}</dd></div>
+      <div><dt>Virtual points</dt><dd>${u.balance.toLocaleString("en-US")}</dd></div>
+      <div><dt>Member since</dt><dd>${pmWhen(u.createdAt)}${u.lastSignInAt ? ` &middot; last sign-in ${pmWhen(u.lastSignInAt)}` : ""}</dd></div>
+    </dl>`;
+
+  function uaUsers() {
+    const slot = uaPerson("users");
+    let detail = "";
+    if (slot && !slot.data) detail = pmState(slot, "the account");
+    else if (slot) {
+      const d = slot.data, u = d.user;
+      detail = `
+        <div class="card admin-card">
+          <div class="admin-subhead">${esc(u.username)}<span class="muted small">${d.picks.n} picks &middot; ${d.picks.won}-${d.picks.lost}</span></div>
+          ${facts(u)}
+          <div class="admin-actions">
+            ${can_("users.suspend") ? (u.status === "active" ? `<button type="button" class="btn btn-ghost btn-sm pm-danger" data-ua-status="suspended">Suspend account</button>` : `<button type="button" class="btn btn-ghost btn-sm" data-ua-status="active">Reactivate account</button>`) : ""}
+            ${can_("credits.manage") ? `<button type="button" class="btn btn-ghost btn-sm" data-ua-go="credits">Credits</button>` : ""}
+            ${can_("roles.manage") ? `<button type="button" class="btn btn-ghost btn-sm" data-ua-go="permissions">Role</button>` : ""}
+          </div>
+          <p class="muted small">Accounts aren't deleted (their history stays for the audit log); suspend one instead. Suspending signs them out and stops sign-ins, picks and redemptions.</p>
+        </div>`;
+    }
+    return `<div class="card admin-card"><div class="admin-subhead">Find an account</div>${uaSearch("users")}${uaResults("users")}</div>${detail}`;
+  }
+
+  /* -- Credits Management -- */
+
+  function uaCredits() {
+    const slot = uaPerson("credits");
+    let detail = "";
+    if (slot && !slot.data) detail = pmState(slot, "the account");
+    else if (slot) {
+      const d = slot.data, u = d.user;
+      if (!ua.adjust || ua.adjust.accountId !== u.accountId) ua.adjust = { accountId: u.accountId, type: "add", amount: "", reasonCode: "", note: "", key: newKey() };
+      const a = ua.adjust;
+      const reasons = uaL.load("reasons", "/api/admin/credit-reasons");
+      const ledgerRows = (rows) => rows.map((r) => `<tr><td class="small">${pmWhen(r.at)}</td><td>${esc(LEDGER_LABEL[r.kind] || r.kind)}</td>
+        <td class="pm-n ${r.delta < 0 ? "ua-neg" : "ua-pos"}">${r.delta > 0 ? "+" : ""}${r.delta.toLocaleString("en-US")}</td><td class="pm-n">${r.after.toLocaleString("en-US")}</td>
+        <td class="small">${esc(r.actor || "")}</td><td class="small ua-note">${esc(r.note || "")}</td></tr>`).join("");
+      const hist = ua.history && ua.history.accountId === u.accountId ? ua.history : null;
+      detail = `
+        <div class="pm-cols">
+          <div class="card admin-card">
+            <div class="admin-subhead">${esc(u.username)}<span class="ua-balance">${u.balance.toLocaleString("en-US")} pts</span></div>
+            ${facts(u)}
+            <div class="admin-subhead admin-subhead--small">Recent challenge results</div>
+            ${d.challenges.length ? `<ul class="ua-mini">${d.challenges.map((c) => `<li><a class="link" href="#/uff-predictions/c/${c.challengeId}">${esc(c.title)}</a> &middot; ${c.result === "scored" ? `${c.correct}-${c.wrong}, +${c.award} pts` : esc(c.result)}</li>`).join("")}</ul>` : `<p class="muted small">None.</p>`}
+            <div class="admin-subhead admin-subhead--small">Pending reward requests</div>
+            ${d.redemptions.length ? `<ul class="ua-mini">${d.redemptions.map((r) => `<li>${esc(r.rewardName)} &middot; ${r.cost} pts &middot; ${esc(RD_LABEL[r.status])}</li>`).join("")}</ul>` : `<p class="muted small">None.</p>`}
+          </div>
+          <form class="card admin-card" id="uaAdjustForm" novalidate>
+            <div class="admin-subhead">Adjust credits</div>
+            <div class="segmented ua-types" role="radiogroup" aria-label="Adjustment type">${[["add", "Add"], ["remove", "Remove"], ["set", "Set balance"]].map(([k, l]) =>
+              `<label class="${a.type === k ? "active" : ""}"><input type="radio" name="type" value="${k}" ${a.type === k ? "checked" : ""} data-ua-a>${l}</label>`).join("")}</div>
+            <label class="field">${a.type === "set" ? "New balance" : "Points"}<input type="number" name="amount" min="${a.type === "set" ? 0 : 1}" step="1" required value="${esc(a.amount)}" data-ua-a></label>
+            <label class="field">Reason<select class="select" name="reasonCode" required data-ua-a><option value="">Pick a reason</option>${reasons.data ? Object.entries(reasons.data.reasons).map(([k, l]) =>
+              `<option value="${k}" ${a.reasonCode === k ? "selected" : ""}>${esc(l)}</option>`).join("") : ""}</select></label>
+            <label class="field">Details<input name="note" maxlength="300" required placeholder="e.g. Week 3 watch party winner" value="${esc(a.note)}" data-ua-a></label>
+            <div class="admin-actions"><button class="btn btn-primary btn-sm" ${ua.busy ? "disabled" : ""}>Review change</button></div>
+            <p class="muted small">Virtual points only: no cash value, can't be transferred. Every change is a permanent ledger entry with your name and the reason.</p>
+          </form>
+        </div>
+        <div class="card table-card">
+          <div class="table-title">Transaction history<span class="muted small">${esc(u.username)}</span></div>
+          <div class="ua-table-wrap"><table class="pm-log ua-table"><thead><tr><th>When</th><th>Type</th><th class="pm-n">Change</th><th class="pm-n">Balance</th><th>By</th><th>Reason</th></tr></thead>
+          <tbody>${ledgerRows(hist ? hist.rows : d.ledger)}</tbody></table></div>
+          <div class="admin-actions ua-pad">${hist ? (hist.next ? `<button type="button" class="btn btn-ghost btn-sm" data-ua="more-history">Older</button>` : `<span class="muted small">That's everything.</span>`)
+            : `<button type="button" class="btn btn-ghost btn-sm" data-ua="full-history">Full history</button>`}</div>
+        </div>`;
+    }
+    return `<div class="card admin-card"><div class="admin-subhead">Find an account</div>${uaSearch("credits")}${uaResults("credits")}</div>${detail}`;
+  }
+
+  /* -- Rewards Catalog -- */
+
+  function uaRewards() {
+    const slot = uaL.load("rewards", "/api/admin/rewards");
+    if (!slot.data) return pmState(slot, "rewards");
+    const d = slot.data;
+    if (ua.reward) {
+      const r = ua.reward;
+      return `
+        <div class="admin-actions ua-bar"><button type="button" class="btn btn-ghost btn-sm" data-ua="close-reward">&larr; All rewards</button></div>
+        <form class="card admin-card" id="uaRewardForm" novalidate>
+          <div class="admin-subhead">${r.id ? `Edit reward #${r.id}` : "New reward"}</div>
+          <div class="pm-fields">
+            <label class="field pm-grow">Name<input name="name" maxlength="60" required value="${esc(r.name)}" data-ua-r></label>
+            <label class="field">Category<select class="select" name="category" data-ua-r>${Object.entries(d.categories).map(([k, l]) => `<option value="${k}" ${r.category === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
+            <label class="field">Icon<select class="select" name="icon" data-ua-r>${d.icons.map((k) => `<option ${r.icon === k ? "selected" : ""}>${k}</option>`).join("")}</select></label>
+          </div>
+          <label class="field">Description<textarea class="admin-textarea" name="description" rows="2" maxlength="500" data-ua-r>${esc(r.description)}</textarea></label>
+          <label class="field">Requirements (optional)<input name="requirements" maxlength="300" value="${esc(r.requirements)}" data-ua-r></label>
+          <label class="field">Picture (optional: gfx/... or logos/... on this site, or an https:// image)<input name="image" maxlength="300" value="${esc(r.image)}" data-ua-r></label>
+          <div class="pm-fields">
+            <label class="field">Cost (points)<input type="number" name="cost" min="1" step="1" required value="${esc(r.cost)}" data-ua-r></label>
+            <label class="field">Stock (blank = no limit)<input type="number" name="inventory" min="0" step="1" value="${esc(r.inventory)}" data-ua-r></label>
+            <label class="field">Per person (blank = no limit)<input type="number" name="perUserLimit" min="1" step="1" value="${esc(r.perUserLimit)}" data-ua-r></label>
+          </div>
+          <label class="ua-check"><input type="checkbox" name="requiresApproval" ${r.requiresApproval ? "checked" : ""} data-ua-r> Staff approve each request first</label>
+          <label class="ua-check"><input type="checkbox" name="enabled" ${r.enabled ? "checked" : ""} data-ua-r> On offer (shown on the Rewards page)</label>
+          <div class="admin-actions"><button class="btn btn-primary btn-sm" ${ua.busy ? "disabled" : ""}>${r.id ? "Save reward" : "Create reward"}</button></div>
+          <p class="muted small">Only rewards UFF staff actually intend to give. No cash, gift cards or anything with money value.</p>
+        </form>`;
+    }
+    return `
+      <div class="admin-actions ua-bar"><button type="button" class="btn btn-primary btn-sm" data-ua="new-reward">New reward</button></div>
+      <div class="card admin-card">${d.rewards.length ? `<div class="ua-table-wrap"><table class="pm-log ua-table">
+        <thead><tr><th>Reward</th><th>Category</th><th class="pm-n">Cost</th><th class="pm-n">Stock</th><th>Approval</th><th>On offer</th><th></th></tr></thead>
+        <tbody>${d.rewards.map((r) => `<tr>
+          <td><b>${esc(r.name)}</b>${r.demo ? ` <span class="pm-sample">Demo</span>` : ""}</td><td>${esc(r.categoryLabel)}</td>
+          <td class="pm-n">${r.cost.toLocaleString("en-US")}</td><td class="pm-n">${r.inventory == null ? "&infin;" : `${r.left} / ${r.inventory}`}</td>
+          <td>${r.requiresApproval ? "Needed" : "Not needed"}</td><td>${r.enabled ? "Yes" : "<span class='muted'>No</span>"}</td>
+          <td class="ua-row-actions"><button type="button" class="btn btn-ghost btn-sm" data-ua-reward="${r.id}">Edit</button></td></tr>`).join("")}</tbody>
+      </table></div>` : `<p class="muted small">No rewards yet.</p>`}</div>`;
+  }
+
+  /* -- Redemption Requests -- */
+
+  function uaRedemptions() {
+    const slot = uaL.load(`redemptions:${ua.rdFilter}`, `/api/admin/redemptions?status=${encodeURIComponent(ua.rdFilter)}`);
+    const filters = `<div class="filter-row">${[["pending", "Pending"], ["approved", "Approved"], ["fulfilled", "Fulfilled"], ["rejected", "Rejected"], ["refunded", "Refunded"], ["cancelled", "Cancelled"], ["", "All"]].map(([k, l]) =>
+      `<button type="button" class="filter ${ua.rdFilter === k ? "active" : ""}" data-ua-rdf="${k}">${l}</button>`).join("")}</div>`;
+    if (!slot.data) return filters + pmState(slot, "requests");
+    const list = slot.data.redemptions;
+    const btn = (r, action, label, cls = "btn-ghost") => `<button type="button" class="btn ${cls} btn-sm" data-ua-rd="${action}" data-id="${r.id}">${label}</button>`;
+    return `${filters}
+      <div class="card admin-card">${list.length ? `<div class="pm-rows">${list.map((r) => `
+        <div class="pm-row rd-row ua-rd">
+          <span class="pm-row-main"><b>${esc(r.rewardName)}</b><span class="muted small">${esc(r.user.username || "?")} &middot; ${r.cost.toLocaleString("en-US")} pts &middot; ${pmWhen(r.createdAt)}</span>
+            ${r.decision ? `<span class="muted small">${esc(r.decision.by || "")}: ${esc(r.decision.note || "(no note)")}</span>` : ""}
+            ${r.fulfillment ? `<span class="muted small">Fulfilled by ${esc(r.fulfillment.by || "")}${r.fulfillment.note ? `: ${esc(r.fulfillment.note)}` : ""}</span>` : ""}
+            ${r.refund ? `<span class="muted small">Refund: ${esc(r.refund.note || "")}</span>` : ""}</span>
+          <span class="pm-row-pick">${rdStatus(r.status)}</span>
+          <span class="pm-row-state ua-row-actions">
+            ${r.status === "pending" ? btn(r, "approve", "Approve", "btn-primary") : ""}
+            ${["pending", "approved"].includes(r.status) ? btn(r, "reject", "Reject") : ""}
+            ${r.status === "approved" ? btn(r, "fulfill", "Mark fulfilled", "btn-primary") : ""}
+            ${can_("redemptions.refund") && ["approved", "fulfilled"].includes(r.status) ? btn(r, "refund", "Refund") : ""}
+          </span>
+        </div>`).join("")}</div>` : `<p class="muted small">No ${esc(ua.rdFilter || "")} requests.</p>`}</div>`;
+  }
+
+  /* -- Admin Permissions (Super Admin) -- */
+
+  function uaPermissions() {
+    const staff = uaL.load("staff", "/api/admin/staff");
+    const slot = uaPerson("permissions");
+    let detail = "";
+    if (slot && !slot.data) detail = pmState(slot, "the account");
+    else if (slot) {
+      const u = slot.data.user;
+      const self = ACCT.user && u.username.toLowerCase() === ACCT.user.username.toLowerCase();
+      detail = `
+        <form class="card admin-card" id="uaRoleForm" novalidate>
+          <div class="admin-subhead">${esc(u.username)}<span class="muted small">${ROLE_NAMES[u.role]}</span></div>
+          ${facts(u)}
+          ${self ? `<p class="muted small">You can't change your own role. Another Super Admin has to.</p>`
+            : !u.verified ? `<p class="muted small">This account hasn't been made and signed into through the site, so it can't be given a role.</p>`
+            : `<div class="pm-fields"><label class="field">New role<select class="select" name="role">${Object.entries(ROLE_NAMES).map(([k, l]) => `<option value="${k}" ${u.role === k ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
+              <div class="admin-actions"><button class="btn btn-primary btn-sm" ${ua.busy ? "disabled" : ""}>Review change</button></div>
+              <p class="muted small">Staff: run their own challenges and review reward requests. Admin: also markets, users, credits, rewards and the audit log. Super Admin: also roles.
+              It takes effect as soon as you confirm; they just sign in as usual.</p>`}
+        </form>`;
+    }
+    return `
+      <div class="card table-card">
+        <div class="table-title">Accounts with a role</div>
+        ${staff.data ? `<div class="ua-table-wrap"><table class="pm-log ua-table"><thead><tr><th>Username</th><th>Role</th><th>Since</th><th>Given by</th><th></th></tr></thead><tbody>
+          ${staff.data.staff.map((u) => `<tr><td><b>${esc(u.username)}</b></td><td>${ROLE_NAMES[u.role]}</td><td class="small">${u.roleGrantedAt ? pmWhen(u.roleGrantedAt) : ""}</td>
+            <td class="small">${esc(u.roleGrantedBy || "local setup")}</td>
+            <td class="ua-row-actions"><button type="button" class="btn btn-ghost btn-sm" data-ua-pick="permissions" data-id="${u.accountId}">Change</button></td></tr>`).join("")}
+        </tbody></table></div>` : pmState(staff, "staff")}
+      </div>
+      <div class="card admin-card"><div class="admin-subhead">Give or change a role</div>${uaSearch("permissions")}${uaResults("permissions")}</div>
+      ${detail}`;
+  }
+
+  /* -- Audit Logs -- */
+
+  const AUDIT_GROUPS = [["", "Everything"], ["role.", "Roles"], ["credits.", "Credits"], ["challenge.", "Challenges"], ["reward.", "Rewards catalog"],
+    ["redemption.", "Redemptions"], ["market.", "Markets"], ["user.", "Account status"]];
+  function auditSummary(d) {
+    const parts = [];
+    if (d.username) parts.push(esc(d.username));
+    if (d.before && d.after) {
+      Object.keys(d.after).forEach((k) => {
+        const b = d.before[k], a = d.after[k];
+        if (JSON.stringify(b) !== JSON.stringify(a)) parts.push(`${esc(k)}: ${esc(typeof b === "object" ? JSON.stringify(b) : b)} &rarr; <b>${esc(typeof a === "object" ? JSON.stringify(a) : a)}</b>`);
+      });
+    }
+    ["reason", "note", "reward", "pointsAwarded", "refunded", "delta"].forEach((k) => { if (d[k] != null && d[k] !== "") parts.push(`${k}: ${esc(d[k])}`); });
+    return parts.join(" &middot; ");
+  }
+  function uaAudit() {
+    const f = ua.audit;
+    const qs = new URLSearchParams({ action: f.action, actor: f.actor, ...(f.before ? { before: f.before } : {}) });
+    const slot = uaL.load(`audit:${qs}`, `/api/admin/audit?${qs}`);
+    const form = `
+      <form class="pm-fields ua-audit-form" id="uaAuditForm">
+        <label class="field">Kind<select class="select" name="action">${AUDIT_GROUPS.map(([k, l]) => `<option value="${k}" ${f.action === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        <label class="field">By (username)<input name="actor" maxlength="20" value="${esc(f.actor)}" autocomplete="off"></label>
+        <span class="admin-actions"><button class="btn btn-ghost btn-sm">Filter</button></span>
+      </form>`;
+    if (!slot.data) return form + pmState(slot, "the audit log");
+    const rows = slot.data.rows;
+    return `${form}
+      <div class="card admin-card">${rows.length ? `<div class="pm-audit ua-audit">${rows.map((r) => `
+        <div class="activity-row"><span class="activity-text"><b>${esc(r.action)}</b> by ${esc(r.by)}${r.targetType ? ` <span class="muted small">on ${esc(r.targetType)} ${esc(r.targetId || "")}</span>` : ""}<br><span class="muted small">${auditSummary(r.detail)}</span></span>
+        <span class="activity-time">${pmWhen(r.at)}</span></div>`).join("")}</div>` : `<p class="muted small">Nothing here.</p>`}
+        <div class="admin-actions ua-pad">
+          ${f.stack.length ? `<button type="button" class="btn btn-ghost btn-sm" data-ua="audit-newer">Newer</button>` : ""}
+          ${slot.data.nextBefore ? `<button type="button" class="btn btn-ghost btn-sm" data-ua="audit-older" data-before="${slot.data.nextBefore}">Older</button>` : ""}
+        </div>
+        <p class="muted small">The audit log can't be edited or deleted. PINs, passwords and sessions are never written to it.</p>
+      </div>`;
+  }
+
+  /* -- UFF Admin events -- */
+
+  const toInput = (ms) => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 6e4); return d.toISOString().slice(0, 16); };
+  const blankBuilder = () => ({ id: null, title: "", description: "", deadline: "", per: 25, bonus: 100, legs: [] });
+  const blankReward = () => ({ id: null, name: "", category: "badge", icon: "star", description: "", requirements: "", image: "", cost: 500, inventory: "", perUserLimit: "", requiresApproval: true, enabled: false });
+
+  document.addEventListener("input", (e) => {
+    const el = e.target;
+    if (!el.matches) return;
+    if (el.matches("[data-ua-b]") && ua.builder) ua.builder[el.name] = el.value;
+    if (el.matches("[data-ua-a]") && ua.adjust && el.type !== "radio") ua.adjust[el.name] = el.value;
+    if (el.matches("[data-ua-r]") && ua.reward) ua.reward[el.name] = el.type === "checkbox" ? el.checked : el.value;
+  });
+  document.addEventListener("change", (e) => {
+    const el = e.target;
+    if (!el.matches) return;
+    if (el.id === "uaAddLeg" && el.value && ua.builder) { ua.builder.legs.push(Number(el.value)); return uaL.redraw(); }
+    if (el.matches("[data-ua-b]") && ua.builder) { ua.builder[el.name] = el.value; return uaL.redraw(); }
+    if (el.matches("[data-ua-a]") && ua.adjust) { ua.adjust[el.name] = el.value; if (el.name === "type") uaL.redraw(); return; }
+    if (el.matches("[data-ua-r]") && ua.reward) ua.reward[el.name] = el.type === "checkbox" ? el.checked : el.value;
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ua.confirm && !ua.busy && location.hash.startsWith("#/uff-admin")) { ua.confirm = null; ua.err = ""; uaL.redraw(); } });
+
+  document.addEventListener("click", async (e) => {
+    const t = e.target.closest ? e.target.closest("[data-ua], [data-ua-ch], [data-ua-leg], [data-ua-pick], [data-ua-rd], [data-ua-rdf], [data-ua-reward], [data-ua-status], [data-ua-go]") : null;
+    if (!t) {
+      if (ua.confirm && !ua.busy && e.target.classList && e.target.classList.contains("pm-modal") && location.hash.startsWith("#/uff-admin")) { ua.confirm = null; ua.err = ""; uaL.redraw(); }
+      return;
+    }
+    if (!app.contains(t)) return;
+    const d = t.dataset;
+    if (d.ua === "confirm-no") { ua.confirm = null; ua.err = ""; return uaL.redraw(); }
+    if (d.ua === "confirm-yes" && ua.confirm && !ua.busy) {
+      const reasonEl = document.getElementById("uaReason");
+      const reason = reasonEl ? reasonEl.value.trim() : "";
+      if (ua.confirm.reason && !ua.confirm.reasonOptional && reason.length < 3) { ua.err = "Write a reason first (at least 3 characters)."; return uaL.redraw(); }
+      return ua.confirm.run(reason);
+    }
+    if (d.ua === "new-challenge") { location.hash = "#/uff-admin/challenges"; ua.builder = blankBuilder(); return uaL.redraw(); }
+    if (d.ua === "close-builder") { ua.builder = null; return uaL.redraw(); }
+    if (d.ua === "new-reward") { ua.reward = blankReward(); return uaL.redraw(); }
+    if (d.ua === "close-reward") { ua.reward = null; return uaL.redraw(); }
+    if (d.ua === "full-history" || d.ua === "more-history") {
+      const id = ua.sel.credits;
+      const before = d.ua === "more-history" && ua.history ? ua.history.next : null;
+      try {
+        const page = await localApi(`/api/admin/users/${id}/ledger${before ? `?before=${before}` : ""}`);
+        ua.history = { accountId: id, rows: [...(before && ua.history ? ua.history.rows : []), ...page.rows], next: page.nextBefore };
+      } catch (err) { ua.err = err.message; }
+      return uaL.redraw();
+    }
+    if (d.ua === "audit-older") { ua.audit.stack.push(ua.audit.before); ua.audit.before = Number(d.before); return uaL.redraw(); }
+    if (d.ua === "audit-newer") { ua.audit.before = ua.audit.stack.pop() || null; return uaL.redraw(); }
+    if (d.uaLeg && ua.builder) {
+      const i = Number(d.i), legs = ua.builder.legs;
+      if (d.uaLeg === "remove") legs.splice(i, 1);
+      if (d.uaLeg === "up" && i > 0) [legs[i - 1], legs[i]] = [legs[i], legs[i - 1]];
+      if (d.uaLeg === "down" && i < legs.length - 1) [legs[i + 1], legs[i]] = [legs[i], legs[i + 1]];
+      return uaL.redraw();
+    }
+    if (d.uaPick) {
+      ua.sel[d.uaPick] = d.id;
+      ua.history = null;
+      ua.msg = ua.err = "";
+      return uaL.redraw();
+    }
+    if (d.uaGo) { ua.sel[d.uaGo] = ua.sel.users; ua.q[d.uaGo] = ua.q.users; location.hash = `#/uff-admin/${d.uaGo}`; return; }
+    if (d.uaRdf !== undefined) { ua.rdFilter = d.uaRdf; return uaL.redraw(); }
+    if (d.uaReward) {
+      const r = ua.data.rewards.data.rewards.find((x) => x.id === Number(d.uaReward));
+      ua.reward = { id: r.id, name: r.name, category: r.category, icon: r.icon, description: r.description, requirements: r.requirements, image: r.image || "",
+        cost: r.cost, inventory: r.inventory ?? "", perUserLimit: r.perUserLimit ?? "", requiresApproval: r.requiresApproval, enabled: r.enabled };
+      return uaL.redraw();
+    }
+    if (d.uaStatus) {
+      const u = ua.data[`user:${ua.sel.users}`].data.user;
+      const suspend = d.uaStatus === "suspended";
+      return uaAsk({ title: suspend ? `Suspend ${u.username}?` : `Reactivate ${u.username}?`, danger: suspend, label: suspend ? "Suspend" : "Reactivate",
+        body: `<p>${suspend ? "They'll be signed out everywhere and can't sign in, make picks or redeem rewards until reactivated." : "They'll be able to sign in again."}</p>`,
+        reason: "Reason (goes in the audit log)",
+        run: (reason) => uaRun(() => localApi("/api/admin/users/status", { accountId: u.accountId, username: u.username, status: d.uaStatus, reason }),
+          `${u.username} is ${suspend ? "suspended" : "active again"}.`) });
+    }
+    if (d.uaCh) {
+      const id = Number(d.id);
+      const list = ua.data.challenges && ua.data.challenges.data ? ua.data.challenges.data.challenges : [];
+      const c = list.find((x) => x.id === id) || (ua.builder && ua.builder.id === id ? { id, title: ua.builder.title } : { id, title: `#${id}` });
+      if (d.uaCh === "edit") {
+        ua.builder = { id: c.id, title: c.title, description: c.description || "", deadline: toInput(c.entryDeadline), per: c.pointsPerLeg, bonus: c.perfectBonus, legs: [...c.legs] };
+        return uaL.redraw();
+      }
+      if (d.uaCh === "publish") {
+        return uaAsk({ title: `Publish "${c.title}"?`, label: "Publish",
+          body: `<p>Players can enter as soon as it's published. A published challenge can't be edited, only cancelled.</p>`,
+          run: () => uaRun(() => localApi(`/api/admin/challenges/${id}`, { action: "publish" }), () => { ua.builder = null; return `"${c.title}" is live.`; }) });
+      }
+      if (d.uaCh === "extend") {
+        return uaAsk({ title: `Extend "${c.title}"?`, label: "Extend deadline",
+          body: `<p>Now: ${pmWhen(c.entryDeadline)}. Entries stay as they are; players get longer to enter or change answers. Every leg's market has to stay open until the new deadline.</p>
+            <label class="field">New deadline<input type="datetime-local" id="uaExtendTo" value="${toInput(c.entryDeadline + 86400000)}" required></label>`,
+          run: () => {
+            const v = (document.getElementById("uaExtendTo") || {}).value;
+            return uaRun(() => localApi(`/api/admin/challenges/${id}`, { action: "extend", entryDeadline: v ? new Date(v).getTime() : null }),
+              (o) => `"${c.title}" now closes ${pmWhen(o.entryDeadline)}.`);
+          } });
+      }
+      if (d.uaCh === "cancel") {
+        return uaAsk({ title: `Cancel "${c.title}"?`, danger: true, label: "Cancel challenge", reason: "Why (players see this)",
+          body: `<p>Every entry ends void. No points are given or taken (entries were free).</p>`,
+          run: (note) => uaRun(() => localApi(`/api/admin/challenges/${id}`, { action: "cancel", note }), `"${c.title}" is cancelled.`) });
+      }
+      if (d.uaCh === "settle") {
+        let p;
+        try { p = await localApi(`/api/admin/challenges/${id}/settle-preview`); } catch (err) { ua.err = err.message; return uaL.redraw(); }
+        if (!p.deadlinePassed) { ua.err = "Entries are still open. Settle after the deadline."; return uaL.redraw(); }
+        if (!p.ready) { ua.err = `Waiting on market${p.waitingOn.length > 1 ? "s" : ""} ${p.waitingOn.map((m) => `#${m}`).join(", ")} to settle first.`; return uaL.redraw(); }
+        return uaAsk({ title: `Settle "${c.title}"?`, label: "Settle and award points",
+          body: `<p>Scores ${plural(p.entries, "entry", "entries")} from each leg's official result and adds the published points. This happens once; settling again does nothing.</p>`,
+          run: () => uaRun(() => localApi(`/api/admin/challenges/${id}`, { action: "settle" }), (o) => o.already ? "That challenge was already settled." : `Settled: ${plural(o.entries, "entry", "entries")}, ${o.pointsAwarded} points awarded.`) });
+      }
+    }
+    if (d.uaRd) {
+      const id = Number(d.id), a = d.uaRd;
+      const r = ua.data[`redemptions:${ua.rdFilter}`].data.redemptions.find((x) => x.id === id);
+      const who = `${r.user.username}'s ${r.rewardName}`;
+      const conf = {
+        approve: { title: `Approve ${who}?`, label: "Approve", reason: "Note (optional)", reasonOptional: true, body: `<p>Next, hand it out and mark it fulfilled.</p>` },
+        reject: { title: `Reject ${who}?`, label: "Reject and return points", danger: true, reason: "Why (they see this)", body: `<p>Their ${r.cost.toLocaleString("en-US")} points come back.</p>` },
+        fulfill: { title: `Mark ${who} fulfilled?`, label: "Mark fulfilled", reason: "Fulfillment note (optional)", reasonOptional: true, body: `<p>Only once it's actually been given in game.</p>` },
+        refund: { title: `Refund ${who}?`, label: "Refund points", danger: true, reason: "Why", body: `<p>Their ${r.cost.toLocaleString("en-US")} points come back and the request is marked refunded.</p>` }
+      }[a];
+      return uaAsk({ ...conf, run: (note) => uaRun(() => localApi(`/api/admin/redemptions/${id}`, { action: a, note }),
+        (o) => (o.already ? "Nothing changed: that was already done." : `${RD_LABEL[o.redemption.status]}: ${who}.`)) });
+    }
+  });
+
+  document.addEventListener("submit", async (e) => {
+    const f = e.target;
+    if (f.dataset && f.dataset.uaSearch) {
+      e.preventDefault();
+      const scope = f.dataset.uaSearch;
+      ua.q[scope] = (f.querySelector("input[name=q]").value || "").trim();
+      ua.sel[scope] = null;
+      ua.msg = ua.err = "";
+      return uaL.redraw();
+    }
+    if (!["uaChallengeForm", "uaAdjustForm", "uaRewardForm", "uaRoleForm", "uaAuditForm"].includes(f.id)) return;
+    e.preventDefault();
+    if (f.id === "uaAuditForm") {
+      ua.audit = { action: f.querySelector("[name=action]").value, actor: f.querySelector("[name=actor]").value.trim(), before: null, stack: [] };
+      return uaL.redraw();
+    }
+    if (f.id === "uaChallengeForm") {
+      const b = ua.builder;
+      const body = { title: b.title, description: b.description, entryDeadline: b.deadline ? new Date(b.deadline).getTime() : null,
+        pointsPerLeg: Number(b.per), perfectBonus: Number(b.bonus), legs: b.legs };
+      const out = await uaRun(() => (b.id ? localApi(`/api/admin/challenges/${b.id}`, { action: "update", challenge: body }) : localApi("/api/admin/challenges", body)),
+        () => (b.id ? "Draft saved." : "Draft created. Publish it when it's ready."));
+      if (out && !b.id) ua.builder.id = out.id;
+      return uaL.redraw();
+    }
+    if (f.id === "uaRewardForm") {
+      const r = ua.reward;
+      const body = { name: r.name, category: r.category, icon: r.icon, description: r.description, requirements: r.requirements, image: r.image,
+        cost: Number(r.cost), inventory: r.inventory === "" ? null : Number(r.inventory), perUserLimit: r.perUserLimit === "" ? null : Number(r.perUserLimit),
+        requiresApproval: !!r.requiresApproval, enabled: !!r.enabled };
+      const out = await uaRun(() => (r.id ? localApi(`/api/admin/rewards/${r.id}`, body) : localApi("/api/admin/rewards", body)), r.id ? "Reward saved." : "Reward created.");
+      if (out) ua.reward = null;
+      return uaL.redraw();
+    }
+    if (f.id === "uaAdjustForm") {
+      const a = ua.adjust;
+      const u = ua.data[`user:${ua.sel.credits}`].data.user;
+      const n = Number(a.amount);
+      if (a.amount === "" || !Number.isInteger(n) || n < 0 || (a.type !== "set" && n === 0)) { ua.err = "Enter a whole number of points."; return uaL.redraw(); }
+      if (!a.reasonCode || String(a.note).trim().length < 5) { ua.err = "Pick a reason and describe it (at least 5 characters)."; return uaL.redraw(); }
+      const after = a.type === "add" ? u.balance + n : a.type === "remove" ? u.balance - n : n;
+      return uaAsk({ title: a.type === "set" ? `Set ${u.username}'s balance to ${n.toLocaleString("en-US")}?` : `${a.type === "add" ? "Add" : "Remove"} ${n.toLocaleString("en-US")} points ${a.type === "add" ? "to" : "from"} ${u.username}?`,
+        danger: a.type !== "add", label: "Apply change",
+        body: `<ul class="pm-modal-facts"><li>Account: <b>${esc(u.username)}</b> <code>${esc(u.accountId)}</code></li>
+          <li>Balance: ${u.balance.toLocaleString("en-US")} &rarr; <b>${after.toLocaleString("en-US")}</b></li>
+          <li>Reason: ${esc(a.note)}</li><li>This is permanent: a ledger entry with your name.</li></ul>`,
+        run: () => uaRun(() => localApi("/api/admin/credits", { accountId: u.accountId, username: u.username, type: a.type, amount: n, target: n,
+          reasonCode: a.reasonCode, note: a.note, confirmSet: a.type === "set", idempotencyKey: a.key }),
+          (o) => { ua.adjust = null; ua.history = null; return o.repeated ? "That change was already made (nothing applied twice)." : `Done: ${u.username} now has ${o.tx.after.toLocaleString("en-US")} points.`; }) });
+    }
+    if (f.id === "uaRoleForm") {
+      const u = ua.data[`user:${ua.sel.permissions}`].data.user;
+      const role = f.querySelector("[name=role]").value;
+      if (role === u.role) { ua.err = `${u.username} is already ${ROLE_NAMES[role]}.`; return uaL.redraw(); }
+      return uaAsk({ title: `Make ${u.username} ${ROLE_NAMES[role]}?`, danger: role === "super_admin", label: "Change role", reason: "Why (goes in the audit log)",
+        body: `<ul class="pm-modal-facts"><li>${ROLE_NAMES[u.role]} &rarr; <b>${ROLE_NAMES[role]}</b></li>
+          ${role === "super_admin" ? "<li>Super Admins can give and take away every role, including yours.</li>" : ""}
+          <li>Less access takes effect right away.</li></ul>`,
+        run: (reason) => uaRun(() => localApi("/api/admin/roles", { accountId: u.accountId, username: u.username, role, reason }),
+          (o) => `${u.username} is now ${ROLE_NAMES[o.user.role]}.`) });
+    }
+  });
 
   // ---- Past United Flag Bowls ----
 
@@ -5241,6 +7269,12 @@
     allflag: allFlagPage,
     playoff: playoffPage,
     predictions: predictionsPage,
+    "uff-predictions": uffPredictionsPage,
+    "sign-in": () => signInPage(authParts()),
+    "create-account": () => createAccountPage(authParts()),
+    account: accountPage,
+    rewards: rewardsPage,
+    "uff-admin": uffAdminPage,
     vods: vodsPage,
     gfx: gfxPage,
     build: buildPage,
@@ -5269,7 +7303,15 @@
     (n) => `<a href="#/${n.path}" data-path="${n.path}">${icon(n.icon)}<span>${n.label}</span></a>`
   ).join("");
 
+  if (SITE_ACCOUNTS) {
+    const adminLink = document.getElementById("adminLink");
+    adminLink.insertAdjacentHTML("beforebegin", '<div class="acct" id="acctBox"></div>');
+    adminLink.hidden = true;
+  }
+
   let lastTeamOpen = null;
+  let lastSection = null;
+  const AUTH_TITLES = { "sign-in": "Sign In", "create-account": "Create Account", account: "Your Account", "uff-admin": "Admin" };
   let lastStatsView = null;
   function render() {
     gfxClose();
@@ -5281,6 +7323,17 @@
       cmp.scope = sub === "alltime" ? "alltime" : "season";
       try { cmp.a = decodeURIComponent(parts[2] || ""); cmp.b = decodeURIComponent(parts[3] || ""); } catch (e) {}
     }
+    if (section === "uff-predictions") pmRoute(parts);
+    if (section === "rewards") rewardsRoute(parts);
+    if (section === "uff-admin") uaRoute(parts);
+    if (section === "account" && lastSection !== "account") accountData = null;
+    if (section !== "sign-in" && section !== "create-account") { signin.error = signup.error = ""; if (section !== lastSection) signin.step = 1; }
+    // Admin's tab row includes the UFF Predictions tabs when the signed-in site account has a role: check it again
+    // on the way in (a role may have been given or taken since the page loaded)
+    if (section === "admin" && SITE_ACCOUNTS && lastSection !== "admin") {
+      loadAccount().then(() => { if (location.hash.replace(/^#\/?/, "").split("/")[0] === "admin") render(); });
+    }
+    lastSection = section;
     if (section === "updates") updatesFilter = UPDATE_TYPES[sub] ? sub : "all";
     if (section === "stats") {
       statsScope = sub === "alltime" ? "alltime" : "season";
@@ -5311,9 +7364,11 @@
     const adminLink = document.getElementById("adminLink");
     adminLink.classList.toggle("active", section === "admin");
     adminLink.textContent = getAdmin() ? "Admin" : "Log In";
+    drawAccount();
     if (section !== "admin") adminError = adminFlash = "";
     const label = NAV.find((n) => n.path === (section || ""));
-    document.title = label && label.path ? `${label.label} | UFF` : "UFF | United Flag Football";
+    document.title = AUTH_TITLES[section] ? `${AUTH_TITLES[section]} | UFF` : label && label.path ? `${label.label} | UFF` : "UFF | United Flag Football";
+    if (AUTH_TITLES[section] && section !== "account" && section !== "uff-admin") focusAuth();
     closeMenu();
     // Switching tabs on a team page keeps your place
     const teamOpen = section === "teams" && sub ? sub : null;
@@ -5511,10 +7566,15 @@
         const res = await adminCall({ action: "addStream", title: String(form.get("title") || ""), url, gameId: String(form.get("gameId") || "") });
         SAVED.streams = res.streams;
         adminFlash = "Added the live stream. It's on the home page now.";
+      } else if (LOCAL_SITE && form.get("saveAuto")) {
+        const s = await localApi("/api/auth/league-login/save", { username: String(form.get("username") || ""), password: String(form.get("password") || "") });
+        setAdmin({ user: s.user, token: s.token, auto: true });
+        leagueAuto.error = "";
+        adminFlash = "Saved. Staff and admin site accounts on this computer now skip the league login.";
       } else {
         const s = await adminCall({
           action: "login", username: String(form.get("username") || ""),
-          password: String(form.get("password") || ""), name: String(form.get("name") || "")
+          password: String(form.get("password") || ""), name: String(form.get("name") || (ACCT.user ? ACCT.user.username : ""))
         });
         setAdmin({ user: s.name || s.username, token: s.token });
       }
@@ -5864,6 +7924,7 @@
     }
     if (t.id !== "adminLogout") return;
     setAdmin(null);
+    leagueAuto.off = true;
     render();
   });
 
@@ -5983,6 +8044,7 @@
 
   window.addEventListener("hashchange", render);
   render();
+  loadAccount().then(() => { if (/^#\/(sign-in|create-account|account|admin|uff-admin|rewards|uff-predictions)/.test(location.hash)) render(); });
 
   /* ---------- Live updates ---------- */
 
@@ -5990,7 +8052,7 @@
   // When a score, transaction, stream or anything else changed, the page reloads where you were. If that would
   // interrupt you (typing, a video playing, Admin, a game of Build a Team), a "New updates" button shows instead.
   const LIVE_EVERY = 30 * 1000;
-  const NO_RELOAD = ["admin", "build", "predictions", "compare"];
+  const NO_RELOAD = ["admin", "build", "predictions", "uff-predictions", "compare", "sign-in", "create-account", "account", "uff-admin", "rewards"];
   let liveBusy = false, updateWaiting = false;
 
   const interrupts = () => {

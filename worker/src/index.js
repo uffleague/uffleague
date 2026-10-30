@@ -7,8 +7,12 @@
 //   GET /avatars?names=a,b -> Roblox headshots for player profiles (see avatars)
 //   GET /test, POST /test (Authorization: Bearer <GAME_KEY>) -> test log for the Roblox game (see gameTest)
 //   POST /game (Authorization: Bearer <STATS_KEY>) -> a finished game from the Roblox game, saved as a result (see gameResult)
+//   /api/* -> accounts, predictions, parlays and rewards (see predictions.js)
 // Secrets (set with `wrangler secret put`): ADMIN_USERNAME and ADMIN_PASSWORD_HASH (SHA-256 hex of the password);
-// STATS_KEY is the UFF stats server's key for POST /game (GAME_KEY also works there).
+// STATS_KEY is the UFF stats server's key for POST /game (GAME_KEY also works there); PIN_PEPPER (64 hex) for PIN hashes.
+import { predictionsFetch } from "./predictions.js";
+export { PredictionsDB } from "./predictions.js";
+
 const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
   renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, primetime: null, activity: [],
@@ -1062,8 +1066,10 @@ async function gameResult(req, env) {
 
 export default {
   async fetch(req, env) {
-    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const path = new URL(req.url).pathname;
+    // Accounts, predictions, parlays and rewards live in their own Durable Object (predictions.js); nothing else changes
+    if (path.startsWith("/api/")) return predictionsFetch(req, env);
+    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (req.method === "GET" && path.startsWith("/img/")) return serveImage(env, path.slice(5));
     if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/deadlines") return botReadDeadlines(req, env);
     if (req.method === "GET" && path.replace(/\/+$/, "") === "/bot/primetime") return botReadPrimetime(req, env);
