@@ -2628,6 +2628,20 @@
     const state = games.length && played === games.length ? "done" : now > due ? "late" : due - now <= 48 * 3600e3 ? "soon" : "";
     return { games: games.length, played, when, state };
   }
+  // The week Schedule opens on: the first week of the earliest series whose deadline hasn't passed; without
+  // deadlines, the first week with a game left to play; otherwise the last week
+  function currentWeek() {
+    const now = Date.now();
+    const weeks = LEAGUE.schedule.map((w) => w.week);
+    const open = deadlineList().filter((s) => Date.parse(s.deadline) > now).flatMap((s) => s.weeks).filter((w) => weeks.includes(w));
+    if (open.length) return Math.min(...open);
+    if (deadlineList().length) {
+      const after = weeks.filter((w) => !deadlineFor(w) || Date.parse(deadlineFor(w).deadline) > now);
+      if (after.length) return Math.min(...after);
+    }
+    const unplayed = LEAGUE.schedule.find((w) => w.games.some((g) => !Array.isArray(g.score)));
+    return unplayed ? unplayed.week : (LEAGUE.schedule[LEAGUE.schedule.length - 1] || { week: 1 }).week;
+  }
   function deadlineBar(s) {
     const i = deadlineInfo(s);
     return `
@@ -2692,7 +2706,7 @@
                   <span class="pt-item-teams">${[0, 1].map((i) => `
                     <span class="pt-item-team">${logoOr(teamByName(g.teams[i]))}${ptSeed(pt, i)}<span class="pt-name-full">${esc(g.teams[i])}</span><span class="pt-name-short">${esc(shortName(g.teams[i]))}</span></span>`).join(`<span class="pt-item-vs">vs</span>`)}
                   </span>
-                  <span class="pt-item-time">${Array.isArray(g.score) ? `Final &middot; ${g.score[0]}-${g.score[1]}` : esc(g.time || `Week ${wk.week} &middot; no game time yet`)}</span>
+                  <span class="pt-item-time">${Array.isArray(g.score) ? `Final &middot; ${g.score[0]}-${g.score[1]}` : g.time ? esc(g.time) : `Week ${wk.week} &middot; no game time yet`}</span>
                 </a>
                 ${live ? `<a class="pt-watch" href="${esc(live.url)}" target="_blank" rel="noopener"><span class="live-dot"></span>Watch live</a>` : ""}
               </div>`;
@@ -7345,7 +7359,7 @@
     gfxClose();
     const parts = location.hash.replace(/^#\/?/, "").split("/");
     const [section, sub] = parts;
-    if (section === "schedule" && sub) scheduleWeek = Number(sub);
+    if (section === "schedule") scheduleWeek = sub ? Number(sub) : currentWeek();
     if (section === "allflag") allFlagSeason = Number(sub) || null;
     if (section === "compare") {
       cmp.scope = sub === "alltime" ? "alltime" : "season";
