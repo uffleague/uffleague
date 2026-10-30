@@ -148,12 +148,14 @@ export class PredictionsDB extends DurableObject {
     };
   }
 
-  // The first Super Admin: an account made on the site, promoted by whoever knows the League Admin password.
+  // The first Super Admin: an account made on the site, promoted by whoever knows the League Admin password, or with
+  // the BOOTSTRAP_KEY secret while one is set (set it, use it once, delete it with `wrangler secret delete`).
   // Only works while there's no Super Admin; after that, roles are given on Admin -> Permissions.
   async bootstrapAdmin(body, ip) {
     this.tools.limiter(`bootstrap:${ip}`, 5, 15 * 60000);
-    const hash = this.env.ADMIN_PASSWORD_HASH;
-    if (!hash || !same(await sha256hex(String(body.leaguePassword || "")), hash)) throw new HttpError(401, "That isn't the League Admin password.");
+    const hash = this.env.ADMIN_PASSWORD_HASH, key = this.env.BOOTSTRAP_KEY || "";
+    const byKey = key.length >= 32 && same(String(body.setupKey || ""), key);
+    if (!byKey && (!hash || !same(await sha256hex(String(body.leaguePassword || "")), hash))) throw new HttpError(401, "That isn't the League Admin password.");
     return { user: this.tools.auth.bootstrapSuperAdmin(body.username) };
   }
 
