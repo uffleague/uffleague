@@ -1009,7 +1009,10 @@ body.is-home { background: #0a0e1c; }
 }
 .hx-rank { width: 22px; text-align: center; font-family: var(--head); font-weight: 700; font-size: 17px; color: #fff; }
 .hx-row .team-logo { width: 30px; height: 30px; }
-.hx-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.hx-row-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-weight: 500; }
+/* A long name gets the ellipsis, not the Disbanded tag after it */
+.hx-row-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hx-row-name .pill { flex: none; }
 .hx-rec { font-family: var(--head); font-weight: 600; font-size: 16px; color: var(--cream); }
 
 /* Latest news */

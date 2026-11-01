@@ -705,7 +705,7 @@
             <a class="hx-row ${i >= 10 ? "hx-row--more" : ""}" href="#/teams/${t.slug}" style="${rowStyle(t)}">
               <span class="hx-rank">${ranked ? i + 1 : "&ndash;"}</span>
               ${teamLogo(t)}
-              <span class="hx-row-name">${t.name}${disbandedTag(t)}</span>
+              <span class="hx-row-name"><span class="hx-row-text">${t.name}</span>${disbandedTag(t)}</span>
               <span class="hx-rec">${t.w}-${t.l}</span>
             </a>`).join("")}
         </div>
