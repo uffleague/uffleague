@@ -1498,7 +1498,6 @@ body.gfx-open { overflow: hidden; }
 .pm-fields .pm-grow, .pm-admin-form .pm-grow { flex: 3 1 260px; }
 .pm-fields .field .select, .pm-admin-form .field input, .pm-create .field textarea { width: 100%; }
 .pm-filters { display: flex; flex-direction: column; margin-top: 16px; }
-.pm-status-row { margin: 14px 0; }
 .pm-search-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
 .pm-search-row .search { flex: 1 1 260px; margin: 0; max-width: none; }
 .pm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }

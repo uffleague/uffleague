@@ -4506,11 +4506,10 @@
 
   const PM_LOCAL = SITE_ACCOUNTS;
   const PM_API = "/api/predictions";
-  const PM_STATUS = [["", "All"], ["upcoming", "Upcoming"], ["open", "Open"], ["locked", "Locked"], ["completed", "Completed"]];
   const PM_SORTS = [["closing", "Closing soonest"], ["kickoff", "Kickoff"], ["popular", "Most picks"], ["newest", "Newest"]];
   const PM_STATUS_LABEL = { upcoming: "Upcoming", open: "Open", locked: "Locked", resolved: "Completed", void: "Void" };
   const PM_RESULT = { won: "Correct", lost: "Incorrect", push: "Push", void: "Void", pending: "Pending" };
-  const pm = { data: {}, kind: "player_ou", status: "", q: "", sort: "closing", view: "", id: null,
+  const pm = { data: {}, kind: "player_ou", q: "", sort: "closing", view: "", id: null,
     confirm: null, msg: "", err: "", busy: false, auth: false, preview: null, form: { kind: "player_ou" } };
 
   // Paths starting /api/ are other parts of the local server (challenges); the rest are under /api/predictions
@@ -4695,18 +4694,16 @@
   }
 
   function pmMarketsPage() {
-    const key = `list:${pm.kind}|${pm.status}|${pm.q}|${pm.sort}`;
-    const params = new URLSearchParams({ kind: pm.kind, status: pm.status, q: pm.q, sort: pm.sort });
+    const key = `list:${pm.kind}|${pm.q}|${pm.sort}`;
+    const params = new URLSearchParams({ kind: pm.kind, status: "open", q: pm.q, sort: pm.sort });
     const slot = pmLoad(key, `/markets?${params}`);
-    // Void markets (removed by an admin) aren't shown; a pick on one still shows as void in My Predictions
-    const list = slot.data ? slot.data.markets.filter((m) => m.status !== "void") : [];
+    // Only open markets are listed; closed and settled picks still show in My Predictions
+    const list = slot.data ? slot.data.markets.filter((m) => m.status === "open") : [];
     const what = pm.kind === "game_winner" ? "Game Winner" : "Player Over/Under";
     return `
       <div class="pm-filters">
         <div class="segmented">${[["player_ou", "Player Over/Under"], ["game_winner", "Game Winner"]].map(([k, l]) =>
           `<a href="#" data-pm-kind="${k}" class="${pm.kind === k ? "active" : ""}">${l}</a>`).join("")}</div>
-        <div class="filter-row pm-status-row">${PM_STATUS.map(([k, l]) =>
-          `<button type="button" class="filter ${pm.status === k ? "active" : ""}" data-pm-status="${k}">${l}</button>`).join("")}</div>
         <div class="pm-search-row">
           <label class="search">${icon("search")}<input id="pmSearch" type="search" aria-label="Search markets" placeholder="${pm.kind === "game_winner" ? "Search teams or game" : "Search players, teams or stats"}" value="${esc(pm.q)}"></label>
           <select class="select" id="pmSort" aria-label="Sort">${PM_SORTS.map(([k, l]) => `<option value="${k}" ${pm.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select>
@@ -4714,7 +4711,7 @@
       </div>
       ${pmState(slot, "markets")}
       ${slot.data ? list.length ? `<div class="pm-grid">${list.map(pmCard).join("")}</div>`
-        : empty(`No ${what} markets${pm.status || pm.q ? " match" : " yet"}`, pm.status || pm.q ? "Try another filter or search." : "Admins add markets for upcoming UFF games. Check back soon.") : ""}`;
+        : empty(`No open ${what} markets${pm.q ? " match" : " right now"}`, pm.q ? "Try another filter or search." : "Admins add markets for upcoming UFF games. Check back soon.") : ""}`;
   }
 
   function pmMarketPage(cfg) {
@@ -5111,7 +5108,6 @@
     e.preventDefault();
     const d = t.dataset;
     if (d.pmKind) { pm.kind = d.pmKind; return pmRedraw(); }
-    if (d.pmStatus !== undefined) { pm.status = d.pmStatus; return pmRedraw(); }
     if (d.pmPick) {
       // A guest gets a sign-in prompt (and comes back here afterwards)
       if (!pmCfg().user) { pm.prompt = true; pmRedraw(); const a = document.querySelector(".pm-modal .btn-primary"); if (a) a.focus(); return; }
