@@ -29,36 +29,36 @@
      {
       "id": "W3-4",
       "teams": [
-       "SJS",
-       "SCB"
-      ]
-     },
-     {
-      "id": "W3-5",
-      "teams": [
-       "OLY",
-       "SF"
-      ]
-     },
-     {
-      "id": "W3-6",
-      "teams": [
        "LBP",
        "RAP"
       ]
      },
      {
-      "id": "W3-7",
+      "id": "W3-5",
       "teams": [
        "PLY",
        "RCR"
       ]
      },
      {
-      "id": "W3-8",
+      "id": "W3-6",
       "teams": [
        "SHI",
        "CLB"
+      ]
+     },
+     {
+      "id": "W3-7",
+      "teams": [
+       "SJS",
+       "SF"
+      ]
+     },
+     {
+      "id": "W3-8",
+      "teams": [
+       "OLY",
+       "SCB"
       ]
      }
     ]
@@ -501,7 +501,7 @@
   ]
  },
  "primetime": {
-  "W3-5": "GOTW",
+  "W3-7": "GOTW",
   "W4-6": "Primetime",
   "W5-1": "GOTW",
   "W6-7": "Primetime",
