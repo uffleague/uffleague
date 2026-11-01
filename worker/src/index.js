@@ -313,6 +313,16 @@ async function botStream(env, st) {
 }
 
 async function botSchedule(env, sched) {
+  const data = await load(env);
+  const res = applySchedule(env, data, sched, "Discord bot");
+  if (res instanceof Response) return res;
+  await save(env, data);
+  return json(res);
+}
+
+// Saves the schedule weeks sent (the bot's or Admin -> Schedule's) into data. Returns { weeks, games, problems },
+// or a Response for a mistake.
+function applySchedule(env, data, sched, by) {
   const tz = env.LEAGUE_TZ || "America/New_York";
   const gameTime = (v) => gameTimeText(v, tz);
   const problems = [];
@@ -330,7 +340,6 @@ async function botSchedule(env, sched) {
   }).filter(Boolean);
   if (!weeks.length && !(sched && sched.replace)) return json({ error: "No schedule weeks to save.", problems }, 400);
 
-  const data = await load(env);
   const sent = new Set(weeks.map((w) => w.week));
   const matchups = () => new Map(data.schedule.flatMap((w) => w.games).map((g) => [g.id, g.teams.map(botTeamKey).sort().join("|")]));
   const before = matchups();
@@ -342,10 +351,9 @@ async function botSchedule(env, sched) {
   data.streams = data.streams.filter((x) => !changed(x.gameId));
   data.vods.forEach((v) => { if (changed(v.gameId)) delete v.gameId; });
   const games = weeks.reduce((n, w) => n + w.games.length, 0);
-  data.activity = [{ at: Date.now(), by: "Discord bot", action: "saveSchedule",
-    text: weeks.length ? `${sched.replace ? "Replaced the schedule with" : "Updated"} week${weeks.length === 1 ? "" : "s"} ${weeks.map((w) => w.week).join(", ")} (${games} game${games === 1 ? "" : "s"})` : "Cleared the schedule" }, ...data.activity].slice(0, ACTIVITY_MAX);
-  await save(env, data);
-  return json({ weeks: weeks.length, games, problems });
+  const text = weeks.length ? `${sched.replace ? "Replaced the schedule with" : "Updated"} week${weeks.length === 1 ? "" : "s"} ${weeks.map((w) => w.week).join(", ")} (${games} game${games === 1 ? "" : "s"})` : "Cleared the schedule";
+  if (by === "Discord bot") data.activity = [{ at: Date.now(), by, action: "saveSchedule", text }, ...data.activity].slice(0, ACTIVITY_MAX);
+  return { weeks: weeks.length, games, problems, text, sent: weeks };
 }
 
 async function botTransactions(req, env) {
@@ -1119,6 +1127,29 @@ export default {
     } else if (["ptSettings", "ptStar", "ptLabel", "ptReset"].includes(body.action)) {
       log = adminPrimetime(data, body);
       if (log instanceof Response) return log;
+    } else if (body.action === "saveSchedule") {
+      // Admin -> Schedule: weeks like the bot sends them, plus optional primetime picks { "<game id>": "<label>" }.
+      // With picks, each series sent has exactly those games starred (the rest unstarred) with those labels.
+      const res = applySchedule(env, data, body.schedule, by);
+      if (res instanceof Response) return res;
+      log = res.text;
+      const picks = body.primetime && typeof body.primetime === "object" ? body.primetime : null;
+      if (picks) {
+        const pt = ptState(data);
+        const series = new Set(res.sent.map((w) => w.series || w.week));
+        const ids = data.schedule.filter((w) => series.has(w.series || w.week)).flatMap((w) => w.games.map((g) => g.id));
+        const manual = { ...pt.manual }, labels = { ...pt.labels };
+        ids.forEach((id) => {
+          manual[id] = id in picks;
+          const label = id in picks ? str(picks[id], 24) : "";
+          if (label) labels[id] = label; else delete labels[id];
+        });
+        pt.manual = manual;
+        pt.labels = labels;
+        data.primetime = pt;
+        const starred = ids.filter((id) => id in picks);
+        log += ` · primetime: ${starred.length ? starred.map((id) => `${id}${labels[id] ? ` (${labels[id]})` : ""}`).join(", ") : "none"}`;
+      }
     } else if (body.action === "saveResult") {
       const r = body.result || {};
       const score = Array.isArray(r.score) ? r.score.map(Number) : [];

@@ -1,0 +1,513 @@
+{
+ "schedule": {
+  "weeks": [
+   {
+    "week": 3,
+    "series": 2,
+    "games": [
+     {
+      "id": "W3-1",
+      "teams": [
+       "BAL",
+       "KCJ"
+      ]
+     },
+     {
+      "id": "W3-2",
+      "teams": [
+       "PIT",
+       "SEA"
+      ]
+     },
+     {
+      "id": "W3-3",
+      "teams": [
+       "NO",
+       "TOR"
+      ]
+     },
+     {
+      "id": "W3-4",
+      "teams": [
+       "SJS",
+       "SCB"
+      ]
+     },
+     {
+      "id": "W3-5",
+      "teams": [
+       "OLY",
+       "SF"
+      ]
+     },
+     {
+      "id": "W3-6",
+      "teams": [
+       "LBP",
+       "RAP"
+      ]
+     },
+     {
+      "id": "W3-7",
+      "teams": [
+       "PLY",
+       "RCR"
+      ]
+     },
+     {
+      "id": "W3-8",
+      "teams": [
+       "SHI",
+       "CLB"
+      ]
+     }
+    ]
+   },
+   {
+    "week": 4,
+    "series": 2,
+    "games": [
+     {
+      "id": "W4-1",
+      "teams": [
+       "KCJ",
+       "SCB"
+      ]
+     },
+     {
+      "id": "W4-2",
+      "teams": [
+       "TOR",
+       "BAL"
+      ]
+     },
+     {
+      "id": "W4-3",
+      "teams": [
+       "SEA",
+       "SJS"
+      ]
+     },
+     {
+      "id": "W4-4",
+      "teams": [
+       "CLB",
+       "SF"
+      ]
+     },
+     {
+      "id": "W4-5",
+      "teams": [
+       "PIT",
+       "NO"
+      ],
+      "time": 1793419200000
+     },
+     {
+      "id": "W4-6",
+      "teams": [
+       "OLY",
+       "RCR"
+      ]
+     },
+     {
+      "id": "W4-7",
+      "teams": [
+       "PLY",
+       "LBP"
+      ]
+     },
+     {
+      "id": "W4-8",
+      "teams": [
+       "RAP",
+       "SHI"
+      ]
+     }
+    ]
+   },
+   {
+    "week": 5,
+    "series": 3,
+    "games": [
+     {
+      "id": "W5-1",
+      "teams": [
+       "TOR",
+       "KCJ"
+      ]
+     },
+     {
+      "id": "W5-2",
+      "teams": [
+       "BAL",
+       "NO"
+      ]
+     },
+     {
+      "id": "W5-3",
+      "teams": [
+       "SJS",
+       "PIT"
+      ]
+     },
+     {
+      "id": "W5-4",
+      "teams": [
+       "SEA",
+       "SCB"
+      ]
+     },
+     {
+      "id": "W5-5",
+      "teams": [
+       "RCR",
+       "SF"
+      ]
+     },
+     {
+      "id": "W5-6",
+      "teams": [
+       "OLY",
+       "PLY"
+      ]
+     },
+     {
+      "id": "W5-7",
+      "teams": [
+       "SHI",
+       "LBP"
+      ]
+     },
+     {
+      "id": "W5-8",
+      "teams": [
+       "RAP",
+       "CLB"
+      ]
+     }
+    ]
+   },
+   {
+    "week": 6,
+    "series": 3,
+    "games": [
+     {
+      "id": "W6-1",
+      "teams": [
+       "KCJ",
+       "PIT"
+      ]
+     },
+     {
+      "id": "W6-2",
+      "teams": [
+       "SEA",
+       "BAL"
+      ]
+     },
+     {
+      "id": "W6-3",
+      "teams": [
+       "TOR",
+       "SJS"
+      ]
+     },
+     {
+      "id": "W6-4",
+      "teams": [
+       "SCB",
+       "NO"
+      ]
+     },
+     {
+      "id": "W6-5",
+      "teams": [
+       "SF",
+       "LBP"
+      ]
+     },
+     {
+      "id": "W6-6",
+      "teams": [
+       "RAP",
+       "OLY"
+      ]
+     },
+     {
+      "id": "W6-7",
+      "teams": [
+       "RCR",
+       "SHI"
+      ]
+     },
+     {
+      "id": "W6-8",
+      "teams": [
+       "CLB",
+       "PLY"
+      ]
+     }
+    ]
+   },
+   {
+    "week": 7,
+    "series": 4,
+    "games": [
+     {
+      "id": "W7-1",
+      "teams": [
+       "NO",
+       "KCJ"
+      ]
+     },
+     {
+      "id": "W7-2",
+      "teams": [
+       "BAL",
+       "SJS"
+      ]
+     },
+     {
+      "id": "W7-3",
+      "teams": [
+       "SCB",
+       "PIT"
+      ]
+     },
+     {
+      "id": "W7-4",
+      "teams": [
+       "SEA",
+       "TOR"
+      ]
+     },
+     {
+      "id": "W7-5",
+      "teams": [
+       "PLY",
+       "SF"
+      ]
+     },
+     {
+      "id": "W7-6",
+      "teams": [
+       "OLY",
+       "SHI"
+      ]
+     },
+     {
+      "id": "W7-7",
+      "teams": [
+       "CLB",
+       "LBP"
+      ]
+     },
+     {
+      "id": "W7-8",
+      "teams": [
+       "RAP",
+       "RCR"
+      ]
+     }
+    ]
+   },
+   {
+    "week": 8,
+    "series": 4,
+    "games": [
+     {
+      "id": "W8-1",
+      "teams": [
+       "KCJ",
+       "RCR"
+      ]
+     },
+     {
+      "id": "W8-2",
+      "teams": [
+       "PLY",
+       "BAL"
+      ]
+     },
+     {
+      "id": "W8-3",
+      "teams": [
+       "PIT",
+       "SHI"
+      ]
+     },
+     {
+      "id": "W8-4",
+      "teams": [
+       "CLB",
+       "SEA"
+      ]
+     },
+     {
+      "id": "W8-5",
+      "teams": [
+       "TOR",
+       "SF"
+      ]
+     },
+     {
+      "id": "W8-6",
+      "teams": [
+       "OLY",
+       "NO"
+      ]
+     },
+     {
+      "id": "W8-7",
+      "teams": [
+       "SJS",
+       "LBP"
+      ]
+     },
+     {
+      "id": "W8-8",
+      "teams": [
+       "RAP",
+       "SCB"
+      ]
+     }
+    ]
+   },
+   {
+    "week": 9,
+    "series": 5,
+    "games": [
+     {
+      "id": "W9-1",
+      "teams": [
+       "SJS",
+       "KCJ"
+      ]
+     },
+     {
+      "id": "W9-2",
+      "teams": [
+       "BAL",
+       "SCB"
+      ]
+     },
+     {
+      "id": "W9-3",
+      "teams": [
+       "TOR",
+       "PIT"
+      ]
+     },
+     {
+      "id": "W9-4",
+      "teams": [
+       "SEA",
+       "NO"
+      ]
+     },
+     {
+      "id": "W9-5",
+      "teams": [
+       "SHI",
+       "SF"
+      ]
+     },
+     {
+      "id": "W9-6",
+      "teams": [
+       "OLY",
+       "CLB"
+      ]
+     },
+     {
+      "id": "W9-7",
+      "teams": [
+       "RCR",
+       "LBP"
+      ]
+     },
+     {
+      "id": "W9-8",
+      "teams": [
+       "RAP",
+       "PLY"
+      ]
+     }
+    ]
+   },
+   {
+    "week": 10,
+    "series": 5,
+    "games": [
+     {
+      "id": "W10-1",
+      "teams": [
+       "KCJ",
+       "SEA"
+      ]
+     },
+     {
+      "id": "W10-2",
+      "teams": [
+       "PIT",
+       "BAL"
+      ]
+     },
+     {
+      "id": "W10-3",
+      "teams": [
+       "TOR",
+       "SCB"
+      ]
+     },
+     {
+      "id": "W10-4",
+      "teams": [
+       "SJS",
+       "NO"
+      ]
+     },
+     {
+      "id": "W10-5",
+      "teams": [
+       "SF",
+       "RAP"
+      ]
+     },
+     {
+      "id": "W10-6",
+      "teams": [
+       "LBP",
+       "OLY"
+      ]
+     },
+     {
+      "id": "W10-7",
+      "teams": [
+       "RCR",
+       "CLB"
+      ]
+     },
+     {
+      "id": "W10-8",
+      "teams": [
+       "SHI",
+       "PLY"
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "primetime": {
+  "W3-5": "GOTW",
+  "W4-6": "Primetime",
+  "W5-1": "GOTW",
+  "W6-7": "Primetime",
+  "W7-1": "GOTW",
+  "W8-5": "Primetime",
+  "W9-5": "GOTW",
+  "W10-1": "Primetime"
+ }
+}

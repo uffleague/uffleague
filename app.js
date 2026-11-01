@@ -3723,6 +3723,7 @@
     ["honors", "Honors", "awards", () => honorsAdminSection()],
     ["teams", "Teams", "teams", () => teamsAdminSection()],
     ["deadlines", "Deadlines", "clock", () => deadlinesAdminSection()],
+    ["schedule", "Schedule", "schedule", () => scheduleAdminSection()],
     ["primetime", "Primetime", "star", () => primetimeAdminSection()],
     ["streams", "Live Streams", "live", () => streamsAdminSection()],
     ["vods", "VODs", "play", () => vodsAdminSection()],
@@ -6318,6 +6319,44 @@
       </section>`;
   }
 
+  // ---- Admin: schedule ----
+  // Posts schedule weeks the way the Discord bot does (each week sent replaces that week), plus optional primetime
+  // picks. The box starts with schedule-draft.json from the site when there is one.
+  let schedDraft = null; // the text in the box; null until schedule-draft.json has been looked for
+  function scheduleAdminSection() {
+    if (schedDraft === null) {
+      schedDraft = "";
+      fetch(`schedule-draft.json?nc=${Date.now()}`).then((r) => (r.ok ? r.text() : "")).catch(() => "")
+        .then((text) => { if (text && !schedDraft) { schedDraft = text; if (adminTab === "schedule") renderKeepScroll(); } });
+    }
+    let parsed = null, problem = "";
+    try { parsed = schedDraft.trim() ? JSON.parse(schedDraft) : null; } catch (e) { problem = "That isn't valid JSON."; }
+    const weeks = (parsed && parsed.schedule && parsed.schedule.weeks) || [];
+    const picks = (parsed && parsed.primetime) || {};
+    const team = (n) => { const t = TEAMS.find((x) => [x.name, x.code].includes(n)); return esc(shortName(t ? t.name : n)); };
+    if (parsed && !weeks.length) problem = "There are no weeks in it.";
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Schedule</h2></div>
+        <form class="card admin-card" id="schedPost" autocomplete="off">
+          <p class="muted small admin-note">Each week here replaces that week on the site (other weeks stay). A game id that becomes a different matchup loses its score, stream and VOD link. With primetime picks, each series posted has exactly those games starred, with those labels.</p>
+          <label class="field"><span>Schedule (JSON)</span><textarea name="json" id="schedJson" rows="10" spellcheck="false">${esc(schedDraft)}</textarea></label>
+          ${problem ? `<p class="admin-error">${problem}</p>` : ""}
+          <div class="admin-actions"><button class="btn btn-primary" type="submit" ${weeks.length ? "" : "disabled"}>Post ${weeks.length} week${weeks.length === 1 ? "" : "s"}</button></div>
+        </form>
+        ${weeks.map((w) => `
+          <div class="card admin-card pt-admin">
+            <div class="pt-admin-head"><div><strong>Week ${esc(w.week)}</strong> <span class="muted small">Series ${esc(w.series || w.week)}</span></div></div>
+            ${(w.games || []).map((g) => `
+              <div class="pt-row ${picks[g.id] ? "on" : ""}">
+                <span class="pt-star" aria-hidden="true">${picks[g.id] ? "&#9733;" : ""}</span>
+                <div class="pt-row-game"><span class="pt-row-id">${esc(g.id)}</span> ${(g.teams || []).map(team).join(` <span class="muted">vs</span> `)}
+                  ${picks[g.id] ? `<span class="pill pt-pill">${esc(picks[g.id])}</span>` : ""}</div>
+              </div>`).join("")}
+          </div>`).join("")}
+      </section>`;
+  }
+
   // ---- Admin: teams ----
 
   let teamEditKey = null; // the team being edited (its original name), or "+new"
@@ -7498,6 +7537,9 @@
     document.querySelectorAll(".combo").forEach((box) => { if (!box.contains(e.target)) comboClose(box); });
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+  // Admin -> Schedule: keep what's typed, and redraw the preview once you leave the box
+  app.addEventListener("input", (e) => { if (e.target.id === "schedJson") schedDraft = e.target.value; });
+  app.addEventListener("change", (e) => { if (e.target.id === "schedJson") renderKeepScroll(); });
 
   app.addEventListener("submit", async (e) => {
     const id = e.target.id;
@@ -7516,6 +7558,13 @@
       });
       if (id !== "ptSettings") window.scrollTo(0, y);
       return;
+    }
+    // Admin -> Schedule: post the weeks (and primetime picks) in the box
+    if (id === "schedPost") {
+      e.preventDefault();
+      const p = JSON.parse(schedDraft);
+      return adminSave(e.target.querySelector("button[type=submit]"), { action: "saveSchedule", schedule: p.schedule, primetime: p.primetime },
+        () => reloadWithFlash(`Posted weeks ${p.schedule.weeks.map((w) => w.week).join(", ")}.`));
     }
     // Admin -> Deadlines: one series' date, or every series from a start date
     if (e.target.classList.contains("dl-row") || id === "dlRecalc") {
