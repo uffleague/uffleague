@@ -6331,6 +6331,21 @@
     const picks = (parsed && parsed.primetime) || {};
     const team = (n) => { const t = TEAMS.find((x) => [x.name, x.code].includes(n)); return esc(shortName(t ? t.name : n)); };
     if (parsed && !weeks.length) problem = "There are no weeks in it.";
+    // No two teams play each other twice (posted weeks this doesn't replace count too), and SF never plays OLY
+    if (weeks.length && !problem) {
+      const full = (n) => { const t = TEAMS.find((x) => [x.name, x.code].includes(n)); return t ? t.name : n; };
+      const posting = new Set(weeks.map((w) => w.week));
+      const seen = new Map(), bad = [];
+      for (const w of [...(SAVED.schedule || []).filter((x) => !posting.has(x.week)), ...weeks]) {
+        for (const g of w.games || []) {
+          const k = (g.teams || []).map(full).sort().join("|");
+          if (k === [full("SF"), full("OLY")].sort().join("|")) bad.push(`${team("SF")} vs ${team("OLY")} (week ${w.week}) isn't allowed`);
+          if (seen.has(k)) bad.push(`${(g.teams || []).map(team).join(" vs ")} play twice (weeks ${seen.get(k)} and ${w.week})`);
+          else seen.set(k, w.week);
+        }
+      }
+      if (bad.length) problem = `Fix these first: ${bad.join("; ")}.`;
+    }
     return `
       <section>
         <div class="section-head section-head--left"><h2>Schedule</h2></div>
@@ -6338,7 +6353,7 @@
           <p class="muted small admin-note">Each week here replaces that week on the site (other weeks stay). A game id that becomes a different matchup loses its score, stream and VOD link. With primetime picks, each series posted has exactly those games starred, with those labels.</p>
           <label class="field"><span>Schedule (JSON)</span><textarea name="json" id="schedJson" rows="10" spellcheck="false">${esc(schedDraft)}</textarea></label>
           ${problem ? `<p class="admin-error">${problem}</p>` : ""}
-          <div class="admin-actions"><button class="btn btn-primary" type="submit" ${weeks.length ? "" : "disabled"}>Post ${weeks.length} week${weeks.length === 1 ? "" : "s"}</button></div>
+          <div class="admin-actions"><button class="btn btn-primary" type="submit" ${weeks.length && !problem ? "" : "disabled"}>Post ${weeks.length} week${weeks.length === 1 ? "" : "s"}</button></div>
         </form>
         ${weeks.map((w) => `
           <div class="card admin-card pt-admin">
