@@ -679,8 +679,9 @@
       list.splice(list.indexOf(lose), 1);
       list.push(lose);
     }));
-    // Better record always ranks higher; same record goes by point differential. Only full ties keep the order above.
-    list.sort((a, b) => (b.w - b.l) - (a.w - a.l) || b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa));
+    // Disbanded teams go last. Better record always ranks higher; same record goes by point differential.
+    // Only full ties keep the order above.
+    list.sort((a, b) => !!a.disbanded - !!b.disbanded || (b.w - b.l) - (a.w - a.l) || b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa));
     return { list, ranked: manual.length || TEAMS.some((t) => t.w + t.l) };
   }
   let rankAll = false;
