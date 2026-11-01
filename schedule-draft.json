@@ -435,68 +435,6 @@
       ]
      }
     ]
-   },
-   {
-    "week": 10,
-    "series": 5,
-    "games": [
-     {
-      "id": "W10-1",
-      "teams": [
-       "KCJ",
-       "SEA"
-      ]
-     },
-     {
-      "id": "W10-2",
-      "teams": [
-       "PIT",
-       "BAL"
-      ]
-     },
-     {
-      "id": "W10-3",
-      "teams": [
-       "TOR",
-       "SCB"
-      ]
-     },
-     {
-      "id": "W10-4",
-      "teams": [
-       "SJS",
-       "NO"
-      ]
-     },
-     {
-      "id": "W10-5",
-      "teams": [
-       "SF",
-       "RAP"
-      ]
-     },
-     {
-      "id": "W10-6",
-      "teams": [
-       "LBP",
-       "OLY"
-      ]
-     },
-     {
-      "id": "W10-7",
-      "teams": [
-       "RCR",
-       "CLB"
-      ]
-     },
-     {
-      "id": "W10-8",
-      "teams": [
-       "SHI",
-       "PLY"
-      ]
-     }
-    ]
    }
   ]
  },
@@ -507,7 +445,6 @@
   "W6-7": "Primetime",
   "W7-1": "GOTW",
   "W8-5": "Primetime",
-  "W9-5": "GOTW",
-  "W10-1": "Primetime"
+  "W9-5": "GOTW"
  }
 }
