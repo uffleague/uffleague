@@ -544,7 +544,7 @@ const LEAGUE = {
             { name: "Toronto Maples", code: "TOR", color: "#4b2381", color2: "#bab9bf", coach: "zlssei", logo: "logos/toronto-maples.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
             { name: "New Orleans Raiders", code: "NO", color: "#2b2f36", color2: "#b7bcc0", coach: "BIGGIECHEESE", logo: "logos/new-orleans-raiders.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
             { name: "San Jose Scarecrows", code: "SJS", color: "#f8aa02", color2: "#060707", coach: "zay balla", logo: "logos/san-jose-scarecrows.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Detroit Dynasty", code: "DET", color: "#4f1b84", color2: "#ffffff", coach: "fox balla", logo: "logos/detroit-dynasty.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-10-31", time: "23:43" } },
+            { name: "Detroit Dynasty", code: "DET", color: "#4f1b84", color2: "#ffffff", coach: "fox balla", logo: "logos/detroit-dynasty.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-11-01", time: "01:43" } },
             { name: "Sarnia City Broncos", code: "SCB", color: "#db0028", color2: "#050505", coach: "desiredsantana", logo: "logos/sarnia-city-broncos.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         }
@@ -557,16 +557,16 @@ const LEAGUE = {
           name: "North Division",
           teams: [
             { name: "San Francisco Miners", code: "SF", color: "#cf1d1d", color2: "#fcc00b", coach: "sk8erboy111", logo: "logos/san-francisco-miners.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Vienna Angels", code: "VIE", color: "#e5ad00", color2: "#050505", coach: "Kamil08", logo: "logos/vienna-angels.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-10-31", time: "23:43" } },
+            { name: "Vienna Angels", code: "VIE", color: "#e5ad00", color2: "#050505", coach: "Kamil08", logo: "logos/vienna-angels.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-11-01", time: "01:43" } },
             { name: "Olympia Owls", code: "OLY", color: "#1e5b45", color2: "#aeafb1", coach: "fooge", logo: "logos/olympia-owls.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Novasota Wolf Pack", code: "NWP", color: "#2a5a3f", color2: "#e5dfc5", coach: "Yacht", logo: "logos/novasota-wolf-pack.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-10-31", time: "23:43" } },
+            { name: "Novasota Wolf Pack", code: "NWP", color: "#2a5a3f", color2: "#e5dfc5", coach: "Yacht", logo: "logos/novasota-wolf-pack.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-11-01", time: "01:43" } },
             { name: "Long Beach Pirates", code: "LBP", color: "#2a8de0", color2: "#062c45", coach: "splndd", logo: "logos/long-beach-pirates.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         },
         {
           name: "South Division",
           teams: [
-            { name: "Costa Rica Pumas", code: "CR", color: "#1b2a5c", color2: "#ef1b3a", coach: "msuede", logo: "logos/costa-rica-pumas.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-10-31", time: "23:43" } },
+            { name: "Costa Rica Pumas", code: "CR", color: "#1b2a5c", color2: "#ef1b3a", coach: "msuede", logo: "logos/costa-rica-pumas.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-11-01", time: "01:43" } },
             { name: "Rose City Reapers", code: "RCR", color: "#6a1fc4", color2: "#e3e2e3", coach: "ACTIVIST000", logo: "logos/rose-city-reapers.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
             { name: "Plymouth Huskies", code: "PLY", color: "#3a3d44", color2: "#c7b07a", coach: "248", logo: "logos/plymouth-huskies.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
             { name: "Shiroishi Samurai", code: "SHI", color: "#f08a12", color2: "#050505", coach: "Vljla6i", logo: "logos/shiroishi-samurai.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
