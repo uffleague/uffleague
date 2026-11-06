@@ -3400,6 +3400,42 @@
       </div>`;
   }
 
+  // Admin -> Score Editor: set or fix any scheduled game's final score (plus date and POTG) without a recap.
+  // The game's box score stays as it is.
+  let scoreEditId = "";
+  function scoreEditorSection() {
+    const pick = allGames().find(({ g }) => g.id === scoreEditId);
+    const g = pick && pick.g;
+    const saved = g && SAVED.results.find((r) => r.id === g.id);
+    const score = (saved && Array.isArray(saved.score) && saved.score) || (g && Array.isArray(g.score) && g.score) || ["", ""];
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Score Editor</h2></div>
+        <div class="card admin-card">
+          <p class="muted small admin-note">Pick a game, type both scores and save. It updates Scores, Standings and Power Rankings for everyone. The game's box score and player stats aren't touched (fix those in Stat Adder or Player Stats).</p>
+          <label class="field"><span>Game</span>
+            <select id="scorePick" class="select">
+              <option value="">Pick a game</option>
+              ${LEAGUE.schedule.map((wk) => `<optgroup label="Week ${wk.week}">${wk.games.map((x) => `<option value="${esc(x.id)}" ${x.id === scoreEditId ? "selected" : ""}>${esc(x.id)} &middot; ${esc(x.teams[0])} vs ${esc(x.teams[1])}${Array.isArray(x.score) ? ` (${x.score[0]}-${x.score[1]})` : ""}</option>`).join("")}</optgroup>`).join("")}
+            </select>
+          </label>
+          ${g ? `
+          <form id="scoreForm" autocomplete="off" data-id="${esc(g.id)}">
+            <div class="admin-fields">
+              <label class="field admin-grow"><span>${esc(g.teams[0])}</span><input name="s0" value="${score[0]}" inputmode="numeric" required></label>
+              <label class="field admin-grow"><span>${esc(g.teams[1])}</span><input name="s1" value="${score[1]}" inputmode="numeric" required></label>
+            </div>
+            <div class="admin-fields">
+              <label class="field admin-grow"><span>Date</span><input name="date" type="date" value="${esc((saved && saved.date) || localDay())}"></label>
+              <label class="field admin-grow"><span>Player of the Game (optional)</span><input name="potg" maxlength="60" value="${esc((saved && saved.potg) || "")}"></label>
+              <button class="btn btn-primary" type="submit">${saved ? "Save score" : "Post final"}</button>
+            </div>
+            <p class="muted small">${saved ? `Now: ${Array.isArray(saved.score) ? `${saved.score[0]}-${saved.score[1]}` : "no score"} &middot; ${statLines(saved.box)} stat lines kept` : "No result yet: this posts the final with no box score."}</p>
+          </form>` : ""}
+        </div>
+      </section>`;
+  }
+
   function resultsSection() {
     return `
       <section>
@@ -3716,6 +3752,7 @@
   const ADMIN_TABS = [
     ["overview", "Overview", "stats", () => adminOverview()],
     ["stats", "Stat Adder", "scores", () => resultsSection()],
+    ["scores", "Score Editor", "football", () => scoreEditorSection()],
     ["playerstats", "Player Stats", "trend", () => playerStatsAdminSection()],
     ["transactions", "Transactions", "updates", () => transactionsSection()],
     ["players", "Players", "legacy", () => playersAdminSection()],
@@ -7628,6 +7665,17 @@
       return adminSave(e.target.querySelector("button[type=submit]"), { action: "saveFantasy", fantasy }, () =>
         reloadWithFlash("Saved the fantasy points. Everyone's FPTS and the Award Candidates use them now."));
     }
+    if (id === "scoreForm") {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const g = allGames().find((x) => x.g.id === e.target.dataset.id).g;
+      const score = [form.get("s0"), form.get("s1")].map((v) => String(v).trim());
+      if (score.some((v) => !/^\d{1,3}$/.test(v))) { adminError = "Scores must be whole numbers."; return renderKeepScroll(); }
+      const saved = SAVED.results.find((r) => r.id === g.id) || {};
+      const r = { id: g.id, score: score.map(Number), date: String(form.get("date") || "") || saved.date, potg: String(form.get("potg") || "").trim() || undefined, box: saved.box };
+      return adminSave(e.target.querySelector("button[type=submit]"), { action: "saveResult", result: r, label: `${resultLabel(g, r.score)} (Score Editor)` },
+        () => reloadWithFlash(`Saved ${g.id}: ${g.teams[0]} ${r.score[0]}-${r.score[1]} ${g.teams[1]}. Everyone sees it now.`));
+    }
     if (!["posForm", "adminLogin", "streamForm", "teamForm", "statPick", "statForm", "vodForm", "playerForm", "awardForm", "recordForm"].includes(id)) return;
     e.preventDefault();
     const form = new FormData(e.target);
@@ -8098,6 +8146,7 @@
   app.addEventListener("change", async (e) => {
     const el = e.target;
     if (el.id === "recordPick") return recordPicked();
+    if (el.id === "scorePick") { scoreEditId = el.value; return renderKeepScroll(); }
     if (el.dataset.seedConf) {
       const state = loadPred();
       const list = (state.seeds[el.dataset.seedConf] = (state.seeds[el.dataset.seedConf] || []).slice());
