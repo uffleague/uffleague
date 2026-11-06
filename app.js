@@ -663,7 +663,7 @@
 
   // Power rankings: the order in data.js (home.powerRankings) if there is one, otherwise by record.
   // Then every final, in schedule order: the winner jumps to #1 (everyone else moves down one), the loser drops to last,
-  // and finally everyone is sorted by record and point differential.
+  // and finally everyone is sorted by point differential (then record).
   function powerRankingOrder() {
     const find = (n) => TEAMS.find((t) => [t.name, t.code].some((x) => x && x.toLowerCase() === String(n).toLowerCase()));
     const manual = [...new Set((HOME.powerRankings || []).map(find).filter(Boolean))];
@@ -679,9 +679,9 @@
       list.splice(list.indexOf(lose), 1);
       list.push(lose);
     }));
-    // Disbanded teams go last. Better record always ranks higher; same record goes by point differential.
-    // Only full ties keep the order above.
-    list.sort((a, b) => !!a.disbanded - !!b.disbanded || (b.w - b.l) - (a.w - a.l) || b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa));
+    // Disbanded teams go last. Better point differential always ranks higher, whatever the record; same differential
+    // goes by record. Only full ties keep the order above.
+    list.sort((a, b) => !!a.disbanded - !!b.disbanded || (b.pf - b.pa) - (a.pf - a.pa) || (b.w - b.l) - (a.w - a.l) || b.w - a.w);
     return { list, ranked: manual.length || TEAMS.some((t) => t.w + t.l) };
   }
   let rankAll = false;
