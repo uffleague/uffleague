@@ -1574,7 +1574,8 @@
     const key = raw.toLowerCase();
     const games = playerGames(raw);
     const legacyAll = computeLegacy();
-    const leg = legacyAll.find((p) => p.name.toLowerCase() === key);
+    // A legacy entry can still be under an old name (data.js renames point it at this player)
+    const leg = legacyAll.find((p) => p.name.toLowerCase() === key) || legacyAll.find((p) => aliasName(p.name).toLowerCase() === key);
     const rosterName = Object.values(ROSTERS).map((r) => r.get(key)).find(Boolean);
     const name = rosterName || (leg && leg.name) || (games[0] && Object.values(games[0].lines)[0].player) || raw;
     const t = currentTeam(name);
