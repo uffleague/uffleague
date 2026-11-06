@@ -1469,9 +1469,9 @@
 
   const PLAYER_CARDS = [
     ["passing", "Passing", [["GP", "gp"], ["CMP", "comp"], ["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["INT", "int"]]],
-    ["rushing", "Rushing", [["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["FUM", "fum"], ["PRE", "pre"]]],
-    ["receiving", "Receiving", [["TGT", "tgt"], ["REC", "rec"], ["YDS", "yds"], ["TD", "td"], ["DROP", "drop"]]],
-    ["defense", "Defense", [["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["INT", "int"], ["PBU", "pbu"], ["SWAT", "swat"], ["TD", "td"], ["YDA", "yda"], ["TDA", "tda"]]]
+    ["rushing", "Rushing", [["GP", "gp"], ["ATT", "att"], ["YDS", "yds"], ["TD", "td"], ["FUM", "fum"], ["PRE", "pre"]]],
+    ["receiving", "Receiving", [["GP", "gp"], ["TGT", "tgt"], ["REC", "rec"], ["YDS", "yds"], ["TD", "td"], ["DROP", "drop"]]],
+    ["defense", "Defense", [["GP", "gp"], ["TAK", "tak"], ["TFL", "tfl"], ["SCK", "sck"], ["SAF", "saf"], ["INT", "int"], ["PBU", "pbu"], ["SWAT", "swat"], ["TD", "td"], ["YDA", "yda"], ["TDA", "tda"]]]
   ];
 
   // Where a player ranks in each All-Time stat tab (same order as the Stats page), best ranks first
@@ -1581,13 +1581,12 @@
     const pos = positionsFor(name);
 
     const totals = {};
-    games.forEach(({ lines }) => Object.entries(lines).forEach(([k, l]) => addLine((totals[k] = totals[k] || {}), l)));
-    totals.passing = { ...(totals.passing || {}), gp: games.length };
+    // GP per card = games with a line in that category, like the Stats tables
+    games.forEach(({ lines }) => Object.entries(lines).forEach(([k, l]) => addLine((totals[k] = totals[k] || {}), { ...l, gp: 1 })));
     // Hand-edited stats (Admin -> Player Stats) win over the box scores
     const edit = statEditFor(name);
     if (edit) {
-      Object.keys(BOX).forEach((k) => { if (edit[k]) totals[k] = { ...edit[k] }; });
-      totals.passing = { ...(totals.passing || {}), gp: edit.gp != null ? edit.gp : games.length };
+      Object.keys(BOX).forEach((k) => { if (edit[k]) totals[k] = { ...edit[k], gp: edit.gp != null ? edit.gp : (totals[k] && totals[k].gp) || 0 }; });
     }
 
     const honors = playerHonors(name, leg);
