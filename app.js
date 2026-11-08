@@ -3536,7 +3536,11 @@
         p.values[f] = Number(v);
         p.conflicts.delete(f);
       });
-      p.team = pic.teams[p.key] || near.get(p.name) || null;
+      // Their team on the website; then (a sub, someone not on a roster) the team they've played for in these teams' games
+      const site = currentTeam(p.name);
+      const onSite = game && site && game.teams.includes(site.name) ? site.name : null;
+      p.team = pic.teams[p.key] || onSite || near.get(p.name) || null;
+      p.teamFromSite = !pic.teams[p.key] && !!p.team;
       if (game && p.team && !game.teams.includes(p.team)) p.team = null;
       const cols = B[p.kind].cols;
       p.missing = cols.filter(([, f]) => !(f in p.values) || !Number.isFinite(p.values[f])).map(([, f]) => f);
@@ -3544,7 +3548,7 @@
       const where = `${esc(p.name)} (${B[p.kind].title})`;
       if (p.missing.length) errors.push(`${where}: couldn't read ${label(p.missing)}. Type ${p.missing.length === 1 ? "it" : "them"} in below or retake the screenshot.`);
       if (p.conflicts.size) errors.push(`${where}: the screenshots show different numbers for ${label([...p.conflicts])}. Type the right one in below.`);
-      if (game && !p.team) errors.push(`${where}: pick ${esc(p.name)}'s team below.`);
+      if (game && !p.team) errors.push(`${where}: isn't on either team on the website. Pick their team below.`);
       if (!p.known && !pic.names[p.key]) warnings.push(`${esc(p.name)} isn't a player the site knows. Check the spelling below (it's what the reader saw).`);
     });
     // The box score: rows that are all zeros are left out (the board lists everyone in the game)
@@ -3587,10 +3591,10 @@
           <tbody>${rows.map((p) => `
             <tr>
               <td class="team-col">${p.known ? `<strong>${esc(p.name)}</strong>` : `<input class="pic-name" data-pic-name="${esc(p.key)}" value="${esc(p.name)}" title="Not a player the site knows: fix the spelling">`}<div class="muted small">screenshot ${p.shots.join(", ")}</div></td>
-              <td><select class="select pic-team ${p.team ? "" : "pic-bad"}" data-pic-team="${esc(p.key)}">
+              <td>${p.teamFromSite ? `<span class="pill" title="${esc(p.team)}">${esc((TEAMS.find((t) => t.name === p.team) || {}).code || p.team)}</span>` : `<select class="select pic-team ${p.team ? "" : "pic-bad"}" data-pic-team="${esc(p.key)}">
                 <option value="">Team?</option>
                 ${(game ? game.teams : []).map((tn) => `<option value="${esc(tn)}" ${p.team === tn ? "selected" : ""}>${esc((TEAMS.find((t) => t.name === tn) || {}).code || tn)}</option>`).join("")}
-              </select></td>
+              </select>`}</td>
               ${cols.map(([, f]) => {
                 const bad = p.missing.includes(f) || p.conflicts.has(f);
                 return `<td><input class="pic-cell ${bad ? "pic-bad" : ""}" data-pic-cell="${esc(p.key)}" data-f="${f}" inputmode="numeric" value="${f in p.values && !bad ? p.values[f] : ""}"></td>`;
