@@ -3603,8 +3603,13 @@
         <div class="section-head section-head--left"><h2>Stats Adder (Pictures)</h2></div>
         <div class="card admin-card">
           <p class="muted small admin-note">Add screenshots of the end-of-game stat boards (Passing, Rushing, Receiving, Defense; scrolled screenshots of the same board are fine). Paste them with Ctrl+V or pick the files, then press <strong>Read stats</strong>. It reads them right in your browser. Anything it can't read for sure is left empty in red, and the game can't be saved until those are typed in or the screenshot is retaken.</p>
+          <div class="pic-drop" id="picDrop" tabindex="0" role="button" aria-label="Paste or drop screenshots here">
+            <strong>Paste screenshots here</strong>
+            <span class="muted small">Copy a screenshot (or a PNG from Discord), then press Ctrl+V anywhere on this page, or drag the pictures in.</span>
+            <button class="btn btn-ghost btn-sm" id="picPaste" type="button">Paste</button>
+          </div>
           <div class="admin-fields">
-            <label class="field admin-grow"><span>Screenshots</span><input type="file" id="picFiles" accept="image/*" multiple></label>
+            <label class="field admin-grow"><span>Or pick the files</span><input type="file" id="picFiles" accept="image/*" multiple></label>
             <button class="btn btn-primary" id="picRead" type="button" ${pic.shots.length && !pic.reading ? "" : "disabled"}>Read stats</button>
             ${pic.shots.length ? `<button class="btn btn-ghost" id="picClear" type="button" ${pic.reading ? "disabled" : ""}>Clear all</button>` : ""}
           </div>
@@ -7854,19 +7859,56 @@
     if (el.dataset.picTeam) pic.teams[el.dataset.picTeam] = el.value;
     if (el.dataset.picTeam || el.dataset.picScore || el.dataset.picCell || el.dataset.picName) picRefresh();
   });
-  // Ctrl+V a screenshot straight onto the page
+  // Ctrl+V a screenshot straight onto the page (anywhere but a box being typed in)
+  const picOpen = () => location.hash.startsWith("#/admin") && adminTab === "pictures";
   document.addEventListener("paste", (e) => {
-    if (!location.hash.startsWith("#/admin") || adminTab !== "pictures" || /^(INPUT|TEXTAREA)$/.test((e.target || {}).tagName || "")) return;
-    const files = [...((e.clipboardData && e.clipboardData.files) || [])];
+    const el = e.target || {};
+    if (!picOpen() || el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && el.type !== "file")) return;
+    const cd = e.clipboardData;
+    // Some apps put the picture only in the clipboard's items, not its files
+    let files = [...((cd && cd.files) || [])];
+    if (!files.length && cd) files = [...cd.items].filter((i) => i.kind === "file" && /^image\//.test(i.type)).map((i) => i.getAsFile()).filter(Boolean);
     if (!files.length) return;
     e.preventDefault();
     picAdd(files);
     renderKeepScroll();
   });
+  // Drag pictures onto the paste area
+  app.addEventListener("dragover", (e) => {
+    const zone = e.target.closest && e.target.closest("#picDrop");
+    if (!zone) return;
+    e.preventDefault();
+    zone.classList.add("over");
+  });
+  app.addEventListener("dragleave", (e) => { const zone = e.target.closest && e.target.closest("#picDrop"); if (zone) zone.classList.remove("over"); });
+  app.addEventListener("drop", (e) => {
+    if (!(e.target.closest && e.target.closest("#picDrop"))) return;
+    e.preventDefault();
+    picAdd(e.dataTransfer.files);
+    renderKeepScroll();
+  });
+  // The Paste button: read the clipboard directly (the browser may ask once for permission)
+  async function picPasteButton() {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.read) throw new Error("This browser can't paste with a button. Press Ctrl+V instead.");
+      const files = [];
+      for (const item of await navigator.clipboard.read()) {
+        const type = item.types.find((t) => /^image\//.test(t));
+        if (type) files.push(new File([await item.getType(type)], "Pasted picture", { type }));
+      }
+      if (!files.length) throw new Error("There's no picture on the clipboard. Copy a screenshot first.");
+      adminError = "";
+      picAdd(files);
+    } catch (err) {
+      adminError = err.name === "NotAllowedError" ? "The browser blocked the Paste button. Press Ctrl+V instead." : err.message;
+    }
+    renderKeepScroll();
+  }
   app.addEventListener("click", async (e) => {
     const t = e.target.closest("button");
     if (!t) return;
     if (t.id === "picRead") return picRead();
+    if (t.id === "picPaste") return picPasteButton();
     if (t.id === "picClear") { pic.shots.forEach((s) => URL.revokeObjectURL(s.url)); Object.assign(pic, { shots: [], edits: {}, teams: {}, names: {} }); return renderKeepScroll(); }
     if (t.dataset.picRemove) { const [s] = pic.shots.splice(Number(t.dataset.picRemove), 1); URL.revokeObjectURL(s.url); return renderKeepScroll(); }
     if (t.id !== "picSave") return;
