@@ -462,6 +462,19 @@ button.btn { font: inherit; font-weight: 600; cursor: pointer; }
 .admin-notes { margin: 14px 0 0; padding-left: 20px; font-size: 14px; color: var(--heading); }
 .admin-notes li + li { margin-top: 4px; }
 .admin-preview { margin-top: 14px; }
+/* Admin -> Stats Adder (Pictures) */
+.pic-shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.pic-shot { margin: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.pic-shot img { display: block; width: 100%; height: 84px; object-fit: cover; object-position: left top; }
+.pic-shot figcaption { display: flex; align-items: center; gap: 6px; padding: 6px 8px; font-size: 12.5px; }
+.pic-shot figcaption .btn { margin-left: auto; padding: 2px 9px; }
+.pic-errors { padding: 12px 16px; border: 1.5px solid #ff6b81; border-radius: 10px; background: rgba(255, 107, 129, .1); color: var(--heading); }
+.pic-errors .admin-notes { margin-top: 6px; }
+.pic-table td, .pic-table th { padding: 6px 5px; }
+.pic-table .pic-cell { width: 54px; padding: 5px 6px; font: inherit; font-size: 14px; text-align: center; color: var(--ink); background: var(--surface); border: 1.5px solid var(--edge); border-radius: 8px; }
+.pic-table .pic-name { width: 170px; padding: 5px 8px; font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1.5px solid #ff6b81; border-radius: 8px; }
+.pic-table .pic-team { min-width: 74px; padding: 5px 8px; }
+.pic-table .pic-bad { border-color: #ff6b81; background: rgba(255, 107, 129, .12); }
 .admin-actions { display: flex; gap: 10px; margin-top: 14px; }
 .admin-actions .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn-sm { padding: 6px 12px; font-size: 13px; }

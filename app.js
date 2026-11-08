@@ -3437,6 +3437,256 @@
       </section>`;
   }
 
+  // ---- Admin -> Stats Adder (Pictures): screenshots of the in-game stat boards, read right in this browser by
+  // stat-shots.js (Tesseract + the game's number font). Anything it can't read for sure is left empty, and the game
+  // can't be saved until every empty cell is typed in (or the screenshot retaken).
+  const pic = { shots: [], gameId: "", score: ["", ""], date: "", reading: "", edits: {}, teams: {}, names: {} };
+  let picLib = null;
+  const picLoad = () => (picLib = picLib || new Promise((ok, fail) => {
+    if (window.UFF_STATSHOTS) return ok();
+    const v = ((document.querySelector('script[src^="app.js"]') || {}).src || "").split("v=")[1] || "";
+    const s = document.createElement("script");
+    s.src = `stat-shots.js?v=${v}`;
+    s.onload = ok;
+    s.onerror = () => { picLib = null; fail(new Error("Couldn't load the picture reader. Check your internet and try again.")); };
+    document.head.appendChild(s);
+  }));
+  const PIC_BOARDS = [["passing", "Passing"], ["rushing", "Rushing"], ["receiving", "Receiving"], ["defense", "Defense"]];
+  function picAdd(files) {
+    [...files].filter((f) => /^image\//.test(f.type)).forEach((f) => pic.shots.push({ url: URL.createObjectURL(f), label: f.name || "Pasted picture", result: null }));
+  }
+
+  // OCR mixes up look-alike letters (l/I/1, 0/O, 5/S, 6/b, 4/A), so names are compared with those made the same
+  const picNorm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "").replace(/[il1|]/g, "l").replace(/0/g, "o").replace(/5/g, "s").replace(/6/g, "b").replace(/4/g, "a");
+  function picLev(a, b) {
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const row = [i];
+      for (let j = 1; j <= b.length; j++) row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = row;
+    }
+    return prev[b.length];
+  }
+  // The two teams' players: their rosters, then anyone who played for them this season -> Map(name -> team name)
+  function picTeamPlayers(game) {
+    const near = new Map();
+    if (!game) return near;
+    game.teams.forEach((tn) => { const t = TEAMS.find((x) => x.name === tn); if (t && ROSTERS[t.slug]) ROSTERS[t.slug].forEach((n) => near.set(n, tn)); });
+    SAVED.results.forEach((r) => {
+      const e = allGames().find(({ g }) => g.id === r.id);
+      if (!e || !Array.isArray(r.box)) return;
+      r.box.forEach((side, i) => {
+        if (!game.teams.includes(e.g.teams[i])) return;
+        Object.values(side || {}).forEach((rows) => [].concat(rows).forEach((l) => l && !near.has(l.player) && near.set(l.player, e.g.teams[i])));
+      });
+    });
+    return near;
+  }
+  // The site's name for what the reader saw: closest of the two teams' players, else an exact-ish match league-wide
+  function picResolve(raw, near, known) {
+    const n = picNorm(aliasName(raw));
+    const best = (list, tol) => {
+      let b = null;
+      list.forEach((name) => { const e = picLev(n, picNorm(name)); if (!b || e < b[1]) b = [name, e]; });
+      return b && b[1] <= tol(b[0]) ? b[0] : null;
+    };
+    const hit = best([...near.keys()], (nm) => Math.max(1, Math.floor(picNorm(nm).length * 0.25))) || best(known, (nm) => (picNorm(nm).length >= 6 ? 1 : 0));
+    return hit ? { name: hit, known: true } : { name: raw, known: false };
+  }
+
+  // Every screenshot's rows put together -> { game, players, errors, warnings, box }
+  function picBuild() {
+    const pick = allGames().find(({ g }) => g.id === pic.gameId);
+    const game = pick && pick.g;
+    const errors = [], warnings = [], players = new Map();
+    const B = window.UFF_STATSHOTS ? UFF_STATSHOTS.BOARDS : null;
+    const near = picTeamPlayers(game), known = knownPlayers();
+    if (!game) errors.push("Pick the game these stats are for.");
+    if (pic.score.some((v) => !/^\d{1,3}$/.test(String(v).trim()))) errors.push("Type both teams' final scores.");
+    const read = pic.shots.filter((s) => s.result);
+    if (!read.length) errors.push("Add the stat screenshots and press Read stats.");
+    pic.shots.forEach((s, si) => {
+      if (!s.result || !B) return;
+      s.result.notes.forEach((n) => errors.push(`Screenshot ${si + 1}: ${n}`));
+      const kind = s.result.kind;
+      s.result.rows.forEach((row) => {
+        const who = picResolve(row.name, near, known);
+        if (!who.known && row.missing.length > B[kind].cols.length / 2) {
+          warnings.push(`Screenshot ${si + 1}: skipped a row cut off by the scroll ("${esc(row.name)}"). Make sure every player shows in full on one of the screenshots.`);
+          return;
+        }
+        const key = `${kind}|${who.name.toLowerCase()}`;
+        const p = players.get(key) || { key, kind, name: who.name, known: who.known, values: {}, conflicts: new Set(), shots: [] };
+        p.shots.push(si + 1);
+        Object.entries(row.values).forEach(([f, v]) => { if (f in p.values && p.values[f] !== v) p.conflicts.add(f); else p.values[f] = v; });
+        players.set(key, p);
+      });
+    });
+    // A row the reader couldn't name, whose numbers all match a named player's row on the same board, is that player
+    // again (cut off by the scroll on one screenshot, whole on another)
+    players.forEach((p, key) => {
+      if (p.known || pic.names[key] || !Object.keys(p.values).length) return;
+      const same = [...players.values()].find((q) => q !== p && q.known && q.kind === p.kind && Object.entries(p.values).every(([f, v]) => q.values[f] === v));
+      if (same) players.delete(key);
+    });
+    players.forEach((p) => {
+      if (pic.names[p.key]) p.name = pic.names[p.key].trim() || p.name;
+      Object.entries(pic.edits[p.key] || {}).forEach(([f, v]) => {
+        if (String(v).trim() === "") return;
+        p.values[f] = Number(v);
+        p.conflicts.delete(f);
+      });
+      p.team = pic.teams[p.key] || near.get(p.name) || null;
+      if (game && p.team && !game.teams.includes(p.team)) p.team = null;
+      const cols = B[p.kind].cols;
+      p.missing = cols.filter(([, f]) => !(f in p.values) || !Number.isFinite(p.values[f])).map(([, f]) => f);
+      const label = (fs) => fs.map((f) => cols.find(([, x]) => x === f)[0]).join(", ");
+      const where = `${esc(p.name)} (${B[p.kind].title})`;
+      if (p.missing.length) errors.push(`${where}: couldn't read ${label(p.missing)}. Type ${p.missing.length === 1 ? "it" : "them"} in below or retake the screenshot.`);
+      if (p.conflicts.size) errors.push(`${where}: the screenshots show different numbers for ${label([...p.conflicts])}. Type the right one in below.`);
+      if (game && !p.team) errors.push(`${where}: pick ${esc(p.name)}'s team below.`);
+      if (!p.known && !pic.names[p.key]) warnings.push(`${esc(p.name)} isn't a player the site knows. Check the spelling below (it's what the reader saw).`);
+    });
+    // The box score: rows that are all zeros are left out (the board lists everyone in the game)
+    const box = game ? game.teams.map(() => ({})) : [];
+    if (game) players.forEach((p) => {
+      const v = p.values, side = box[game.teams.indexOf(p.team)];
+      if (!side || p.missing.length || Object.values(v).every((x) => !x)) return;
+      const fix1 = (x) => (Number(x) || 0).toFixed(1);
+      const line = p.kind === "passing" ? { player: p.name, comp: v.comp, att: v.att, yds: v.yds, td: v.td, int: v.int, rtg: fix1(v.rtg), cmpPct: fix1(v.cmpPct), avg: fix1(v.avg), lng: v.lng, sacked: 0 }
+        : p.kind === "rushing" ? { player: p.name, att: v.att, yds: v.yds, td: v.td, ypc: (v.att ? v.yds / v.att : 0).toFixed(2), fum: v.fum, plus20: v.plus20, lng: v.lng }
+        : p.kind === "receiving" ? { player: p.name, tgt: v.tgt, rec: v.rec, yds: v.yds, td: v.td, drop: v.drop, lng: v.lng }
+        : { player: p.name, tak: v.tak, tfl: v.tfl, sck: v.sck, saf: v.saf, swat: 0, int: v.int, pbu: v.pbu, pre: v.pre, td: 0, yda: v.yda, tda: v.tda };
+      (side[p.kind] = side[p.kind] || []).push(line);
+    });
+    // Catches should add up to the passer's completions (and yards to his yards, give or take a lateral)
+    if (game && !errors.length) box.forEach((side, i) => {
+      const sum = (k, f) => (side[k] || []).reduce((n, l) => n + (Number(l[f]) || 0), 0);
+      if (!side.passing && !side.receiving) return;
+      if (sum("passing", "comp") !== sum("receiving", "rec")) warnings.push(`${esc(game.teams[i])}: completions (${sum("passing", "comp")}) and catches (${sum("receiving", "rec")}) don't match. A row may be missing or misread.`);
+      else if (Math.abs(sum("passing", "yds") - sum("receiving", "yds")) > 15) warnings.push(`${esc(game.teams[i])}: passing yards (${sum("passing", "yds")}) and receiving yards (${sum("receiving", "yds")}) are far apart. A row may be missing or misread.`);
+    });
+    const kinds = new Set(read.map((s) => s.result.kind));
+    PIC_BOARDS.forEach(([k, title]) => { if (read.length && !kinds.has(k)) warnings.push(`No ${title} screenshot. That's fine if nobody had ${title.toLowerCase()} stats.`); });
+    return { game, players: [...players.values()], errors, warnings, box };
+  }
+
+  function picStatsSection() {
+    const { game, players, errors, warnings } = picBuild();
+    const B = window.UFF_STATSHOTS ? UFF_STATSHOTS.BOARDS : null;
+    const saved = game && SAVED.results.find((r) => r.id === game.id);
+    const anyRead = pic.shots.some((s) => s.result);
+    const table = ([kind, title]) => {
+      const rows = players.filter((p) => p.kind === kind);
+      if (!rows.length || !B) return "";
+      const cols = B[kind].cols;
+      return `
+        <div class="admin-subhead admin-subhead--small">${title}</div>
+        <div class="table-scroll"><table class="tp-table pic-table">
+          <thead><tr><th class="team-col">Player</th><th>Team</th>${cols.map(([h]) => `<th>${h}</th>`).join("")}</tr></thead>
+          <tbody>${rows.map((p) => `
+            <tr>
+              <td class="team-col">${p.known ? `<strong>${esc(p.name)}</strong>` : `<input class="pic-name" data-pic-name="${esc(p.key)}" value="${esc(p.name)}" title="Not a player the site knows: fix the spelling">`}<div class="muted small">screenshot ${p.shots.join(", ")}</div></td>
+              <td><select class="select pic-team ${p.team ? "" : "pic-bad"}" data-pic-team="${esc(p.key)}">
+                <option value="">Team?</option>
+                ${(game ? game.teams : []).map((tn) => `<option value="${esc(tn)}" ${p.team === tn ? "selected" : ""}>${esc((TEAMS.find((t) => t.name === tn) || {}).code || tn)}</option>`).join("")}
+              </select></td>
+              ${cols.map(([, f]) => {
+                const bad = p.missing.includes(f) || p.conflicts.has(f);
+                return `<td><input class="pic-cell ${bad ? "pic-bad" : ""}" data-pic-cell="${esc(p.key)}" data-f="${f}" inputmode="numeric" value="${f in p.values && !bad ? p.values[f] : ""}"></td>`;
+              }).join("")}
+            </tr>`).join("")}</tbody>
+        </table></div>`;
+    };
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Stats Adder (Pictures)</h2></div>
+        <div class="card admin-card">
+          <p class="muted small admin-note">Add screenshots of the end-of-game stat boards (Passing, Rushing, Receiving, Defense; scrolled screenshots of the same board are fine). Paste them with Ctrl+V or pick the files, then press <strong>Read stats</strong>. It reads them right in your browser. Anything it can't read for sure is left empty in red, and the game can't be saved until those are typed in or the screenshot is retaken.</p>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Screenshots</span><input type="file" id="picFiles" accept="image/*" multiple></label>
+            <button class="btn btn-primary" id="picRead" type="button" ${pic.shots.length && !pic.reading ? "" : "disabled"}>Read stats</button>
+            ${pic.shots.length ? `<button class="btn btn-ghost" id="picClear" type="button" ${pic.reading ? "disabled" : ""}>Clear all</button>` : ""}
+          </div>
+          <p class="muted small" id="picProgress">${esc(pic.reading)}</p>
+          ${pic.shots.length ? `<div class="pic-shots">${pic.shots.map((s, i) => `
+            <figure class="pic-shot">
+              <img src="${s.url}" alt="Screenshot ${i + 1}">
+              <figcaption><b>${i + 1}.</b> ${s.result ? (s.result.kind ? `${B[s.result.kind].title} &middot; ${s.result.rows.length} row${s.result.rows.length === 1 ? "" : "s"}` : `<span class="warn-text">not read</span>`) : esc(s.label)}
+                <button type="button" class="btn btn-ghost btn-sm" data-pic-remove="${i}" ${pic.reading ? "disabled" : ""} aria-label="Remove screenshot ${i + 1}">&times;</button></figcaption>
+            </figure>`).join("")}</div>` : ""}
+        </div>
+        <div class="card admin-card admin-list">
+          <div class="admin-subhead">The game</div>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Game</span>
+              <select id="picGame" class="select">
+                <option value="">Pick the game</option>
+                ${LEAGUE.schedule.map((wk) => `<optgroup label="Week ${wk.week}">${wk.games.map((x) => `<option value="${esc(x.id)}" ${x.id === pic.gameId ? "selected" : ""}>${esc(x.id)} &middot; ${esc(x.teams[0])} vs ${esc(x.teams[1])}${Array.isArray(x.score) ? ` (${x.score[0]}-${x.score[1]})` : ""}</option>`).join("")}</optgroup>`).join("")}
+              </select>
+            </label>
+          </div>
+          ${game ? `
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>${esc(game.teams[0])} score</span><input data-pic-score="0" value="${esc(pic.score[0])}" inputmode="numeric"></label>
+            <label class="field admin-grow"><span>${esc(game.teams[1])} score</span><input data-pic-score="1" value="${esc(pic.score[1])}" inputmode="numeric"></label>
+            <label class="field admin-grow"><span>Date</span><input id="picDate" type="date" value="${esc(pic.date || localDay())}"></label>
+          </div>
+          ${saved ? `<p class="muted small warn-text">${esc(game.id)} already has a result (${Array.isArray(saved.score) ? `${saved.score[0]}-${saved.score[1]}` : "no score"}, ${statLines(saved.box)} stat lines). Saving replaces it.</p>` : ""}` : ""}
+        </div>
+        ${anyRead ? `
+        <div class="card admin-card admin-list">
+          <div id="picCheck">${picCheck(errors, warnings)}</div>
+          ${PIC_BOARDS.map(table).join("")}
+          <div class="admin-actions">
+            <button class="btn btn-primary" id="picSave" type="button" ${errors.length || pic.reading ? "disabled" : ""}>${errors.length ? "Fix the errors above to save" : "Save game"}</button>
+          </div>
+        </div>` : ""}
+      </section>`;
+  }
+  const picCheck = (errors, warnings) => `
+    ${errors.length ? `<div class="pic-errors" role="alert"><strong>Can't save yet</strong><ul class="admin-notes">${errors.map((e) => `<li>${e}</li>`).join("")}</ul></div>` : `<p class="ok-text">Everything read. Check the numbers against the screenshots, then save.</p>`}
+    ${warnings.length ? `<ul class="admin-notes muted">${warnings.map((w) => `<li>${w}</li>`).join("")}</ul>` : ""}`;
+  // After a typed fix: just the error list, the save button and the red boxes (a full redraw would swallow a click)
+  function picRefresh() {
+    const box = document.getElementById("picCheck");
+    if (!box) return; // nothing read yet, so nothing to recheck
+    const { players, errors, warnings } = picBuild();
+    box.innerHTML = picCheck(errors, warnings);
+    const save = document.getElementById("picSave");
+    save.disabled = !!(errors.length || pic.reading);
+    save.textContent = errors.length ? "Fix the errors above to save" : "Save game";
+    const byKey = new Map(players.map((p) => [p.key, p]));
+    document.querySelectorAll("[data-pic-cell]").forEach((el) => {
+      const p = byKey.get(el.dataset.picCell);
+      el.classList.toggle("pic-bad", !!p && (p.missing.includes(el.dataset.f) || p.conflicts.has(el.dataset.f)));
+    });
+    document.querySelectorAll("[data-pic-team]").forEach((el) => el.classList.toggle("pic-bad", !el.value));
+  }
+
+  async function picRead() {
+    try {
+      pic.reading = "Loading the reader…";
+      renderKeepScroll();
+      await picLoad();
+      const show = (t) => { pic.reading = t; const el = document.getElementById("picProgress"); if (el) el.textContent = t; };
+      for (let i = 0; i < pic.shots.length; i++) {
+        const s = pic.shots[i];
+        show(`Reading screenshot ${i + 1} of ${pic.shots.length}…`);
+        try {
+          s.result = await UFF_STATSHOTS.readShot(s.url, (r, n) => show(`Reading screenshot ${i + 1} of ${pic.shots.length} (row ${r} of ${n})…`));
+        } catch (err) {
+          s.result = { kind: null, rows: [], notes: [err.message] };
+        }
+      }
+      pic.reading = "";
+    } catch (err) {
+      pic.reading = "";
+      adminError = err.message;
+    }
+    renderKeepScroll();
+  }
+
   function resultsSection() {
     return `
       <section>
@@ -3753,6 +4003,7 @@
   const ADMIN_TABS = [
     ["overview", "Overview", "stats", () => adminOverview()],
     ["stats", "Stat Adder", "scores", () => resultsSection()],
+    ["pictures", "Stats Adder (Pictures)", "image", () => picStatsSection()],
     ["scores", "Score Editor", "football", () => scoreEditorSection()],
     ["playerstats", "Player Stats", "trend", () => playerStatsAdminSection()],
     ["transactions", "Transactions", "updates", () => transactionsSection()],
@@ -7587,6 +7838,49 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
   // Admin -> Schedule: keep what's typed, and redraw the preview once you leave the box
   app.addEventListener("input", (e) => { if (e.target.id === "schedJson") schedDraft = e.target.value; });
+
+  // Admin -> Stats Adder (Pictures): typing keeps the draft; leaving a box redraws the errors
+  app.addEventListener("input", (e) => {
+    const el = e.target;
+    if (el.dataset.picScore) pic.score[Number(el.dataset.picScore)] = el.value;
+    else if (el.id === "picDate") pic.date = el.value;
+    else if (el.dataset.picCell) (pic.edits[el.dataset.picCell] = pic.edits[el.dataset.picCell] || {})[el.dataset.f] = el.value;
+    else if (el.dataset.picName) pic.names[el.dataset.picName] = el.value;
+  });
+  app.addEventListener("change", (e) => {
+    const el = e.target;
+    if (el.id === "picFiles") { picAdd(el.files); return renderKeepScroll(); }
+    if (el.id === "picGame") { pic.gameId = el.value; return renderKeepScroll(); }
+    if (el.dataset.picTeam) pic.teams[el.dataset.picTeam] = el.value;
+    if (el.dataset.picTeam || el.dataset.picScore || el.dataset.picCell || el.dataset.picName) picRefresh();
+  });
+  // Ctrl+V a screenshot straight onto the page
+  document.addEventListener("paste", (e) => {
+    if (!location.hash.startsWith("#/admin") || adminTab !== "pictures" || /^(INPUT|TEXTAREA)$/.test((e.target || {}).tagName || "")) return;
+    const files = [...((e.clipboardData && e.clipboardData.files) || [])];
+    if (!files.length) return;
+    e.preventDefault();
+    picAdd(files);
+    renderKeepScroll();
+  });
+  app.addEventListener("click", async (e) => {
+    const t = e.target.closest("button");
+    if (!t) return;
+    if (t.id === "picRead") return picRead();
+    if (t.id === "picClear") { pic.shots.forEach((s) => URL.revokeObjectURL(s.url)); Object.assign(pic, { shots: [], edits: {}, teams: {}, names: {} }); return renderKeepScroll(); }
+    if (t.dataset.picRemove) { const [s] = pic.shots.splice(Number(t.dataset.picRemove), 1); URL.revokeObjectURL(s.url); return renderKeepScroll(); }
+    if (t.id !== "picSave") return;
+    const { game, errors, box } = picBuild();
+    if (errors.length) return;
+    const score = pic.score.map((v) => Number(String(v).trim()));
+    const saved = SAVED.results.find((r) => r.id === game.id);
+    if (saved && !confirm(`${game.id} already has a result. Replace it with these stats and ${score[0]}-${score[1]}?`)) return;
+    const result = { id: game.id, score, date: pic.date || localDay(), box };
+    await adminSave(t, { action: "saveResult", result, label: `${resultLabel(game, score)} (Stats Adder Pictures)` }, () => {
+      pic.shots.forEach((s) => URL.revokeObjectURL(s.url));
+      reloadWithFlash(`Saved ${game.id}: ${game.teams[0]} ${score[0]}-${score[1]} ${game.teams[1]} with the stats from the screenshots. Everyone sees it now.`);
+    });
+  });
   app.addEventListener("change", (e) => { if (e.target.id === "schedJson") renderKeepScroll(); });
 
   app.addEventListener("submit", async (e) => {
