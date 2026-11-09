@@ -343,10 +343,19 @@ function applySchedule(env, data, sched, by) {
   const sent = new Set(weeks.map((w) => w.week));
   const matchups = () => new Map(data.schedule.flatMap((w) => w.games).map((g) => [g.id, g.teams.map(botTeamKey).sort().join("|")]));
   const before = matchups();
+  const prev = data.schedule;
   data.schedule = [...(sched.replace ? [] : data.schedule.filter((w) => !sent.has(w.week))), ...weeks].sort((a, b) => a.week - b.week);
-  // A game id that's now a different matchup (or gone) drops the old game's score, stats, stream and replay link
   const after = matchups();
   const changed = (id) => before.has(id) && after.get(id) !== before.get(id);
+  // A game that already has a final can't be moved, re-paired or dropped by a schedule update (an old schedule sent
+  // by the bot on 2026-11-08 wiped 19 played games that way): the whole update is turned away and nothing changes
+  const played = data.results.filter((r) => Array.isArray(r.score) && changed(r.id)).map((r) => r.id);
+  if (played.length) {
+    data.schedule = prev;
+    return json({ error: `Not saved: this schedule changes or removes ${played.length} game${played.length === 1 ? "" : "s"} that already ${played.length === 1 ? "has" : "have"} a final score (${played.join(", ")}). Played games can't be changed by a schedule update. Keep their matchups as they are, or remove the result first.`, played }, 409);
+  }
+  // A game id that's now a different matchup (or gone) drops the old game's stream and replay link (and any
+  // stats waiting for a score)
   data.results = data.results.filter((r) => !changed(r.id));
   data.streams = data.streams.filter((x) => !changed(x.gameId));
   data.vods.forEach((v) => { if (changed(v.gameId)) delete v.gameId; });
