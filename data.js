@@ -161,7 +161,7 @@ const LEAGUE = {
     // "knqq": "DE". A listed defender only shows at their listed spot; one not listed counts as DE when most
     // of their points came from sacks, TFLs, safeties and pressures, otherwise DB.
     // A player who plays both sides can have two: "breakxu": ["TE", "LB"].
-    positions: { "ast1": "LB" },
+    positions: { "ast1": "LB", "zqju1": "DE" },
     // `allTime` = how the All-Time tab looks (same layout as the old stat sheets). Its rows come from the
     // stats-alltime-*.js sheets plus this season's box scores; `fpts` scores this season's games the way the sheets did.
     categories: [
