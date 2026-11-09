@@ -1874,7 +1874,7 @@
     return cur;
   }
   // Capital letters never matter: "N4W" and "n4w" are one player. They're always shown with one spelling,
-  // taken from (in order) the Legacy list, rosters, head coaches, then the All-Time stat sheets.
+  // taken from (in order) data.js renames, the Legacy list, rosters, head coaches, then the All-Time stat sheets.
   let nameSpelling = null;
   function preferredSpellings() {
     if (nameSpelling) return nameSpelling;
@@ -1884,6 +1884,7 @@
       const a = rawAlias(n);
       if (!nameSpelling.has(a.toLowerCase())) nameSpelling.set(a.toLowerCase(), a);
     };
+    Object.values(LEAGUE.renames || {}).forEach(add); // a rename is spelled the way it was typed
     LEAGUE.legacy.players.forEach((p) => add(p.name));
     (LEAGUE.updates || []).forEach((u) => add(u.player));
     LEAGUE.conferences.forEach((c) => c.divisions.forEach((d) => d.teams.forEach((t) => add(t.coach))));

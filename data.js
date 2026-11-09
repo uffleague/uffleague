@@ -161,7 +161,7 @@ const LEAGUE = {
     // "knqq": "DE". A listed defender only shows at their listed spot; one not listed counts as DE when most
     // of their points came from sacks, TFLs, safeties and pressures, otherwise DB.
     // A player who plays both sides can have two: "breakxu": ["TE", "LB"].
-    positions: { "ast1": "LB", "zqju1": "DE" },
+    positions: { "ast1": "LB", "YoungvTee": "LB" },
     // `allTime` = how the All-Time tab looks (same layout as the old stat sheets). Its rows come from the
     // stats-alltime-*.js sheets plus this season's box scores; `fpts` scores this season's games the way the sheets did.
     categories: [
@@ -188,7 +188,7 @@ const LEAGUE = {
   },
   // Same person, shown under the second name. Applied after the Discord bot's renames (like Admin -> Players renames),
   // so a bot roster sync under the first name still lands on the second.
-  renames: { "bloodhownd": "i56gwe", "vcoostwash": "nichelarpers", "Marauderpress": "rcbkailer", "w8lk": "cartiergiane" },
+  renames: { "bloodhownd": "i56gwe", "vcoostwash": "nichelarpers", "Marauderpress": "rcbkailer", "w8lk": "cartiergiane", "zqju1": "YoungvTee" },
   // Old Discord nicknames -> the name used on the site. Applied when pasting stats or transactions.
   // A player's site name is the Roblox account on their Bloxlink (from the ZevoraV2 bot) where the bot has one.
   aliases: {
