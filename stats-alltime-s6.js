@@ -7,7 +7,7 @@ ALL_TIME_SHEETS.push({
   teams: {},
   // Names that are someone else, or misspelled, on this sheet only
   rename: {
-    extramissical: "fraeology", "nichel arpers": "nichelarpers", LightExe: "LighttExe", YoungyTee: "youngvtee",
+    "nichel arpers": "nichelarpers", LightExe: "LighttExe", YoungyTee: "youngvtee",
     Anc13ntDxrkk: "Anc13ntDxrk", Jadnations: "Jadnlations", laddmconkey: "laddmcconkey", kjgg: "kjgq", mirorless22: "mirrorless22"
   },
   tables: {
