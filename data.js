@@ -69,6 +69,8 @@ const LEAGUE = {
     ],
     // A "Playoff cut (prediction)" line under this many teams in Power Rankings (0 = no line)
     playoffCut: 14,
+    // Teams that can't make the playoffs anymore (name or code): a "Playoff Ineligible" tag shows next to their name
+    playoffOut: ["Plymouth Huskies", "Rapid City Rams"],
     social: { discord: "", youtube: "", x: "", tiktok: "" },
     // VOD links to keep off the home page Featured Media (they stay on the VODs page)
     hideMedia: ["twitch.tv/videos/2900293561"]

@@ -375,7 +375,11 @@
   // What the Updates page and home panels list: transactions plus a "Disbanded" row per disbanded team
   const FEED = UPDATES.concat(TEAMS.filter((t) => t.disbanded).map((t) =>
     ({ ...t.disbanded, type: "disband", team: t.name, t, i: Infinity }))).sort(byTime);
-  const disbandedTag = (t) => (t && t.disbanded ? ` <span class="pill pill-disbanded">Disbanded</span>` : "");
+  // Teams listed in home.playoffOut (by name or code) get a "Playoff Ineligible" tag wherever the Disbanded tag can show
+  const playoffOut = (t) => !!t && !t.disbanded && ((LEAGUE.home || {}).playoffOut || [])
+    .some((n) => [t.name, t.code].some((x) => x && x.toLowerCase() === String(n).toLowerCase()));
+  const disbandedTag = (t) => (t && t.disbanded ? ` <span class="pill pill-disbanded">Disbanded</span>`
+    : playoffOut(t) ? ` <span class="pill pill-disbanded pill-out">Playoff Ineligible</span>` : "");
 
   // Roster syncs from the Discord bot: that team's players and staff at that moment (not shown on Updates)
   // Each sync is played back in two steps: every team's players first, then every team's staff, so in one sync
