@@ -145,6 +145,10 @@
         if (!id && !admin && other && was.toLowerCase() !== to.toLowerCase()) return;
         ALIASES.delete(to.toLowerCase()); // the new name is somebody's current name, not an old one
         ALIASES.set(from.toLowerCase(), to);
+        // Two people the bot knows can share a Discord display name ("hey"): a rename that only matched the display
+        // name doesn't fold one of them into the other (coaserh became "hey", which was already llIIIlllIlIIIIll's)
+        const twoPeople = discordOf.has(was.toLowerCase()) && discordOf.has(to.toLowerCase());
+        if (!id && !admin && twoPeople && was.toLowerCase() !== from.toLowerCase()) return;
         if (was.toLowerCase() !== to.toLowerCase()) ALIASES.set(was.toLowerCase(), to);
       });
     });
