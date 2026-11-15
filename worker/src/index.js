@@ -17,6 +17,7 @@ const KEY = "data";
 const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: null, bowls: {}, teams: {}, statEdits: {}, vods: [], allFlag: {}, schedule: [],
   renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, primetime: null, activity: [],
   fantasy: null, // fantasy: points per stat set on Admin -> Fantasy Points (null = the site's defaults)
+  suspensions: [], // suspensions: Admin -> Suspensions ({ id, player, discord, games, reason, bail, served: [...], cleared })
   btRatings: {} }; // btRatings: Build a Team overalls set on Admin -> Build a Team ({ name: { QB, WR, TE } }, null = left out)
 const RENAMES_MAX = 3000;
 const PEOPLE_MAX = 3000;
@@ -1437,6 +1438,49 @@ export default {
       data.renames = data.renames.filter((r) => r !== rename);
       data.rosterMoves = data.rosterMoves.filter((m) => m !== move);
       log = rename ? `Undid renaming ${rename.from} to ${rename.to}` : `Undid ${move.team ? `putting ${move.player} on the ${move.team}` : `making ${move.player} a free agent`}`;
+    } else if (body.action === "addSuspension") {
+      // Admin -> Suspensions: a player out for some games (the Suspensions page shows how many are left)
+      const player = str(body.player, 60);
+      const games = Math.round(Number(body.games));
+      if (!player) return json({ error: "Pick a player." }, 400);
+      if (!(games >= 1 && games <= 999)) return json({ error: "Games must be 1 or more." }, 400);
+      const s = { id: crypto.randomUUID(), player, discord: str(body.discord, 120), games, reason: str(body.reason, 120),
+        bail: str(String(body.bail ?? ""), 20).replace(/\$/g, ""), served: [], cleared: false, at: Date.now(),
+        // The games already final when it was added: every game final after that takes games off (the site counts them)
+        before: [].concat(body.before || []).map((id) => str(id, 20)).filter(Boolean).slice(0, 1000) };
+      data.suspensions = [s, ...data.suspensions].slice(0, 500);
+      log = `Suspended ${player} ${games} game${games === 1 ? "" : "s"}${s.reason ? ` (${s.reason})` : ""}`;
+    } else if (body.action === "serveSuspension") {
+      // Games taken off a suspension: games sat out, or community service (stream = 2, referee = 2, media post = 1)
+      const s = data.suspensions.find((x) => x.id === body.id);
+      if (!s) return json({ error: "That suspension is gone. Reload and try again." }, 400);
+      const kinds = { game: 1, stream: 2, ref: 2, media: 1 };
+      const kind = Object.hasOwn(kinds, body.kind) ? body.kind : null;
+      if (!kind) return json({ error: "Pick what they did." }, 400);
+      const times = Math.round(Number(body.times) || 1);
+      if (!(times >= 1 && times <= 99)) return json({ error: "How many times must be 1 or more." }, 400);
+      s.served = [...(s.served || []), { id: crypto.randomUUID(), kind, times, games: kinds[kind] * times, note: str(body.note, 80), at: Date.now() }];
+      const n = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+      const did = { game: `sat out ${n(times, "game")}`, stream: `streamed ${n(times, "game")}`, ref: `refereed ${n(times, "game")}`, media: `made ${n(times, "media post")}` }[kind];
+      log = `${s.player} ${did} (${n(kinds[kind] * times, "game")} off their suspension)`;
+    } else if (body.action === "undoServe") {
+      const s = data.suspensions.find((x) => x.id === body.id);
+      const row = s && (s.served || []).find((x) => x.id === body.serveId);
+      if (!row) return json({ error: "That's already gone." }, 400);
+      s.served = s.served.filter((x) => x !== row);
+      log = `Took back ${row.games} game${row.games === 1 ? "" : "s"} off ${s.player}'s suspension`;
+    } else if (body.action === "clearSuspension") {
+      // Cleared = done early (bail paid, appeal); clear: false puts it back
+      const s = data.suspensions.find((x) => x.id === body.id);
+      if (!s) return json({ error: "That suspension is gone. Reload and try again." }, 400);
+      s.cleared = body.clear !== false;
+      s.clearedAt = s.cleared ? Date.now() : undefined;
+      log = s.cleared ? `Cleared ${s.player}'s suspension` : `Put ${s.player}'s suspension back`;
+    } else if (body.action === "removeSuspension") {
+      const s = data.suspensions.find((x) => x.id === body.id);
+      if (!s) return json({ error: "That's already gone." }, 400);
+      data.suspensions = data.suspensions.filter((x) => x !== s);
+      log = `Deleted ${s.player}'s suspension`;
     } else {
       return json({ error: "Unknown action" }, 400);
     }

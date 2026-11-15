@@ -46,6 +46,7 @@
     { path: "gfx", label: "GFX", icon: "image" },
     { path: "stats", label: "Stats", icon: "stats", top: true },
     { path: "updates", label: "Updates", icon: "updates" },
+    { path: "suspensions", label: "Suspensions", icon: "shield" },
     { path: "compare", label: "Compare", icon: "compare" },
     { path: "awards", label: "Awards", icon: "awards" },
     { path: "allflag", label: "All-Flag", icon: "star" },
@@ -1272,7 +1273,7 @@
 
     const rosterRows = (list) => list.length
       ? `<div class="tp-rows">${list.map((p, i) => `
-          <div class="tp-row"><span class="tp-num">${i + 1}</span><span class="tp-name">${playerLink(p)}${staffTag(p)}${offRosterTag(p)}</span><span class="tp-pos">${posOf(p)}</span></div>`).join("")}</div>`
+          <div class="tp-row"><span class="tp-num">${i + 1}</span><span class="tp-name">${playerLink(p)}${staffTag(p)}${offRosterTag(p)}${suspendedTag(p, true)}</span><span class="tp-pos">${posOf(p)}</span></div>`).join("")}</div>`
       : blank("teams", "", t.disbanded ? "Team disbanded. Everyone on this roster is a free agent now." : "Players show up here once they sign.");
 
     const nextGame = () => {
@@ -1384,7 +1385,7 @@
               <table class="tp-table tp-table--roster">
                 <thead><tr><th>#</th><th class="team-col">Player</th><th>Pos</th><th>GP</th><th class="team-col">Season ${LEAGUE.season}</th></tr></thead>
                 <tbody>${players.map((p, i) => `
-                  <tr><td>${i + 1}</td><td class="team-col"><strong>${playerLink(p)}</strong>${staffTag(p)}${offRosterTag(p)}${manualTag(p)}</td><td>${posOf(p)}</td><td>${gp(p)}</td>
+                  <tr><td>${i + 1}</td><td class="team-col"><strong>${playerLink(p)}</strong>${staffTag(p)}${offRosterTag(p)}${suspendedTag(p, true)}${manualTag(p)}</td><td>${posOf(p)}</td><td>${gp(p)}</td>
                     <td class="team-col muted small">${seasonLine(p) || "&ndash;"}</td></tr>`).join("")}
                 </tbody>
               </table>
@@ -1603,7 +1604,7 @@
         <div class="team-head">
           ${playerArt(name)}
           <div>
-            <h1 class="player-title">${name}${t && t.logo ? `<a href="#/teams/${t.slug}" title="${esc(t.name)}">${teamLogo(t, "lg")}</a>` : ""}
+            <h1 class="player-title">${name}${t && t.logo ? `<a href="#/teams/${t.slug}" title="${esc(t.name)}">${teamLogo(t, "lg")}</a>` : ""}${suspendedTag(name)}
               ${leg ? `<span class="legacy-rank-badge" title="Legacy ranking">${icon("legacy")}Legacy #${leg.rank} &middot; ${leg.score} pts</span>` : ""}
               ${leg && leg.hof ? hofBadge : leg && leg.tier ? tierBadge(leg.tier) : ""}
             </h1>
@@ -1957,7 +1958,7 @@
               ${rows.map((r) => `
                 <tr>
                   <td class="rank">${r.rank}</td>
-                  <td class="team-col"><strong class="stat-player">${playerLink(r.player)}</strong></td>
+                  <td class="team-col"><strong class="stat-player">${playerLink(r.player)}</strong>${statsScope === "season" ? suspendedTag(r.player, true) : ""}</td>
                   <td class="team-col">${r.t
                     ? `<a href="#/teams/${r.t.slug}" class="team-cell">${teamLogo(r.t)}<span>${r.team}</span></a>`
                     : `<span class="team-cell"><img class="team-logo" src="${LEAGUE.brandLogo}" alt=""><span>UFF</span></span>`}</td>
@@ -4029,6 +4030,7 @@
     ["primetime", "Primetime", "star", () => primetimeAdminSection()],
     ["streams", "Live Streams", "live", () => streamsAdminSection()],
     ["vods", "VODs", "play", () => vodsAdminSection()],
+    ["suspensions", "Suspensions", "shield", () => suspensionsAdminSection()],
     ["playoffs", "Playoffs", "playoff", () => playoffsAdminSection()],
     ["bowls", "Bowl History", "bowl", () => bowlsAdminSection()],
     ["allflag", "All-Flag", "star", () => allFlagAdminSection()],
@@ -6946,6 +6948,128 @@
       </div>`;
   }
 
+  // ---- Suspensions ----
+  // Community service takes games off: streaming a game = 2, refereeing a game = 2, a media post = 1 (sitting out a game = 1)
+  const SUSP_KINDS = [["game", "Sat out a game (not counted yet)", 1], ["stream", "Streamed a game", 2], ["ref", "Refereed a game", 2], ["media", "Media post", 1]];
+  // Games come off by themselves too: on a team, 1 for every game that team finishes after the suspension starts;
+  // a free agent (on no roster), 2 for every series (week) that finishes after it starts. "After" = not already final
+  // when it was added (s.before is those game ids; an older entry without it goes by the day it was added).
+  const finalIds = () => allGames().filter(({ g }) => Array.isArray(g.score)).map(({ g }) => g.id);
+  function suspAuto(s) {
+    const before = Array.isArray(s.before) ? new Set(s.before) : null;
+    const day = new Date(s.at || 0).toLocaleDateString("en-CA");
+    const isNew = (g) => Array.isArray(g.score) && (before ? !before.has(g.id) : String(g.date || "") > day);
+    const key = aliasName(s.player).toLowerCase();
+    const slugOn = Object.keys(ROSTERS).find((k) => ROSTERS[k].has(key));
+    const t = slugOn && TEAMS.find((x) => x.slug === slugOn);
+    if (t) {
+      const games = allGames().filter(({ g }) => g.teams.includes(t.name) && isNew(g));
+      return { games: games.length, text: games.length ? `${t.name} played ${games.length} game${games.length === 1 ? "" : "s"}` : "", team: t };
+    }
+    const weeks = LEAGUE.schedule.filter((wk) => wk.games.length && wk.games.every((g) => Array.isArray(g.score)) && wk.games.some(isNew));
+    return { games: weeks.length * 2, text: weeks.length ? `Free agent: ${weeks.length} series passed (Week ${weeks.map((w) => w.week).join(", ")})` : "", team: null };
+  }
+  const suspServed = (s) => (s.served || []).reduce((n, x) => n + (x.games || 0), 0) + suspAuto(s).games;
+  const suspLeft = (s) => (s.cleared ? 0 : Math.max(0, s.games - suspServed(s)));
+  const suspActive = (s) => suspLeft(s) > 0;
+  // The line to paste in Discord, e.g. "@Sigma (@goodnoob9870)® - suspended 16 doxxing bail 25$" (games still left)
+  const suspText = (s) => {
+    const who = s.discord || `@${s.player}`;
+    if (!suspActive(s)) return `${who} - suspension ${s.cleared ? "cleared" : "served"}`;
+    return [`${who} - suspended ${suspLeft(s)}`, s.reason, s.bail ? `bail ${s.bail}$` : ""].filter(Boolean).join(" ");
+  };
+  const suspServedText = (x) => {
+    const n = (c, w) => `${c} ${w}${c === 1 ? "" : "s"}`;
+    const did = { game: `Sat out ${n(x.times, "game")}`, stream: `Streamed ${n(x.times, "game")}`, ref: `Refereed ${n(x.times, "game")}`, media: n(x.times, "media post") }[x.kind] || x.kind;
+    return `${did} &middot; -${x.games}${x.note ? ` &middot; ${esc(x.note)}` : ""}`;
+  };
+  // A red Suspended tag next to the name on a suspended player's page
+  const suspendedTag = (name, small) => {
+    const s = (SAVED.suspensions || []).find((x) => suspActive(x) && aliasName(x.player).toLowerCase() === aliasName(name).toLowerCase());
+    const left = s ? suspLeft(s) : 0;
+    if (!s) return "";
+    const games = `${left} game${left === 1 ? "" : "s"} left`;
+    return small ? ` <a class="pill pill-suspended pill-suspended--sm" href="#/suspensions" title="Suspended, ${games}${s.reason ? ` (${esc(s.reason)})` : ""}">Suspended</a>`
+      : `<a class="pill pill-suspended" href="#/suspensions" title="${esc(s.reason || "Suspended")}">Suspended &middot; ${games}</a>`;
+  };
+  const suspCopyBtn = (s) => `<button type="button" class="btn btn-ghost btn-sm" data-susp-copy="${esc(s.id)}">Copy</button>`;
+
+  function suspCard(s, adminView) {
+    const left = suspLeft(s);
+    const status = s.cleared ? `<span class="pill">Cleared</span>` : left ? `<span class="pill pill-disbanded pill-out">${left} game${left === 1 ? "" : "s"} left</span>` : `<span class="pill">Served</span>`;
+    return `
+      <div class="card susp-card">
+        <div class="susp-top">
+          <div>
+            <div class="susp-name">${playerLink(s.player)} ${status}</div>
+            <div class="muted small">${[`Suspended ${s.games} game${s.games === 1 ? "" : "s"}`, s.reason && esc(s.reason), s.bail && `Bail ${esc(s.bail)}$`,
+              s.at && fmtDate(new Date(s.at).toLocaleDateString("en-CA"))].filter(Boolean).join(" &middot; ")}</div>
+          </div>
+        </div>
+        ${(() => { const a = suspAuto(s); return a.games ? `<div class="susp-served"><div class="susp-served-row"><span class="muted small">${esc(a.text)} &middot; -${a.games}</span></div></div>` : ""; })()}
+        ${(s.served || []).length ? `<div class="susp-served">${s.served.map((x) => `
+          <div class="susp-served-row"><span class="muted small">${suspServedText(x)}</span>${adminView
+            ? `<button type="button" class="btn btn-ghost btn-sm" data-susp-undo="${esc(s.id)}" data-serve-id="${esc(x.id)}">Undo</button>` : ""}</div>`).join("")}</div>` : ""}
+        ${adminView && suspActive(s) ? `
+          <form class="admin-fields susp-serve-form" data-id="${esc(s.id)}" autocomplete="off">
+            <label class="field"><span>Also took games off for</span><select name="kind" class="select">${SUSP_KINDS.map(([k, label, g]) => `<option value="${k}">${label} (-${g})</option>`).join("")}</select></label>
+            <label class="field susp-times"><span>How many</span><input name="times" type="number" min="1" max="99" value="1"></label>
+            <label class="field admin-grow"><span>Note (optional)</span><input name="note" maxlength="80" placeholder="W8-3 stream"></label>
+            <button class="btn btn-primary" type="submit">Take off</button>
+          </form>` : ""}
+        <div class="susp-copy"><code>${esc(suspText(s))}</code>${suspCopyBtn(s)}</div>
+        ${adminView ? `<div class="admin-actions">
+          ${s.cleared ? `<button type="button" class="btn btn-ghost btn-sm" data-susp-clear="${esc(s.id)}" data-clear="0">Put back</button>`
+            : suspActive(s) ? `<button type="button" class="btn btn-ghost btn-sm" data-susp-clear="${esc(s.id)}" data-clear="1">Clear (done early)</button>` : ""}
+          <button type="button" class="btn btn-ghost btn-sm" data-susp-del="${esc(s.id)}">Delete</button>
+        </div>` : ""}
+      </div>`;
+  }
+
+  function suspensionsPage() {
+    const list = SAVED.suspensions || [];
+    const active = list.filter(suspActive);
+    const done = list.filter((s) => !suspActive(s));
+    return `
+      <div class="wrap">
+        ${pageHead("Suspensions", "Who's suspended and how many games they have left. Each game their team plays takes 1 off (a free agent: 2 for each series that passes). Community service takes games off too: streaming a game −2, refereeing a game −2, a media post −1.")}
+        ${active.length ? `
+          <div class="section-head section-head--left"><h2>Suspended (${active.length})</h2>
+            <button type="button" class="btn btn-ghost btn-sm" data-susp-copy-all="1">Copy all</button></div>
+          <div class="susp-grid">${active.map((s) => suspCard(s, false)).join("")}</div>` : empty("No one is suspended", "Suspensions will show up here.")}
+        ${done.length ? `
+          <div class="section-head section-head--left"><h2>Served or cleared</h2></div>
+          <div class="susp-grid">${done.map((s) => suspCard(s, false)).join("")}</div>` : ""}
+      </div>`;
+  }
+
+  function suspensionsAdminSection() {
+    const list = SAVED.suspensions || [];
+    const active = list.filter(suspActive);
+    const done = list.filter((s) => !suspActive(s));
+    return `
+      <section>
+        <div class="section-head section-head--left"><h2>Suspensions</h2></div>
+        <form class="card admin-card" id="suspForm" autocomplete="off">
+          <p class="muted small admin-note">Games come off by themselves: <strong>1 for every game their team plays</strong>, or <strong>2 for every series that passes</strong> if they're a free agent (counting from when the suspension is added). Community service takes more off: <strong>streaming a game = 2</strong>, <strong>refereeing a game = 2</strong>, <strong>a media post = 1</strong>. Each one has a line to copy and paste, like <code>@Sigma (@goodnoob9870)® - suspended 16 doxxing bail 25$</code>. It always shows the games still left.</p>
+          <div class="admin-fields">
+            <label class="field admin-grow"><span>Player</span><input name="player" list="playerNames" required></label>
+            <label class="field admin-grow"><span>Discord (as it shows in the copy line)</span><input name="discord" maxlength="120" placeholder="@Sigma (@goodnoob9870)®"></label>
+          </div>
+          <div class="admin-fields">
+            <label class="field susp-times"><span>Games</span><input name="games" type="number" min="1" max="999" required></label>
+            <label class="field admin-grow"><span>Reason</span><input name="reason" maxlength="120" placeholder="doxxing"></label>
+            <label class="field susp-times"><span>Bail ($)</span><input name="bail" maxlength="20" placeholder="25"></label>
+            <button class="btn btn-primary" type="submit">Add suspension</button>
+          </div>
+          <datalist id="playerNames">${knownPlayers().map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
+        </form>
+        <div class="admin-subhead">Suspended (${active.length})${active.length ? ` <button type="button" class="btn btn-ghost btn-sm" data-susp-copy-all="1">Copy all</button>` : ""}</div>
+        ${active.length ? `<div class="susp-grid">${active.map((s) => suspCard(s, true)).join("")}</div>` : `<p class="muted small">No one is suspended.</p>`}
+        ${done.length ? `<div class="admin-subhead">Served or cleared (${done.length})</div><div class="susp-grid">${done.map((s) => suspCard(s, true)).join("")}</div>` : ""}
+      </section>`;
+  }
+
   let poDraft = null;
   const newGame = () => ({ a: "", b: "", sa: "", sb: "", seedA: "", seedB: "", adv: "", fromA: null, fromB: null });
   const emptyBracket = () => ({ title: `Season ${LEAGUE.season} Playoffs`, logo: (LEAGUE.bowlLogos || {})[LEAGUE.season] || "", rounds: [] });
@@ -7063,7 +7187,8 @@
     setPosition: "Positions", addStream: "Live stream", removeStream: "Live stream", savePlayoffs: "Playoffs", saveBowls: "Bowl history", saveSchedule: "Schedule", renamePlayers: "Player names", syncRosters: "Rosters", editPlayer: "Players", undoPlayerEdit: "Players", giveAward: "Honors", giveRecord: "Honors", undoHonor: "Honors",
     deadlines: "Deadlines", setDeadline: "Deadlines", recalcDeadlines: "Deadlines", resetDeadline: "Deadlines",
     primetime: "Primetime", ptSettings: "Primetime", ptStar: "Primetime", ptLabel: "Primetime", ptReset: "Primetime",
-    saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", editGameLine: "Player stats", addVod: "VODs", removeVod: "VODs"
+    saveTeam: "Teams", removeTeam: "Teams", setStats: "Player stats", editGameLine: "Player stats", addVod: "VODs", removeVod: "VODs",
+    addSuspension: "Suspensions", serveSuspension: "Suspensions", undoServe: "Suspensions", clearSuspension: "Suspensions", removeSuspension: "Suspensions"
   };
   function activitySection(limit = 100) {
     return `
@@ -7677,6 +7802,7 @@
     rewards: rewardsPage,
     "uff-admin": uffAdminPage,
     vods: vodsPage,
+    suspensions: suspensionsPage,
     gfx: gfxPage,
     build: buildPage,
     bowls: bowlsPage,
@@ -7936,6 +8062,25 @@
 
   app.addEventListener("submit", async (e) => {
     const id = e.target.id;
+    if (id === "suspForm" || e.target.classList.contains("susp-serve-form")) {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const btn = e.target.querySelector("button[type=submit]");
+      if (id === "suspForm") {
+        const typed = String(form.get("player") || "").trim();
+        const player = knownPlayers().find((n) => n.toLowerCase() === aliasName(typed).toLowerCase()) || aliasName(typed);
+        return adminSave(btn, { action: "addSuspension", player, before: finalIds(), discord: String(form.get("discord") || "").trim(), games: Number(form.get("games")),
+          reason: String(form.get("reason") || "").trim(), bail: String(form.get("bail") || "").trim() }, (res) => {
+          SAVED.suspensions = res.suspensions;
+          adminFlash = `Suspended ${esc(player)}. It's on the Suspensions page now.`;
+        });
+      }
+      return adminSave(btn, { action: "serveSuspension", id: e.target.dataset.id, kind: String(form.get("kind")), times: Number(form.get("times")) || 1,
+        note: String(form.get("note") || "").trim() }, (res) => {
+        SAVED.suspensions = res.suspensions;
+        adminFlash = "Took the games off. Everyone sees it now.";
+      });
+    }
     // Admin -> Primetime: the settings, or a primetime game's label
     if (id === "ptSettings" || e.target.classList.contains("pt-label-form")) {
       e.preventDefault();
@@ -8250,6 +8395,35 @@
       return adminCall({ action: "undoPlayerEdit", id: t.dataset.undoPlayerEdit })
         .then(() => reloadWithFlash("Undone. Everyone sees it now."))
         .catch((err) => { adminError = err.message; render(); });
+    }
+    if (t.dataset.suspCopy || t.dataset.suspCopyAll) {
+      const list = SAVED.suspensions || [];
+      const text = t.dataset.suspCopyAll ? list.filter(suspActive).map(suspText).join("\n") : suspText(list.find((x) => x.id === t.dataset.suspCopy) || {});
+      const done = () => { const was = t.textContent; t.textContent = "Copied!"; setTimeout(() => (t.textContent = was), 1500); };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, () => prompt("Copy this:", text));
+      else prompt("Copy this:", text);
+      return;
+    }
+    if (t.dataset.suspClear) {
+      const clear = t.dataset.clear === "1";
+      return adminSave(t, { action: "clearSuspension", id: t.dataset.suspClear, clear }, (res) => {
+        SAVED.suspensions = res.suspensions;
+        adminFlash = clear ? "Cleared the suspension." : "Put the suspension back.";
+      });
+    }
+    if (t.dataset.suspUndo) {
+      return adminSave(t, { action: "undoServe", id: t.dataset.suspUndo, serveId: t.dataset.serveId }, (res) => {
+        SAVED.suspensions = res.suspensions;
+        adminFlash = "Put those games back on.";
+      });
+    }
+    if (t.dataset.suspDel) {
+      const gone = (SAVED.suspensions || []).find((x) => x.id === t.dataset.suspDel);
+      if (!confirm(`Delete ${gone ? gone.player : "this"}'s suspension for good?`)) return;
+      return adminSave(t, { action: "removeSuspension", id: t.dataset.suspDel }, (res) => {
+        SAVED.suspensions = res.suspensions;
+        adminFlash = "Deleted the suspension.";
+      });
     }
     if (t.dataset.delVod) {
       return adminSave(t, { action: "removeVod", id: t.dataset.delVod }, (res) => {
