@@ -439,7 +439,7 @@ const LEAGUE = {
       { label: "Second Team All Flag", value: 8, codes: ["SECOND_TEAM"] }
     ],
     // Hall of Fame inductees (chosen, not points-based). Names must match players below.
-    hallOfFame: ["dictator 10", "lord 9"],
+    hallOfFame: ["dictator 10", "lord 9", "n4w"],
     tiers: [
       { name: "Ultra", min: 1600, color: "ultra" },
       { name: "Legend", min: 1200, color: "legend" },
