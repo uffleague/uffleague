@@ -432,7 +432,7 @@ const LEAGUE = {
     // Set to true to show the player rankings on the site.
     showPlayers: true,
     points: [
-      { label: "UFB Champion / UFB MVP / MVP / OPOTY / DPOTY / MIPOTY / ROTY / EXEOTY / City of the Year", value: 50, codes: ["UFB_CHAMP", "UFB_MVP", "MVP", "OPOTY", "DPOTY", "MIPOTY", "ROTY", "EXEOTY", "COTY"] },
+      { label: "UFB Champion / UFB MVP / MVP / OPOTY / DPOTY / MIPOTY / ROTY / EXEOTY / City of the Year / Franchise Owner", value: 50, codes: ["UFB_CHAMP", "UFB_MVP", "MVP", "OPOTY", "DPOTY", "MIPOTY", "ROTY", "EXEOTY", "COTY", "FRANCHISE_OWNER"] },
       { label: "Positional awards, Crown, HCOTY, JRNOTY, SOTY, MOTY & REFOTY", value: 32, codes: ["QBOTY", "RBOTY", "WROTY", "TEOTY", "DBOTY", "DEOTY", "LBOTY", "CROWN", "HCOTY", "JRNOTY", "SOTY", "MOTY", "REFOTY"] },
       { label: "First Team All Flag", value: 16, codes: ["FIRST_TEAM"] },
       { label: "Flag Title", value: 16, codes: ["FLAG_TITLE"] },
@@ -451,7 +451,7 @@ const LEAGUE = {
     ],
     // Short names shown on each player's honor chips
     labels: {
-      UFB_CHAMP: "UFB Champ", UFB_MVP: "UFB MVP", FLAG_TITLE: "Flag Title", CROWN: "Crown", COTY: "City of the Year",
+      UFB_CHAMP: "UFB Champ", UFB_MVP: "UFB MVP", FLAG_TITLE: "Flag Title", CROWN: "Crown", COTY: "City of the Year", FRANCHISE_OWNER: "Franchise Owner",
       FIRST_TEAM: "1st Team All-Flag", SECOND_TEAM: "2nd Team All-Flag", THIRD_TEAM: "3rd Team All-Flag"
     },
     // All-Flag teams entered on Admin -> All-Flag add to the 1st / 2nd / 3rd Team counts below starting with this
@@ -461,31 +461,31 @@ const LEAGUE = {
     // bonus = extra points on top of their roles (for totals set by the league).
     players: [
       { name: "n4w", honors: { COTY: 3, UFB_CHAMP: 2, UFB_MVP: 1, MVP: 1, OPOTY: 1, DPOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 2, SECOND_TEAM: 3 } },
-      { name: "lord 9", honors: { COTY: 1, UFB_CHAMP: 3, MVP: 1, OPOTY: 1, WROTY: 1, DEOTY: 1, DBOTY: 1, CROWN: 2, FLAG_TITLE: 5, FIRST_TEAM: 4 } },
+      { name: "lord 9", honors: { FRANCHISE_OWNER: 1, COTY: 1, UFB_CHAMP: 3, MVP: 1, OPOTY: 1, WROTY: 1, DEOTY: 1, DBOTY: 1, CROWN: 2, FLAG_TITLE: 5, FIRST_TEAM: 4 } },
       { name: "dictator 10", honors: { UFB_CHAMP: 2, MVP: 2, QBOTY: 1, CROWN: 1, FIRST_TEAM: 2, SECOND_TEAM: 2, HCOTY: 1 } },
       { name: "shazam", honors: { UFB_CHAMP: 2, TEOTY: 2, DEOTY: 2, CROWN: 2, FIRST_TEAM: 4 } },
       { name: "mr_devy1122", honors: { COTY: 1, UFB_CHAMP: 1, DPOTY: 1, DBOTY: 1, FLAG_TITLE: 5, FIRST_TEAM: 3, SECOND_TEAM: 2 } },
-      { name: "BIGGIECHEESE", honors: { OPOTY: 2, QBOTY: 1, RBOTY: 1, FLAG_TITLE: 4, FIRST_TEAM: 2, SECOND_TEAM: 2 } },
+      { name: "BIGGIECHEESE", honors: { FRANCHISE_OWNER: 1, OPOTY: 2, QBOTY: 1, RBOTY: 1, FLAG_TITLE: 4, FIRST_TEAM: 2, SECOND_TEAM: 2 } },
       { name: "Kamil08", honors: { UFB_CHAMP: 3, UFB_MVP: 1, OPOTY: 1 } },
       { name: "day", honors: { TEOTY: 2, DEOTY: 1, CROWN: 3, FIRST_TEAM: 3, EXEOTY: 1, ROTY: 1 } },
       { name: "rcbkailer", honors: { COTY: 2, UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 3, SECOND_TEAM: 1 } },
       { name: "ast1", honors: { COTY: 2, UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 3, SECOND_TEAM: 1 } },
-      { name: "splndd", honors: { COTY: 1, UFB_CHAMP: 1, WROTY: 2, FLAG_TITLE: 5, FIRST_TEAM: 5 } },
+      { name: "splndd", honors: { FRANCHISE_OWNER: 1, COTY: 1, UFB_CHAMP: 1, WROTY: 2, FLAG_TITLE: 5, FIRST_TEAM: 5 } },
       // Totals the league gave (incl. Season 7): Crown x2 and 1st Team x3 come to that with S7's crown grant and
       // S7 All-Flag pick added on top of the counts here
-      { name: "breakxu", honors: { MVP: 2, DPOTY: 1, RBOTY: 1, LBOTY: 1, HCOTY: 1, CROWN: 1, FLAG_TITLE: 3, REFOTY: 1, FIRST_TEAM: 2, SECOND_TEAM: 2 } },
-      { name: "jvkethings", honors: { COTY: 2, QBOTY: 1, RBOTY: 1, CROWN: 2, FIRST_TEAM: 3, SECOND_TEAM: 2 }, bonus: 125 },
+      { name: "breakxu", honors: { FRANCHISE_OWNER: 1, MVP: 2, DPOTY: 1, RBOTY: 1, LBOTY: 1, HCOTY: 1, CROWN: 1, FLAG_TITLE: 3, REFOTY: 1, FIRST_TEAM: 2, SECOND_TEAM: 2 } },
+      { name: "jvkethings", honors: { FRANCHISE_OWNER: 1, COTY: 2, QBOTY: 1, RBOTY: 1, CROWN: 2, FIRST_TEAM: 3, SECOND_TEAM: 2 }, bonus: 125 },
       { name: "130kami", honors: { COTY: 1, UFB_CHAMP: 2, UFB_MVP: 1, FIRST_TEAM: 2 } },
       { name: "rosewood", honors: { UFB_CHAMP: 2, UFB_MVP: 1, FIRST_TEAM: 1, SECOND_TEAM: 2 } },
       { name: "coaserh", honors: { COTY: 2, UFB_CHAMP: 3, FIRST_TEAM: 2 } },
       { name: "elim", honors: { COTY: 1, UFB_CHAMP: 2, TEOTY: 1, CROWN: 1, FIRST_TEAM: 1 } },
       { name: "synappseuser", honors: { UFB_CHAMP: 1, DPOTY: 1, DBOTY: 1, FLAG_TITLE: 1, FIRST_TEAM: 1 } },
-      { name: "zach", honors: { COTY: 1, UFB_CHAMP: 2, FLAG_TITLE: 3, SECOND_TEAM: 1 } },
+      { name: "zach", honors: { FRANCHISE_OWNER: 1, COTY: 1, UFB_CHAMP: 2, FLAG_TITLE: 3, SECOND_TEAM: 1 } },
       { name: "hurdle", honors: { COTY: 1, UFB_CHAMP: 2, FIRST_TEAM: 2, SECOND_TEAM: 2, HCOTY: 1 } },
-      { name: "wery", honors: { OPOTY: 1, QBOTY: 1, FLAG_TITLE: 2, FIRST_TEAM: 1, SECOND_TEAM: 2 } },
+      { name: "wery", honors: { FRANCHISE_OWNER: 1, OPOTY: 1, QBOTY: 1, FLAG_TITLE: 2, FIRST_TEAM: 1, SECOND_TEAM: 2 } },
       { name: "fraeology", honors: { COTY: 2, UFB_CHAMP: 2, FIRST_TEAM: 1 } },
       { name: "2kaiju", honors: { UFB_CHAMP: 1, DBOTY: 1, FIRST_TEAM: 2 } },
-      { name: "sk8erboy111", honors: { UFB_CHAMP: 1, FLAG_TITLE: 2, FIRST_TEAM: 1, SECOND_TEAM: 2, ROTY: 1, EXEOTY: 1 } },
+      { name: "sk8erboy111", honors: { FRANCHISE_OWNER: 1, UFB_CHAMP: 1, FLAG_TITLE: 2, FIRST_TEAM: 1, SECOND_TEAM: 2, ROTY: 1, EXEOTY: 1 } },
       { name: "ewikoro", honors: { COTY: 1, UFB_CHAMP: 2 } },
       { name: "galan", honors: { COTY: 1, UFB_CHAMP: 1, LBOTY: 1, FIRST_TEAM: 1 } },
       { name: "fooge", honors: { UFB_CHAMP: 1, RBOTY: 1, FLAG_TITLE: 1 } },
