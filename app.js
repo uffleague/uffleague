@@ -51,7 +51,7 @@
     { path: "awards", label: "Awards", icon: "awards" },
     { path: "allflag", label: "All-Flag", icon: "star" },
     { path: "playoff", label: "Playoff", icon: "playoff", top: true },
-    { path: "predictions", label: "Predictions", icon: "predict" },
+    { path: "predictions", label: "Playoff Predictions", icon: "predict", top: true },
     { path: "bowls", label: "Past Bowls", icon: "bowl" },
     { path: "build", label: "Build a Team", icon: "dice" },
     { path: "legacy", label: "Legacy", icon: "legacy" },
@@ -63,7 +63,7 @@
   const LOCAL_SITE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   const SITE_ACCOUNTS = true;
   if (SITE_ACCOUNTS) {
-    NAV.splice(NAV.findIndex((n) => n.path === "predictions") + 1, 0, { path: "uff-predictions", label: "UFF Predictions", icon: "trend", top: true });
+    NAV.splice(NAV.findIndex((n) => n.path === "predictions") + 1, 0, { path: "uff-predictions", label: "UFF Predictions", icon: "trend" });
     NAV.splice(NAV.findIndex((n) => n.path === "uff-predictions") + 1, 0, { path: "rewards", label: "Rewards", icon: "awards" });
     NAV.push({ path: "admin", label: "League Admin", icon: "shield" });
   }
@@ -4470,7 +4470,7 @@
     const state = loadPred();
     const official = bracket();
     if (!official && !PRED_OWN_TEAMS) {
-      return `<div class="wrap">${pageHead("Predictions")}${empty("Predictions open soon", "Once the playoff bracket is posted you can pick who wins every game here.")}</div>`;
+      return `<div class="wrap">${pageHead("Playoff Predictions")}${empty("Predictions open soon", "Once the playoff bracket is posted you can pick who wins every game here.")}</div>`;
     }
     const done = official || predSeedsDone(state);
     const seedPicker = `
@@ -4498,7 +4498,7 @@
       </div>`;
     const head = `
       <div class="page-head">
-        <h1>${official ? esc(official.title.replace(/Playoffs?$/i, "").trim() || "Playoff") + " Predictions" : "Predictions"}</h1>
+        <h1>${official ? esc(official.title.replace(/Playoffs?$/i, "").trim() || "") + " Playoff Predictions" : "Playoff Predictions"}</h1>
         <p class="muted">${official
           ? "Pick who wins every game, all the way to the United Flag Bowl."
           : `Pick your ${PRED_SEEDS * LEAGUE.conferences.length} playoff teams, then who wins every game.`} No account needed: your picks are saved on this device and only you can see them.</p>
