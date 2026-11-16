@@ -467,7 +467,7 @@ const LEAGUE = {
       { name: "mr_devy1122", honors: { COTY: 1, UFB_CHAMP: 1, DPOTY: 1, DBOTY: 1, FLAG_TITLE: 5, FIRST_TEAM: 3, SECOND_TEAM: 2 } },
       { name: "BIGGIECHEESE", honors: { OPOTY: 2, QBOTY: 1, RBOTY: 1, FLAG_TITLE: 4, FIRST_TEAM: 2, SECOND_TEAM: 2 } },
       { name: "Kamil08", honors: { UFB_CHAMP: 3, UFB_MVP: 1, OPOTY: 1 } },
-      { name: "day", honors: { TEOTY: 2, DEOTY: 1, CROWN: 3, FIRST_TEAM: 3, EXEOTY: 1 } },
+      { name: "day", honors: { TEOTY: 2, DEOTY: 1, CROWN: 3, FIRST_TEAM: 3, EXEOTY: 1, ROTY: 1 } },
       { name: "rcbkailer", honors: { COTY: 2, UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 3, SECOND_TEAM: 1 } },
       { name: "ast1", honors: { COTY: 2, UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 3, SECOND_TEAM: 1 } },
       { name: "splndd", honors: { COTY: 1, UFB_CHAMP: 1, WROTY: 2, FLAG_TITLE: 5, FIRST_TEAM: 5 } },
