@@ -82,6 +82,7 @@ const LEAGUE = {
     { code: "MVP", name: "Most Valuable Player", featured: true },
     { code: "OPOTY", name: "Offensive Player of the Year", featured: true },
     { code: "DPOTY", name: "Defensive Player of the Year", featured: true },
+    { code: "MIPOTY", name: "Most Improved Player of the Year", optional: true },
     { code: "UFB_MVP", name: "UFB MVP" },
     { code: "QBOTY", name: "Quarterback of the Year" },
     { code: "RBOTY", name: "Runningback of the Year" },
@@ -94,6 +95,9 @@ const LEAGUE = {
     { code: "HCOTY", name: "Head Coach of the Year" },
     { code: "EOTY", name: "Executive of the Year" },
     { code: "TOTY", name: "Team of the Year" },
+    { code: "SOTY", name: "Streamer of the Year", optional: true },
+    { code: "JRNOTY", name: "Journalist of the Year", optional: true },
+    { code: "REFOTY", name: "Ref of the Year", optional: true },
     // optional: true = hidden on past seasons that have no winners recorded
     { code: "CROWN", name: "Crown", optional: true, icon: "legacy" },
     { code: "FLAG_TITLE", name: "Flag Title", optional: true, icon: "playoff" },
@@ -412,11 +416,11 @@ const LEAGUE = {
           { label: "Best Single-Season Record", holders: ["Sinaloa Red Devils"], value: "11–0" }
         ] },
         { name: "Achievements", items: [
-          { label: "Most Valuable Awards", holders: ["breakxu", "n4w"], value: "3 each" },
+          { label: "Most Valuable Awards", holders: ["breakxu", "n4w"], value: "4 each" },
           { label: "Most Rings", holders: ["coaserh", "lord 9", "Kamil08"], value: "3" },
-          { label: "Most Positional Awards", holders: ["shazam"], value: "4" },
-          { label: "Most Crowns", holders: ["day"], value: "3" },
-          { label: "Most Titles", holders: ["mr_devy1122", "lord 9", "splndd"], value: "5" },
+          { label: "Most Positional Awards", holders: ["shazam"], value: "5" },
+          { label: "Most Crowns", holders: ["day", "shazam"], value: "3" },
+          { label: "Most Titles", holders: ["mr_devy1122"], value: "6" },
           { label: "Most All-Pro Selections", holders: ["stunaaaaaaaaaaaaa"], value: "7" }
         ] }
       ]
@@ -428,8 +432,8 @@ const LEAGUE = {
     // Set to true to show the player rankings on the site.
     showPlayers: true,
     points: [
-      { label: "UFB Champion / UFB MVP / MVP / OPOTY / DPOTY / ROTY / EXEOTY / City of the Year", value: 50, codes: ["UFB_CHAMP", "UFB_MVP", "MVP", "OPOTY", "DPOTY", "ROTY", "EXEOTY", "COTY"] },
-      { label: "Positional awards, Crown, HCOTY, JRNOTY, SOTY & MOTY", value: 32, codes: ["QBOTY", "RBOTY", "WROTY", "TEOTY", "DBOTY", "DEOTY", "LBOTY", "CROWN", "HCOTY", "JRNOTY", "SOTY", "MOTY"] },
+      { label: "UFB Champion / UFB MVP / MVP / OPOTY / DPOTY / MIPOTY / ROTY / EXEOTY / City of the Year", value: 50, codes: ["UFB_CHAMP", "UFB_MVP", "MVP", "OPOTY", "DPOTY", "MIPOTY", "ROTY", "EXEOTY", "COTY"] },
+      { label: "Positional awards, Crown, HCOTY, JRNOTY, SOTY, MOTY & REFOTY", value: 32, codes: ["QBOTY", "RBOTY", "WROTY", "TEOTY", "DBOTY", "DEOTY", "LBOTY", "CROWN", "HCOTY", "JRNOTY", "SOTY", "MOTY", "REFOTY"] },
       { label: "First Team All Flag", value: 16, codes: ["FIRST_TEAM"] },
       { label: "Flag Title", value: 16, codes: ["FLAG_TITLE"] },
       { label: "Second Team All Flag", value: 8, codes: ["SECOND_TEAM"] }
