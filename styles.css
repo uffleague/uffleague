@@ -1916,3 +1916,25 @@ body.gfx-open { overflow: hidden; }
 .login-save { text-align: left; font-size: 13.5px; }
 .pill-suspended { font-size: 13px; align-self: center; text-decoration: none; text-transform: uppercase; letter-spacing: .04em; background: rgba(220, 60, 60, .18); border-color: rgba(240, 110, 110, .7); color: #ff9a9a; }
 .pill-suspended--sm { font-size: 10.5px; padding: 1px 7px; vertical-align: middle; margin-left: 6px; white-space: nowrap; }
+
+/* Ladder bracket (Playoff + Predictions): rounds left to right, numbered games, connector lines; the boxes are the
+   same team-colored ones as the two-sided bracket */
+.lb-scroll { overflow-x: auto; margin-top: 14px; padding-bottom: 12px; }
+.lb { position: relative; }
+.lb-heads { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 22px; }
+.lb-heads > div { flex: none; box-sizing: border-box; padding: 10px 0; text-align: center; font-family: var(--head); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em; font-size: 13px; color: var(--muted); border-right: 1px solid var(--line); }
+.lb-heads > div:last-child { border-right: 0; color: var(--heading); }
+.lb-body { position: relative; }
+.lb-lines { position: absolute; inset: 0; pointer-events: none; }
+.lb-lines path { fill: none; stroke: #c9cfe3; stroke-width: 2; }
+.lb-game { position: absolute; }
+.lb-game .match { margin: 0; }
+.lb-num { position: absolute; left: -24px; top: 50%; transform: translateY(-50%); width: 18px; text-align: right; font-size: 11px; color: var(--muted); }
+.lb .match-team { height: 44px; padding: 0 10px; font-size: 15px; font-family: var(--head); letter-spacing: .03em; }
+.lb .match-team .team-cell { gap: 6px; }
+.lb .match-team .team-logo { width: 28px; height: 28px; }
+.lb .match-team.tinted .team-cell span:last-child { font-size: 17px; letter-spacing: .04em; }
+.lb-logo { position: absolute; object-fit: contain; }
+.lb-champ { position: absolute; }
+.lb-champ .bracket-champ { padding: 14px 12px; gap: 8px; }

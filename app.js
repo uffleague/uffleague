@@ -4200,8 +4200,36 @@
   // The bracket saved on the Admin page (data.js can also hold one under `playoffs`)
   const bracket = () => {
     const po = SAVED.playoffs || LEAGUE.playoffs;
-    return po && po.rounds && po.rounds.length ? po : null;
+    if (po && po.rounds && po.rounds.length) return po;
+    return TOP10_PREVIEW ? top10Bracket(po) : null;
   };
+
+  // Until a bracket is posted on Admin -> Playoffs, the top 10 teams in the standings make one (TOP10_PREVIEW = false turns it off).
+  // Seeds 1-6 get a bye; Wild Card 8v9 and 7v10; Quarterfinals 1 v 8/9 winner, 4v5, 2 v 7/10 winner, 3v6;
+  // Semifinals, then the United Flag Bowl. Seeds update as games finish.
+  const TOP10_PREVIEW = true;
+  function top10Seeds() {
+    return TEAMS.filter((t) => !t.disbanded && !playoffOut(t))
+      .sort((a, b) => standingSort(a, b) || b.w - a.w || a.name.localeCompare(b.name))
+      .slice(0, 10).map((t) => t.name);
+  }
+  function top10Bracket(saved) {
+    const S = top10Seeds();
+    if (S.length < 10) return null;
+    const game = (sa, sb) => ({ a: sa ? S[sa - 1] : "", seedA: sa ? String(sa) : "", b: sb ? S[sb - 1] : "", seedB: sb ? String(sb) : "",
+      sa: "", sb: "", adv: "", fromA: null, fromB: null });
+    return {
+      title: `Season ${LEAGUE.season} Playoffs`,
+      logo: (saved && saved.logo) || (LEAGUE.bowlLogos || {})[LEAGUE.season] || "",
+      preview: true,
+      rounds: [
+        { name: "Wild Card", games: [game(8, 9), game(7, 10)] },
+        { name: "Quarterfinals", games: [{ ...game(1, 0), fromB: 0 }, game(4, 5), { ...game(2, 0), fromB: 1 }, game(3, 6)] },
+        { name: "Semifinals", games: [game(0, 0), game(0, 0)] },
+        { name: `United Flag Bowl ${roman(LEAGUE.season)}`, games: [game(0, 0)] }
+      ]
+    };
+  }
 
   // The championship result when the last round is a single decided game
   function bracketFinal() {
@@ -4281,6 +4309,74 @@
       </div>`;
   }
 
+  // ---- Ladder bracket: rounds left to right, numbered games, lines into the slot each winner goes to ----
+
+  // Top of every game (px). The "main" rounds (each half the one before, down to one game) are spaced evenly and each
+  // later game sits between its two feeders; earlier play-in rounds sit beside the slot they feed. null = shape it can't draw.
+  function ladderLayout(rounds, M, G) {
+    const n = rounds.length;
+    if (!n || rounds[n - 1].games.length !== 1) return null;
+    let m = n - 1;
+    while (m > 0 && rounds[m - 1].games.length === rounds[m].games.length * 2) m--;
+    const feeds = rounds.map((round, r) => (r ? feederSlots(round, r) : []));
+    const tops = rounds.map((round) => round.games.map(() => null));
+    rounds[m].games.forEach((_, i) => (tops[m][i] = i * (M + G)));
+    for (let r = m + 1; r < n; r++) {
+      for (let gi = 0; gi < rounds[r].games.length; gi++) {
+        const f = feeds[r].filter((x) => x[0] === gi).map((x) => tops[r - 1][x[2]]);
+        if (f.length !== 2 || f.some((v) => v == null)) return null;
+        tops[r][gi] = (f[0] + f[1]) / 2;
+      }
+    }
+    for (let r = m - 1; r >= 0; r--) {
+      for (let k = 0; k < rounds[r].games.length; k++) {
+        const into = feeds[r + 1].find((x) => x[2] === k);
+        if (!into || tops[r + 1][into[0]] == null) return null;
+        const [gi, s] = into, t = tops[r + 1][gi];
+        const both = feeds[r + 1].filter((x) => x[0] === gi).length === 2;
+        tops[r][k] = both ? (s === "a" ? t - M / 2 - 8 : t + M / 2 + 8) : (s === "a" ? t - M / 4 : t + M / 4);
+      }
+    }
+    const min = Math.min(...tops.flat());
+    return { tops: tops.map((col) => col.map((v) => v - min)), feeds, height: Math.max(...tops.flat()) - min + M };
+  }
+
+  // rows(g, r, gi) -> the two team-colored rows of a game (the same boxes as the two-sided bracket). The bowl logo sits
+  // over the final when there's room. Returns null when the bracket's shape can't be laid out this way.
+  function ladderBoard(rounds, rows, champ, shape = rounds, logo = "") {
+    const ROW = 44, M = ROW * 2 + 2, G = 34, W = 230, CG = 56, NUM = 26;
+    const lay = ladderLayout(shape, M, G);
+    if (!lay) return null;
+    const X = (r) => NUM + r * (W + CG);
+    let num = 0;
+    const games = rounds.map((round, r) => round.games.map((g, gi) => `
+      <div class="lb-game" style="left:${X(r)}px;top:${lay.tops[r][gi]}px;width:${W}px">
+        <span class="lb-num">${++num}</span><div class="card match">${rows(g, r, gi)}</div>
+      </div>`).join("")).join("");
+    const lines = lay.feeds.flatMap((f, r) => f.map(([gi, s, k]) => {
+      const x1 = X(r - 1) + W, y1 = lay.tops[r - 1][k] + M / 2;
+      const x2 = X(r), y2 = lay.tops[r][gi] + (s === "a" ? ROW / 2 : ROW + 2 + ROW / 2), xm = x1 + CG / 2;
+      return `<path d="M${x1} ${y1}H${xm}V${y2}H${x2}"/>`;
+    })).join("");
+    // The champion sits under the final game, in the last column
+    const last = rounds.length - 1, width = X(last) + W, finalTop = lay.tops[last][0], champTop = finalTop + M + 16;
+    const height = Math.max(lay.height, champTop + 130);
+    const logoSize = Math.min(170, finalTop - 12);
+    return `
+      <div class="lb-scroll">
+        <div class="lb" style="width:${width}px">
+          <div class="lb-heads">${rounds.map((r, i) => `<div style="width:${(i === 0 ? NUM : 0) + (i === last ? W : W + CG)}px">${esc(r.name)}</div>`).join("")}</div>
+          <div class="lb-body" style="height:${height}px">
+            <svg class="lb-lines" width="${width}" height="${height}">${lines}</svg>
+            ${games}
+            ${logo && logoSize >= 90 ? `<img class="lb-logo" src="${esc(logo)}" alt="" style="left:${X(last) + (W - logoSize) / 2}px;top:${finalTop - logoSize - 10}px;width:${logoSize}px;height:${logoSize}px">` : ""}
+            <div class="lb-champ" style="left:${X(last)}px;top:${champTop}px;width:${W}px">${champ}</div>
+          </div>
+        </div>
+      </div>
+      <p class="bracket-swipe">Swipe sideways to see the whole bracket &rarr;</p>`;
+  }
+
   function playoffPage() {
     const po = bracket();
     if (!po) return `<div class="wrap">${pageHead("Playoff")}${empty("Coming soon", "The playoff bracket will be revealed later in the season.")}</div>`;
@@ -4303,8 +4399,10 @@
       </div>`;
     return `
       <div class="wrap">
-        ${bracketHead(po, `Season ${LEAGUE.season} playoff bracket`)}
-        ${bracketBoard(po, po.rounds, match, champ)}
+        ${bracketHead(po, po.preview ? `Top 10 teams in the standings right now · seeds 1–6 get a bye` : `Season ${LEAGUE.season} playoff bracket`)}
+        ${po.preview ? `<p class="muted small">Seeded from the current standings; it updates as games finish. <a class="link" href="#/predictions">Make your picks</a> (no account needed).</p>` : ""}
+        ${ladderBoard(po.rounds, (g) => match(g).replace(/^<div class="card match">|<\/div>$/g, ""), champ, po.rounds, po.logo)
+          || bracketBoard(po, po.rounds, match, champ)}
       </div>`;
   }
 
@@ -4403,7 +4501,7 @@
         <h1>${official ? esc(official.title.replace(/Playoffs?$/i, "").trim() || "Playoff") + " Predictions" : "Predictions"}</h1>
         <p class="muted">${official
           ? "Pick who wins every game, all the way to the United Flag Bowl."
-          : `Pick your ${PRED_SEEDS * LEAGUE.conferences.length} playoff teams, then who wins every game.`} Only you can see your picks; they're saved on this device.</p>
+          : `Pick your ${PRED_SEEDS * LEAGUE.conferences.length} playoff teams, then who wins every game.`} No account needed: your picks are saved on this device and only you can see them.</p>
       </div>`;
     if (!done) return `<div class="wrap">${head}${seedPicker}</div>`;
 
@@ -4441,7 +4539,8 @@
             <button class="btn btn-ghost btn-sm" id="predReset" ${state.locked ? "disabled" : ""}>Reset</button>
           </span>
         </div>
-        ${bracketBoard(po, rounds, match, champBox)}
+        ${ladderBoard(rounds, (g, r, gi) => team(g, "a", r, gi) + team(g, "b", r, gi), champBox, po.rounds, po.logo)
+          || bracketBoard(po, rounds, match, champBox)}
       </div>`;
   }
 
@@ -7077,7 +7176,7 @@
   let poDraft = null;
   const newGame = () => ({ a: "", b: "", sa: "", sb: "", seedA: "", seedB: "", adv: "", fromA: null, fromB: null });
   const emptyBracket = () => ({ title: `Season ${LEAGUE.season} Playoffs`, logo: (LEAGUE.bowlLogos || {})[LEAGUE.season] || "", rounds: [] });
-  const draftPlayoffs = () => (poDraft = poDraft || (bracket() ? clone(bracket()) : emptyBracket()));
+  const draftPlayoffs = () => (poDraft = poDraft || (bracket() && !bracket().preview ? clone(bracket()) : emptyBracket()));
 
   function playoffEditor() {
     const d = draftPlayoffs();
