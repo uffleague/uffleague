@@ -1938,3 +1938,10 @@ body.gfx-open { overflow: hidden; }
 .lb-logo { position: absolute; object-fit: contain; }
 .lb-champ { position: absolute; }
 .lb-champ .bracket-champ { padding: 14px 12px; gap: 8px; }
+/* Predictions: a check on the team picked, a cross on the other (which fades) */
+.match-team .pick-mark { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--cream); color: var(--navy); font-size: 14px; line-height: 1; font-family: var(--body); }
+.match-team .pick-mark.off { background: rgba(0, 0, 0, .45); color: #fff; }
+.match-team .pick-mark.ok { background: #2fa866; color: #fff; }
+.match-team .pick-mark.bad { background: #d6444f; color: #fff; }
+.match-team.tinted.faded { opacity: .45; }

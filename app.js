@@ -4512,11 +4512,13 @@
     const champ = last && last.games.length === 1 ? last.games[0].pick : "";
     const made = rounds.reduce((n, r) => n + r.games.filter((g) => g.pick).length, 0);
     const total = rounds.reduce((n, r) => n + r.games.length, 0);
-    // Once a game on the posted bracket is decided, picks get a check or a cross (g.real = the actual winner)
+    // The team picked gets a check and the other one a cross (and fades). Once the real game is decided
+    // (g.real = the actual winner), the check turns green when the pick was right and red when it wasn't.
     const team = (g, s, r, gi) => {
       const name = g[s];
       const picked = name && g.pick === name;
-      const mark = !picked || !g.real ? "" : g.real === name ? `<span class="pick-mark ok">&#10003;</span>` : `<span class="pick-mark bad">&#10007;</span>`;
+      const mark = picked ? `<span class="pick-mark ${!g.real ? "" : g.real === name ? "ok" : "bad"}">&#10003;</span>`
+        : name && g.pick ? `<span class="pick-mark off">&#10007;</span>` : "";
       // A game can be picked once both of its teams are known
       const tint = teamTint(name);
       return `<button type="button" class="match-team pick ${tint.cls} ${picked ? "picked" : g.pick ? "faded" : ""}" style="${tint.style}" data-pick="${r}-${gi}" data-team="${esc(name)}" ${!g.a || !g.b || state.locked ? "disabled" : ""}>${bracketTeam(name, seedOf(g, s))}${mark}</button>`;
