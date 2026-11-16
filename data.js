@@ -471,7 +471,9 @@ const LEAGUE = {
       { name: "rcbkailer", honors: { COTY: 2, UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 3, SECOND_TEAM: 1 } },
       { name: "ast1", honors: { COTY: 2, UFB_CHAMP: 1, DBOTY: 1, LBOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 3, SECOND_TEAM: 1 } },
       { name: "splndd", honors: { COTY: 1, UFB_CHAMP: 1, WROTY: 2, FLAG_TITLE: 5, FIRST_TEAM: 5 } },
-      { name: "breakxu", honors: { MVP: 2, DPOTY: 1, RBOTY: 1, LBOTY: 1, HCOTY: 1 }, bonus: 258 },
+      // Totals the league gave (incl. Season 7): Crown x2 and 1st Team x3 come to that with S7's crown grant and
+      // S7 All-Flag pick added on top of the counts here
+      { name: "breakxu", honors: { MVP: 2, DPOTY: 1, RBOTY: 1, LBOTY: 1, HCOTY: 1, CROWN: 1, FLAG_TITLE: 3, REFOTY: 1, FIRST_TEAM: 2, SECOND_TEAM: 2 } },
       { name: "jvkethings", honors: { COTY: 2, QBOTY: 1, RBOTY: 1, CROWN: 2, FIRST_TEAM: 3, SECOND_TEAM: 2 }, bonus: 125 },
       { name: "130kami", honors: { COTY: 1, UFB_CHAMP: 2, UFB_MVP: 1, FIRST_TEAM: 2 } },
       { name: "rosewood", honors: { UFB_CHAMP: 2, UFB_MVP: 1, FIRST_TEAM: 1, SECOND_TEAM: 2 } },
