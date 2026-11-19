@@ -195,6 +195,12 @@
         ...SAVED.schedule.map((w) => ({ ...w, games: w.games.map((g) => ({ ...g, teams: g.teams.map(botTeam) })) }))
       ].sort((a, b) => a.week - b.week);
     }
+    // Series the league skipped (S7: Series 5 / Week 9, it went straight to the playoffs) leave the site
+    const SKIPPED_SERIES = [5];
+    const skipped = (w) => SKIPPED_SERIES.includes(w.series);
+    LEAGUE.schedule = LEAGUE.schedule.filter((w) => !skipped(w));
+    if (SAVED.deadlines && Array.isArray(SAVED.deadlines.series)) SAVED.deadlines = { ...SAVED.deadlines, series: SAVED.deadlines.series.filter((s) => !SKIPPED_SERIES.includes(s.series)) };
+    if (SAVED.primetime && Array.isArray(SAVED.primetime.series)) SAVED.primetime = { ...SAVED.primetime, series: SAVED.primetime.series.filter((s) => !SKIPPED_SERIES.includes(s.series)) };
 
     const games = LEAGUE.schedule.flatMap((w) => w.games);
     SAVED.results.forEach((r) => {
