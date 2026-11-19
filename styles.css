@@ -1945,3 +1945,11 @@ body.gfx-open { overflow: hidden; }
 .match-team .pick-mark.ok { background: #2fa866; color: #fff; }
 .match-team .pick-mark.bad { background: #d6444f; color: #fff; }
 .match-team.tinted.faded { opacity: .45; }
+
+/* Playoff page: Shanghai at night behind the bracket (United Flag Bowl VII is in Shanghai) */
+body.is-playoff {
+  background: linear-gradient(180deg, rgba(6, 9, 26, .78) 0%, rgba(6, 9, 26, .5) 40%, rgba(6, 9, 26, .35) 70%, rgba(6, 9, 26, .55) 100%), url("gfx/bg-shanghai.jpg") center bottom / cover no-repeat fixed, #070b1e;
+}
+body.is-playoff .site-head { border-bottom-color: rgba(255, 255, 255, .08); }
+body.is-playoff .lb-heads, body.is-playoff .bracket-champ { backdrop-filter: blur(4px); }
+@media (max-width: 700px) { body.is-playoff { background-position: center, 28% bottom; background-attachment: scroll, scroll; background-size: auto, auto 100vh; } }

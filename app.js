@@ -7996,6 +7996,7 @@
     app.innerHTML = page();
     fillAvatars();
     document.body.classList.toggle("is-home", page === home);
+    document.body.classList.toggle("is-playoff", page === playoffPage); // UFB VII is in Shanghai: its skyline behind the bracket
     [nav, topnav].forEach((list) => list.querySelectorAll("a").forEach((a) =>
       a.classList.toggle("active", a.dataset.path === (section || ""))
     ));
