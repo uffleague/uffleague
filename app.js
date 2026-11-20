@@ -7083,11 +7083,12 @@
   const suspServed = (s) => (s.served || []).reduce((n, x) => n + (x.games || 0), 0) + suspAuto(s).games;
   const suspLeft = (s) => (s.cleared ? 0 : Math.max(0, s.games - suspServed(s)));
   const suspActive = (s) => suspLeft(s) > 0;
+  const bailText = (b) => (/^\d/.test(b) ? `${b}$` : b); // "25" -> "25$"; "awaiting" stays as it is
   // The line to paste in Discord, e.g. "@Sigma (@goodnoob9870)® - suspended 16 doxxing bail 25$" (games still left)
   const suspText = (s) => {
     const who = s.discord || `@${s.player}`;
     if (!suspActive(s)) return `${who} - suspension ${s.cleared ? "cleared" : "served"}`;
-    return [`${who} - suspended ${suspLeft(s)}`, s.reason, s.bail ? `bail ${s.bail}$` : ""].filter(Boolean).join(" ");
+    return [`${who} - suspended ${suspLeft(s)}`, s.reason, s.bail ? `bail ${bailText(s.bail)}` : ""].filter(Boolean).join(" ");
   };
   const suspServedText = (x) => {
     const n = (c, w) => `${c} ${w}${c === 1 ? "" : "s"}`;
@@ -7113,7 +7114,7 @@
         <div class="susp-top">
           <div>
             <div class="susp-name">${playerLink(s.player)} ${status}</div>
-            <div class="muted small">${[`Suspended ${s.games} game${s.games === 1 ? "" : "s"}`, s.reason && esc(s.reason), s.bail && `Bail ${esc(s.bail)}$`,
+            <div class="muted small">${[`Suspended ${s.games} game${s.games === 1 ? "" : "s"}`, s.reason && esc(s.reason), s.bail && `Bail ${esc(bailText(s.bail))}`,
               s.at && fmtDate(new Date(s.at).toLocaleDateString("en-CA"))].filter(Boolean).join(" &middot; ")}</div>
           </div>
         </div>
