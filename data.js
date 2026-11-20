@@ -499,6 +499,7 @@ const LEAGUE = {
       { name: "uufaailen", honors: { COTY: 1, UFB_CHAMP: 1, SECOND_TEAM: 1 } },
       { name: "liarliarliar", honors: { UFB_CHAMP: 1, SECOND_TEAM: 1 } },
       { name: "Yavientt", honors: { COTY: 1, WROTY: 1, FIRST_TEAM: 2, SECOND_TEAM: 1, ROTY: 1 } }, // + S7 1st Team, 2nd Team & COTY = the league's totals
+      { name: "cartiergrief", honors: { UFB_CHAMP: 2, DPOTY: 1, ROTY: 1, DBOTY: 1, FIRST_TEAM: 2, SECOND_TEAM: 1 } }, // UFB IV & VI champ; + S7 HCOTY (Awards page)
       { name: "Descended", honors: { COTY: 1, UFB_CHAMP: 1 } },
       { name: "kuaz", honors: { COTY: 1, UFB_CHAMP: 1 } },
       { name: "lynnvxd", honors: { COTY: 1, UFB_CHAMP: 1 } },
