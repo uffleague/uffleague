@@ -1445,7 +1445,7 @@ export default {
       if (!player) return json({ error: "Pick a player." }, 400);
       if (!(games >= 1 && games <= 999)) return json({ error: "Games must be 1 or more." }, 400);
       const s = { id: crypto.randomUUID(), player, discord: str(body.discord, 120), games, reason: str(body.reason, 120),
-        bail: str(String(body.bail ?? ""), 20).replace(/\$/g, ""), served: [], cleared: false, at: Date.now(),
+        bail: (str(String(body.bail ?? ""), 20) || "").replace(/\$/g, ""), served: [], cleared: false, at: Date.now(),
         // The games already final when it was added: every game final after that takes games off (the site counts them)
         before: [].concat(body.before || []).map((id) => str(id, 20)).filter(Boolean).slice(0, 1000) };
       data.suspensions = [s, ...data.suspensions].slice(0, 500);
