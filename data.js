@@ -461,7 +461,7 @@ const LEAGUE = {
     // bonus = extra points on top of their roles (for totals set by the league).
     players: [
       { name: "n4w", honors: { COTY: 3, UFB_CHAMP: 2, UFB_MVP: 1, MVP: 1, OPOTY: 1, DPOTY: 1, CROWN: 1, FLAG_TITLE: 2, FIRST_TEAM: 2, SECOND_TEAM: 3 } },
-      { name: "lord 9", honors: { FRANCHISE_OWNER: 1, COTY: 1, UFB_CHAMP: 3, MVP: 1, OPOTY: 1, WROTY: 1, DEOTY: 1, DBOTY: 1, CROWN: 2, FLAG_TITLE: 5, FIRST_TEAM: 4 } },
+      { name: "lord 9", honors: { FRANCHISE_OWNER: 1, COTY: 1, UFB_CHAMP: 3, MVP: 1, OPOTY: 1, WROTY: 1, DEOTY: 1, DBOTY: 1, CROWN: 2, FLAG_TITLE: 5, FIRST_TEAM: 4, SECOND_TEAM: 2 } },
       { name: "dictator 10", honors: { UFB_CHAMP: 2, MVP: 2, QBOTY: 1, CROWN: 1, FIRST_TEAM: 2, SECOND_TEAM: 2, HCOTY: 1 } },
       { name: "shazam", honors: { UFB_CHAMP: 2, TEOTY: 2, DEOTY: 2, CROWN: 2, FIRST_TEAM: 4 } },
       { name: "mr_devy1122", honors: { COTY: 1, UFB_CHAMP: 1, DPOTY: 1, DBOTY: 1, FLAG_TITLE: 5, FIRST_TEAM: 3, SECOND_TEAM: 2 } },
