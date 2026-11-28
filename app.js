@@ -167,6 +167,11 @@
 
     // Things sent straight from the Discord bot name teams by name or code, sometimes with :emoji: or @
     const teamLookup = new Map();
+    // Past teams first (their codes and names), so a current team with the same code wins
+    Object.entries(LEAGUE.pastTeamCodes || {}).forEach(([code, name]) => {
+      teamLookup.set(code.toLowerCase(), name);
+      teamLookup.set(name.toLowerCase(), name);
+    });
     LEAGUE.conferences.forEach((c) => c.divisions.forEach((d) => d.teams.forEach((t) => {
       teamLookup.set(t.name.toLowerCase(), t.name);
       if (t.code) teamLookup.set(t.code.toLowerCase(), t.name);
@@ -541,10 +546,17 @@
     return d > 0 ? `+${d}` : `${d}`;
   };
 
-  const teamLogo = (t, size = "") =>
-    t.logo
-      ? `<img class="team-logo custom ${size}" src="${t.logo}${LEAGUE.logoVersion ? `?v=${LEAGUE.logoVersion}` : ""}" alt="${t.name} logo">`
+  // A team without a logo of its own uses the saved logo of a past team with that name (old games and schedules)
+  const pastLogo = (name) => {
+    const k = Object.keys(LEAGUE.pastTeams || {}).find((n) => n.toLowerCase() === String(name || "").trim().toLowerCase());
+    return k ? LEAGUE.pastTeams[k] : "";
+  };
+  const teamLogo = (t, size = "") => {
+    const logo = t.logo || pastLogo(t.name);
+    return logo
+      ? `<img class="team-logo custom ${size}" src="${logo}${LEAGUE.logoVersion ? `?v=${LEAGUE.logoVersion}` : ""}" alt="${t.name} logo">`
       : `<img class="team-logo ${size}" src="logo.png" alt="">`;
+  };
 
   const pageHead = (title, sub) => `
     <div class="page-head">
@@ -567,7 +579,7 @@
   const gfxSrc = (src) => `${src}${LEAGUE.logoVersion ? `?v=${LEAGUE.logoVersion}` : ""}`;
   const shortDate = (d) => new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const teamByName = (name) => TEAMS.find((t) => t.name === name);
-  const logoOr = (t, size = "") => (t ? teamLogo(t, size) : `<img class="team-logo ${size}" src="${LEAGUE.brandLogo}" alt="">`);
+  const logoOr = (t, size = "", name = "") => (t ? teamLogo(t, size) : pastLogo(name) ? teamLogo({ name }, size) : `<img class="team-logo ${size}" src="${LEAGUE.brandLogo}" alt="">`);
 
   // Banner slides: graphics from data.js (home.slides), otherwise the built-in league and bowl slides
   let heroAt = 0;
@@ -955,7 +967,7 @@
 
   const gameSide = (name, score, won) => {
     const t = teamByName(name);
-    return `<span class="hx-game-team ${won === false ? "lost" : ""}">${logoOr(t)}<span>${esc(shortName(name))}</span>${score != null ? `<b>${score}</b>` : ""}</span>`;
+    return `<span class="hx-game-team ${won === false ? "lost" : ""}">${logoOr(t, "", name)}<span>${esc(shortName(name))}</span>${score != null ? `<b>${score}</b>` : ""}</span>`;
   };
 
   // Next games on the schedule, or the latest finals once nothing is left to play
@@ -995,7 +1007,7 @@
         ${finals.map(({ g, wk }) => `
           <a class="hx-tick" href="#/scores">
             <span class="hx-tick-head">Final &middot; Week ${wk.week}</span>
-            ${[0, 1].map((i) => `<span class="hx-tick-team ${g.score[i] < g.score[1 - i] ? "lost" : ""}">${logoOr(teamByName(g.teams[i]))}<span>${esc(shortName(g.teams[i]))}</span><b>${g.score[i]}</b></span>`).join("")}
+            ${[0, 1].map((i) => `<span class="hx-tick-team ${g.score[i] < g.score[1 - i] ? "lost" : ""}">${logoOr(teamByName(g.teams[i]), "", g.teams[i])}<span>${esc(shortName(g.teams[i]))}</span><b>${g.score[i]}</b></span>`).join("")}
           </a>`).join("")}
       </div>`;
   }
@@ -1617,7 +1629,12 @@
   };
   // Short codes for past teams (current teams use their own code)
   const PAST_CODES = { "Virginia Venom": "VV", "Vicksburg Vortex": "VIC", "Savannah Raiders": "SAV", "New York Dragons": "NY", "Laredo Longhorns": "LAR",
-    "Sinaloa Red Devils": "SIN", "Salem Snowhawks": "SAL", "Saskatoon Stampede": "SAS" };
+    "Sinaloa Red Devils": "SIN", "Salem Snowhawks": "SAL", "Saskatoon Stampede": "SAS",
+    // Season 7 teams that aren't in Season 8
+    "Pittsburg Sentinels": "PIT", "Seattle Skyclaws": "SEA", "Havana Toroccoros": "HAV", "Toronto Maples": "TOR", "New Orleans Raiders": "NO",
+    "Detroit Dynasty": "DET", "Sarnia City Broncos": "SCB", "San Francisco Miners": "SF", "Vienna Angels": "VIE", "Olympia Owls": "OLY",
+    "Novasota Wolf Pack": "NWP", "Long Beach Pirates": "LBP", "Costa Rica Pumas": "CR", "Rose City Reapers": "RCR", "Plymouth Huskies": "PLY",
+    "Shiroishi Samurai": "SHI", "Columbus Colts": "CLB" };
   const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
   // A career card for each side of the ball they play. Offense: the job they do most (pass attempts, carries or
   // catches), not their best rank (65 carries can rank #1). Defense: the DE/DB/LB tab they rank best in.
@@ -2879,7 +2896,7 @@
                 <a class="pt-item-main" href="#/schedule/${wk.week}">
                   <span class="pt-item-label">${esc(pt.label)} &middot; ${esc(g.id)}</span>
                   <span class="pt-item-teams">${[0, 1].map((i) => `
-                    <span class="pt-item-team">${logoOr(teamByName(g.teams[i]))}${ptSeed(pt, i)}<span class="pt-name-full">${esc(g.teams[i])}</span><span class="pt-name-short">${esc(shortName(g.teams[i]))}</span></span>`).join(`<span class="pt-item-vs">vs</span>`)}
+                    <span class="pt-item-team">${logoOr(teamByName(g.teams[i]), "", g.teams[i])}${ptSeed(pt, i)}<span class="pt-name-full">${esc(g.teams[i])}</span><span class="pt-name-short">${esc(shortName(g.teams[i]))}</span></span>`).join(`<span class="pt-item-vs">vs</span>`)}
                   </span>
                   <span class="pt-item-time">${Array.isArray(g.score) ? `Final &middot; ${g.score[0]}-${g.score[1]}` : g.time ? esc(g.time) : `Week ${wk.week} &middot; no game time yet`}</span>
                 </a>
@@ -2903,7 +2920,7 @@
       <div class="hx-pt">
         <a class="hx-pt-main" href="#/schedule/${wk.week}">
           <span class="hx-pt-label">&#11088; Primetime this series &middot; ${esc(pt.label === "Primetime" ? `Series ${next.s.series}` : pt.label)}</span>
-          <span class="hx-pt-teams">${[0, 1].map((i) => `<span class="hx-pt-team">${logoOr(teamByName(g.teams[i]), "md")}${ptSeed(pt, i)}<b>${esc(shortName(g.teams[i]))}</b></span>`).join(`<span class="hx-pt-vs">vs</span>`)}</span>
+          <span class="hx-pt-teams">${[0, 1].map((i) => `<span class="hx-pt-team">${logoOr(teamByName(g.teams[i]), "md", g.teams[i])}${ptSeed(pt, i)}<b>${esc(shortName(g.teams[i]))}</b></span>`).join(`<span class="hx-pt-vs">vs</span>`)}</span>
           <span class="hx-pt-when">${live ? "<b>Live now</b>" : start ? `Kickoff <b data-kickoff="${start}">${untilKickoff(start) || "now"}</b>` : ""}${g.time ? `<span>${esc(g.time)}</span>` : `<span>Week ${wk.week} &middot; no game time yet</span>`}</span>
         </a>
         ${live ? `<a class="hx-pt-watch" href="${esc(live.url)}" target="_blank" rel="noopener"><span class="live-dot"></span>Watch</a>` : ""}

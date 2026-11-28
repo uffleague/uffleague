@@ -11,7 +11,7 @@ const LEAGUE = {
   brandLogo: "logo-main.png", // sidebar + home page logo
   // Team logos: add logo: "logos/<file>.png" to a team. Teams without one use logo.png.
   // Change logoVersion whenever a logo file is replaced, so browsers load the new picture.
-  logoVersion: "2026-10-18a",
+  logoVersion: "2026-11-28a",
   // United Flag Bowl logos by season (shown on Past Bowls above the score)
   bowlLogos: {
     2: "logos/bowls/ufb-2.png", 3: "logos/bowls/ufb-3.png", 4: "logos/bowls/ufb-4.png",
@@ -22,12 +22,28 @@ const LEAGUE = {
     "Virginia Venom": "logos/past/virginia-venom.png",
     "Vicksburg Vortex": "logos/past/vicksburg-vortex.png",
     "Laredo Longhorns": "logos/past/laredo-longhorns.png",
-    "Savannah Raiders": "logos/past/savannah-raiders.png",
     "Sinaloa Red Devils": "logos/past/sinaloa-red-devils.png",
     "Saskatoon Stampede": "logos/past/saskatoon-stampede.png",
-    "New York Dragons": "logos/past/new-york-dragons.png",
     "Salem Snow Hawks": "logos/past/salem-snow-hawks.png",
-    "Salem Snowhawks": "logos/past/salem-snow-hawks.png"
+    "Salem Snowhawks": "logos/past/salem-snow-hawks.png",
+    // Season 7 teams that aren't in Season 8
+    "Pittsburg Sentinels": "logos/pittsburg-sentinels.png",
+    "Seattle Skyclaws": "logos/seattle-skyclaws.png",
+    "Havana Toroccoros": "logos/havana-toroccoros.png",
+    "Toronto Maples": "logos/toronto-maples.png",
+    "New Orleans Raiders": "logos/new-orleans-raiders.png",
+    "Detroit Dynasty": "logos/detroit-dynasty.png",
+    "Sarnia City Broncos": "logos/sarnia-city-broncos.png",
+    "San Francisco Miners": "logos/san-francisco-miners.png",
+    "Vienna Angels": "logos/vienna-angels.png",
+    "Olympia Owls": "logos/olympia-owls.png",
+    "Novasota Wolf Pack": "logos/novasota-wolf-pack.png",
+    "Long Beach Pirates": "logos/long-beach-pirates.png",
+    "Costa Rica Pumas": "logos/costa-rica-pumas.png",
+    "Rose City Reapers": "logos/rose-city-reapers.png",
+    "Plymouth Huskies": "logos/plymouth-huskies.png",
+    "Shiroishi Samurai": "logos/shiroishi-samurai.png",
+    "Columbus Colts": "logos/columbus-colts.png"
   },
   // Team Halls of Fame: shown as "Team HOF" on the player page header. Each player's positions for that team.
   teamHof: {
@@ -39,6 +55,14 @@ const LEAGUE = {
     "New York Dragons": { hurdle: "WR/DB", eltontono: "QB/DB", hbe: "WR/DB", fraeology: "WR/DB", kamill08: "WR/DB" },
     "Laredo Longhorns": { "1021Juice": "QB/DB" },
     "Vicksburg Vortex": { n4w: "WR/DB", JvkeThingz: "QB/LB", xJupp: "WR/DB" }
+  },
+  // Codes of past teams (the bot's schedule and old posts use them), so they show with their name and logo
+  pastTeamCodes: {
+    DET: "Detroit Dynasty", PIT: "Pittsburg Sentinels", SEA: "Seattle Skyclaws", HAV: "Havana Toroccoros", TOR: "Toronto Maples",
+    NO: "New Orleans Raiders", SCB: "Sarnia City Broncos", SF: "San Francisco Miners", VIE: "Vienna Angels", OLY: "Olympia Owls",
+    NWP: "Novasota Wolf Pack", LBP: "Long Beach Pirates", CR: "Costa Rica Pumas", RCR: "Rose City Reapers", PLY: "Plymouth Huskies",
+    SHI: "Shiroishi Samurai", CLB: "Columbus Colts", VV: "Virginia Venom", VIC: "Vicksburg Vortex", LAR: "Laredo Longhorns",
+    SIN: "Sinaloa Red Devils", SAL: "Salem Snowhawks", SAS: "Saskatoon Stampede"
   },
   // Home page. Put graphics in the gfx/ folder (change logoVersion above when a picture is replaced).
   //   slides: the big rotating banner at the top. Best size 1920 x 600; keep the important part near the middle.
@@ -547,27 +571,26 @@ const LEAGUE = {
   },
   // coach = the team's head coach (shown on the team page and the Teams list)
   conferences: [
+    // Season 8 teams. A team without a logo file shows the league logo until one is added (logo: "logos/<file>.png").
     {
       name: "Grand Central Conference",
       divisions: [
         {
           name: "North Division",
           teams: [
-            { name: "Kansas City Jazz", code: "KCJ", color: "#8e3fe0", color2: "#2ff5c8", coach: "rekid", logo: "logos/kansas-city-jazz.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Baltimore Bluejays", code: "BAL", color: "#1f6fd1", color2: "#0b2559", coach: "breakxu", logo: "logos/baltimore-bluejays.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Pittsburg Sentinels", code: "PIT", color: "#1d1d1f", color2: "#febe1f", coach: "2 trey", logo: "logos/pittsburg-sentinels.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Seattle Skyclaws", code: "SEA", color: "#c4161c", color2: "#f8b546", coach: "a1w", logo: "logos/seattle-skyclaws.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Havana Toroccoros", code: "HAV", color: "#0041dd", color2: "#e0e1e2", coach: "freudiah", logo: "logos/havana-toroccoros.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
+            { name: "Key West Flamingos", code: "KWF", color: "#2fbf71", color2: "#2a7fa8", logo: "logos/key-west-flamingos.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Baltimore Bluejays", code: "BAL", color: "#1f6fd1", color2: "#0b2559", logo: "logos/baltimore-bluejays.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Indiana Vipers", code: "IND", color: "#14295a", color2: "#f2b51c", logo: "logos/indiana-vipers.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Obsidian Bay Orcas", code: "OBO", color: "#16181f", color2: "#e6e7ea", logo: "logos/obsidian-bay-orcas.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         },
         {
           name: "South Division",
           teams: [
-            { name: "Toronto Maples", code: "TOR", color: "#4b2381", color2: "#bab9bf", coach: "zlssei", logo: "logos/toronto-maples.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "New Orleans Raiders", code: "NO", color: "#2b2f36", color2: "#b7bcc0", coach: "BIGGIECHEESE", logo: "logos/new-orleans-raiders.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "San Jose Scarecrows", code: "SJS", color: "#f8aa02", color2: "#060707", coach: "zay balla", logo: "logos/san-jose-scarecrows.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Detroit Dynasty", code: "DET", color: "#4f1b84", color2: "#ffffff", coach: "fox balla", logo: "logos/detroit-dynasty.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-11-01", time: "01:43" } },
-            { name: "Sarnia City Broncos", code: "SCB", color: "#db0028", color2: "#050505", coach: "desiredsantana", logo: "logos/sarnia-city-broncos.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
+            { name: "Sunny Isle Sea Serpents", code: "SIS", color: "#169ca3", color2: "#e0263a", logo: "logos/sunny-isle-sea-serpents.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Rose City Thunder", code: "RCT", color: "#d6274f", color2: "#2ee6b0", logo: "logos/rose-city-thunder.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "New York Dragons", code: "NYD", color: "#1f7a3a", color2: "#0d0d0d", logo: "logos/past/new-york-dragons.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Savannah Raiders", code: "SAV", color: "#b3121f", color2: "#111111", logo: "logos/past/savannah-raiders.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         }
       ]
@@ -578,21 +601,19 @@ const LEAGUE = {
         {
           name: "North Division",
           teams: [
-            { name: "San Francisco Miners", code: "SF", color: "#cf1d1d", color2: "#fcc00b", coach: "sk8erboy111", logo: "logos/san-francisco-miners.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Vienna Angels", code: "VIE", color: "#e5ad00", color2: "#050505", coach: "Kamil08", logo: "logos/vienna-angels.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-11-01", time: "01:43" } },
-            { name: "Olympia Owls", code: "OLY", color: "#1e5b45", color2: "#aeafb1", coach: "fooge", logo: "logos/olympia-owls.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Novasota Wolf Pack", code: "NWP", color: "#2a5a3f", color2: "#e5dfc5", coach: "Yacht", logo: "logos/novasota-wolf-pack.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-11-01", time: "01:43" } },
-            { name: "Long Beach Pirates", code: "LBP", color: "#2a8de0", color2: "#062c45", coach: "splndd", logo: "logos/long-beach-pirates.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
+            { name: "Tokyo Tigers", code: "TOK", color: "#f26a1b", color2: "#111111", logo: "logos/tokyo-tigers.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Louisville Lions", code: "LOU", color: "#2c4fa8", color2: "#c9d6f2", logo: "logos/louisville-lions.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Vice City Makos", code: "VCM", color: "#ff2f8e", color2: "#18c7c7", logo: "logos/vice-city-makos.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Highridge Huskies", code: "HRH", color: "#4a4e57", color2: "#f2c230", logo: "logos/highridge-huskies.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         },
         {
           name: "South Division",
           teams: [
-            { name: "Costa Rica Pumas", code: "CR", color: "#1b2a5c", color2: "#ef1b3a", coach: "msuede", logo: "logos/costa-rica-pumas.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-11-01", time: "01:43" } },
-            { name: "Rose City Reapers", code: "RCR", color: "#6a1fc4", color2: "#e3e2e3", coach: "ACTIVIST000", logo: "logos/rose-city-reapers.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Plymouth Huskies", code: "PLY", color: "#3a3d44", color2: "#c7b07a", coach: "248", logo: "logos/plymouth-huskies.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Shiroishi Samurai", code: "SHI", color: "#f08a12", color2: "#050505", coach: "Vljla6i", logo: "logos/shiroishi-samurai.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
-            { name: "Columbus Colts", code: "CLB", color: "#1d4fb0", color2: "#ffffff", coach: "9kb2", logo: "logos/columbus-colts.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-", disbanded: { date: "2026-10-19", time: "17:53" } }
+            { name: "San Jose Scarecrows", code: "SJS", color: "#f8aa02", color2: "#060707", logo: "logos/san-jose-scarecrows.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Vermont Valkyries", code: "VER", color: "#2b2e33", color2: "#c6e630", logo: "logos/vermont-valkyries.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Kansas City Jazz", code: "KCJ", color: "#8e3fe0", color2: "#2ff5c8", logo: "logos/kansas-city-jazz.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" },
+            { name: "Houston Toros", code: "HOU", color: "#0b2a5b", color2: "#e0263a", logo: "logos/houston-toros.png", w: 0, l: 0, pf: 0, pa: 0, streak: "-" }
           ]
         }
       ]
