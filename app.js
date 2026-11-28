@@ -87,7 +87,7 @@
           const renamed = Object.keys(sheet.rename || {}).find((n) => n.toLowerCase() === row.player.toLowerCase());
           if (renamed) row.player = sheet.rename[renamed];
           // Some old sheet rows have TGT and REC swapped (more catches than targets can't happen)
-          if (typeof row.rec === "number" && typeof row.tgt === "number" && row.rec > row.tgt) [row.tgt, row.rec] = [row.rec, row.tgt];
+          if (!sheet.exact && typeof row.rec === "number" && typeof row.tgt === "number" && row.rec > row.tgt) [row.tgt, row.rec] = [row.rec, row.tgt];
           const conf = LEAGUE.stats.categories.find((c) => c.key === cat);
           const weights = sheet.recalcFpts && conf && conf.allTime && conf.allTime.fpts;
           if (weights) row.fpts = Object.entries(weights).reduce((sum, [k, w]) => sum + (row[k] || 0) * w, 0);
@@ -196,7 +196,7 @@
       ].sort((a, b) => a.week - b.week);
     }
     // Series the league skipped (S7: Series 5 / Week 9, it went straight to the playoffs) leave the site
-    const SKIPPED_SERIES = [5];
+    const SKIPPED_SERIES = LEAGUE.season === 7 ? [5] : [];
     const skipped = (w) => SKIPPED_SERIES.includes(w.series);
     LEAGUE.schedule = LEAGUE.schedule.filter((w) => !skipped(w));
     if (SAVED.deadlines && Array.isArray(SAVED.deadlines.series)) SAVED.deadlines = { ...SAVED.deadlines, series: SAVED.deadlines.series.filter((s) => !SKIPPED_SERIES.includes(s.series)) };
@@ -206,6 +206,21 @@
     SAVED.results.forEach((r) => {
       const g = games.find((x) => x.id === r.id);
       if (g) Object.assign(g, { score: r.score, date: r.date, potg: r.potg, box: r.box });
+    });
+    // Past seasons the server archived ({ 7: { results, schedule, statEdits } }): their weeks with scores and box scores,
+    // for the Season picker on player pages. Their games get the same name fixes as this season's (below).
+    LEAGUE.pastSeasons = {};
+    Object.entries(SAVED.archive || {}).forEach(([s, a]) => {
+      if (Number(s) === LEAGUE.season || !a) return;
+      const weeks = (a.schedule || []).map((w) => ({ ...w, games: w.games.map((g) => ({ ...g, teams: g.teams.map(botTeam) })) }))
+        .sort((x, y) => x.week - y.week);
+      const past = weeks.flatMap((w) => w.games);
+      (a.results || []).forEach((r) => {
+        const g = past.find((x) => x.id === r.id);
+        if (g) Object.assign(g, { score: r.score, date: r.date, potg: r.potg, box: r.box });
+      });
+      LEAGUE.pastSeasons[s] = { weeks, statEdits: { ...(a.statEdits || {}) } };
+      games.push(...past);
     });
 
     // Transactions sent straight from the Discord bot use Discord names: match players to their site names
@@ -249,7 +264,7 @@
     // A renamed team keeps its transactions, games and playoff spots
     const rn = (n) => renames[n] || n;
     LEAGUE.updates.forEach((u) => { u.team = rn(u.team); });
-    LEAGUE.schedule.forEach((wk) => wk.games.forEach((g) => { g.teams = g.teams.map(rn); }));
+    [LEAGUE.schedule, ...Object.values(LEAGUE.pastSeasons).map((p) => p.weeks)].forEach((weeks) => weeks.forEach((wk) => wk.games.forEach((g) => { g.teams = g.teams.map(rn); })));
     [SAVED.playoffs, LEAGUE.playoffs].forEach((po) => po && po.rounds && po.rounds.forEach((r) => r.games.forEach((g) => { g.a = rn(g.a); g.b = rn(g.b); })));
 
     // Everyone goes by their current name (old Discord names and nicknames -> Roblox username), so a renamed
@@ -290,6 +305,7 @@
     });
     rekey(posMap);
     rekey(SAVED.statEdits || {});
+    Object.values(LEAGUE.pastSeasons).forEach((p) => rekey(p.statEdits));
 
     // Rosters the bot syncs: each one sets that team's players (and staff) at that moment
     LEAGUE.rosterSyncs = (SAVED.rosterSyncs || []).map((s) => ({
@@ -1091,10 +1107,12 @@
   };
 
   // Every final game a player has a box score line in
-  function playerGames(name) {
+  // A season's weeks: this season, or a past one the server archived
+  const seasonWeeks = (season) => (!season || Number(season) === LEAGUE.season ? LEAGUE.schedule : ((LEAGUE.pastSeasons || {})[season] || {}).weeks || []);
+  function playerGames(name, season) {
     const key = name.toLowerCase();
     const out = [];
-    [...LEAGUE.schedule].sort((a, b) => a.week - b.week).forEach((wk) =>
+    [...seasonWeeks(season)].sort((a, b) => a.week - b.week).forEach((wk) =>
       wk.games.forEach((g) => {
         if (!Array.isArray(g.score) || !g.box) return;
         g.box.forEach((side, i) => {
@@ -1689,10 +1707,15 @@
       </div>`;
   }
 
-  function player(enc) {
+  function player(enc, seasonPart) {
     const raw = aliasName(decodeURIComponent(enc));
     const key = raw.toLowerCase();
-    const games = playerGames(raw);
+    // Seasons to pick from: this one, plus each archived season they played in (#/players/<name>/s7)
+    const pastPlayed = Object.keys(LEAGUE.pastSeasons || {}).map(Number).filter((s) => playerGames(raw, s).length || seasonEditFor(raw, s));
+    const seasons = [LEAGUE.season, ...pastPlayed.sort((a, b) => b - a)];
+    const picked = Number(String(seasonPart || "").replace(/^s/i, ""));
+    const season = seasons.includes(picked) ? picked : LEAGUE.season;
+    const games = playerGames(raw, season);
     const legacyAll = computeLegacy();
     // A legacy entry can still be under an old name (data.js renames point it at this player)
     const leg = legacyAll.find((p) => p.name.toLowerCase() === key) || legacyAll.find((p) => aliasName(p.name).toLowerCase() === key);
@@ -1706,7 +1729,7 @@
     // GP per card = games with a line in that category, like the Stats tables
     games.forEach(({ lines }) => Object.entries(lines).forEach(([k, l]) => addLine((totals[k] = totals[k] || {}), { ...l, gp: 1 })));
     // Hand-edited stats (Admin -> Player Stats) win over the box scores
-    const edit = statEditFor(name);
+    const edit = seasonEditFor(name, season);
     if (edit) {
       Object.keys(BOX).forEach((k) => { if (edit[k]) totals[k] = { ...edit[k], gp: edit.gp != null ? edit.gp : (totals[k] && totals[k].gp) || 0 }; });
     }
@@ -1719,7 +1742,7 @@
       defense: ["tak", "tfl", "sck", "saf", "int", "pbu", "swat", "td"] };
     const seasonRank = (k, f, v) => {
       if (!(RANKED[k] || []).includes(f) || !(v > 0)) return 0;
-      return Object.values(BOX_TOTALS[k] || {}).filter((r) => aliasName(r.player).toLowerCase() !== aliasName(name).toLowerCase() && (r[f] || 0) > v).length + 1;
+      return Object.values(seasonTotals(season)[k] || {}).filter((r) => aliasName(r.player).toLowerCase() !== aliasName(name).toLowerCase() && (r[f] || 0) > v).length + 1;
     };
     // Only the sides of the ball they played, most games first
     const cards = PLAYER_CARDS.filter(([k, , cols]) => totals[k] && totals[k].gp && cols.some(([, f]) => f !== "gp" && totals[k][f])).sort((a, b) => totals[b[0]].gp - totals[a[0]].gp);
@@ -1750,7 +1773,7 @@
 
         <div class="season-row">
           <span class="muted">Season:</span>
-          <select class="select" aria-label="Season"><option>Season ${LEAGUE.season}</option></select>
+          <select class="select" aria-label="Season" data-season-pick="1">${seasons.map((s) => `<option value="#/players/${encodeURIComponent(name)}${s === LEAGUE.season ? "" : `/s${s}`}" ${s === season ? "selected" : ""}>Season ${s}</option>`).join("")}</select>
         </div>
 
         <div class="player-cards">
@@ -1764,7 +1787,7 @@
                   return `<div class="ph-stat"><span class="ph-stat-k">${h}</span><span class="ph-stat-v">${typeof v === "number" ? v.toLocaleString() : v}</span><span class="ph-stat-r">${r ? ordinal(r) : "&nbsp;"}</span></div>`;
                 }).join("")}
               </div>
-            </div>`).join("") : `<p class="muted">No Season ${LEAGUE.season} stats yet.</p>`}
+            </div>`).join("") : `<p class="muted">No Season ${season} stats yet.</p>`}
         </div>
 
         <div class="card player-section">
@@ -1853,43 +1876,60 @@
   }
 
   // Season totals from every final game's box score: { passing: { player: totals }, ... }
-  const BOX_TOTALS = { passing: {}, rushing: {}, receiving: {}, defense: {} };
-  LEAGUE.schedule.forEach((wk) =>
-    wk.games.forEach((g) => {
-      if (!Array.isArray(g.score) || !g.box) return;
-      g.box.forEach((side, i) =>
-        Object.keys(BOX_TOTALS).forEach((k) =>
-          ((side && side[k]) || []).forEach((line) => {
-            const key = line.player.toLowerCase();
-            const acc = (BOX_TOTALS[k][key] = BOX_TOTALS[k][key] || { player: line.player });
-            acc.team = g.teams[i];
-            addLine(acc, { ...line, gp: 1 });
-          })
-        )
-      );
-    })
-  );
+  function boxTotalsFor(weeks) {
+    const totals = { passing: {}, rushing: {}, receiving: {}, defense: {} };
+    weeks.forEach((wk) =>
+      wk.games.forEach((g) => {
+        if (!Array.isArray(g.score) || !g.box) return;
+        g.box.forEach((side, i) =>
+          Object.keys(totals).forEach((k) =>
+            ((side && side[k]) || []).forEach((line) => {
+              const key = line.player.toLowerCase();
+              const acc = (totals[k][key] = totals[k][key] || { player: line.player });
+              acc.team = g.teams[i];
+              addLine(acc, { ...line, gp: 1 });
+            })
+          )
+        );
+      })
+    );
+    return totals;
+  }
+  const BOX_TOTALS = boxTotalsFor(LEAGUE.schedule);
 
   // Stats edited by hand (Admin -> Player Stats) replace that player's box score totals
   const statSeasonEdited = (name) => !!statEditFor(name);
-  const statEditFor = (name) => {
-    const edits = SAVED.statEdits || {};
+  const statEditFor = (name) => seasonEditFor(name, LEAGUE.season);
+  // A player's hand edits for a season (this one, or an archived one)
+  function seasonEditFor(name, season) {
+    const edits = !season || Number(season) === LEAGUE.season ? SAVED.statEdits || {} : (((LEAGUE.pastSeasons || {})[season] || {}).statEdits) || {};
     const k = Object.keys(edits).find((n) => n.toLowerCase() === String(name).toLowerCase());
     return k ? edits[k] : null;
-  };
-  Object.entries(SAVED.statEdits || {}).forEach(([name, edit]) => {
+  }
+  const applyEdits = (totals, edits) => Object.entries(edits || {}).forEach(([name, edit]) => {
     const key = name.toLowerCase();
-    Object.keys(BOX_TOTALS).forEach((g) => {
+    Object.keys(totals).forEach((g) => {
       const vals = edit[g];
       if (!vals) return;
-      const row = BOX_TOTALS[g][key];
+      const row = totals[g][key];
       const hasAny = Object.values(vals).some((v) => v);
       if (!row && !hasAny) return;
       const out = { player: (row && row.player) || name, team: row && row.team, ...vals, gp: edit.gp != null ? edit.gp : (row && row.gp) || 0 };
-      if (!hasAny && row) delete BOX_TOTALS[g][key];
-      else BOX_TOTALS[g][key] = out;
+      if (!hasAny && row) delete totals[g][key];
+      else totals[g][key] = out;
     });
   });
+  applyEdits(BOX_TOTALS, SAVED.statEdits);
+  // A past season's totals (its box scores plus its hand edits), worked out once when first asked for
+  const pastTotals = {};
+  const seasonTotals = (season) => {
+    if (!season || Number(season) === LEAGUE.season) return BOX_TOTALS;
+    if (!pastTotals[season]) {
+      const p = (LEAGUE.pastSeasons || {})[season] || { weeks: [], statEdits: {} };
+      applyEdits((pastTotals[season] = boxTotalsFor(p.weeks)), p.statEdits);
+    }
+    return pastTotals[season];
+  };
 
   function listedPositions(player) {
     const map = LEAGUE.stats.positions || {};
@@ -4325,7 +4365,9 @@
   const bracket = () => {
     const po = SAVED.playoffs || LEAGUE.playoffs;
     if (po && po.rounds && po.rounds.length) return po;
-    return TOP10_PREVIEW ? top10Bracket(po) : null;
+    // No preview until this season has a final game (a new season starts at 0-0 for everyone)
+    const started = LEAGUE.schedule.some((w) => w.games.some((g) => Array.isArray(g.score)));
+    return TOP10_PREVIEW && started ? top10Bracket(po) : null;
   };
 
   // Until a bracket is posted on Admin -> Playoffs, the top 10 teams in the standings make one (TOP10_PREVIEW = false turns it off).
@@ -8110,7 +8152,7 @@
       adminTab = tab;
     }
     const page = section === "teams" && sub ? () => team(sub, parts[2])
-      : section === "players" && sub ? () => player(sub)
+      : section === "players" && sub ? () => player(sub, parts[2])
       : ROUTES[section] || notFound;
     app.innerHTML = page();
     fillAvatars();
@@ -8220,6 +8262,7 @@
   });
   app.addEventListener("change", (e) => {
     const el = e.target;
+    if (el.dataset.seasonPick) { location.hash = el.value; return; } // player page: Season picker
     if (el.id === "picFiles") { picAdd(el.files); return renderKeepScroll(); }
     if (el.id === "picGame") { pic.gameId = el.value; return renderKeepScroll(); }
     if (el.dataset.picTeam) pic.teams[el.dataset.picTeam] = el.value;

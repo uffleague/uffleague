@@ -18,7 +18,8 @@ const EMPTY = { results: [], updates: [], positions: {}, streams: [], playoffs: 
   renames: [], people: [], rosterSyncs: [], rosterMoves: [], awardGrants: [], recordGrants: [], deadlines: null, primetime: null, activity: [],
   fantasy: null, // fantasy: points per stat set on Admin -> Fantasy Points (null = the site's defaults)
   suspensions: [], // suspensions: Admin -> Suspensions ({ id, player, discord, games, reason, bail, served: [...], cleared })
-  btRatings: {} }; // btRatings: Build a Team overalls set on Admin -> Build a Team ({ name: { QB, WR, TE } }, null = left out)
+  btRatings: {}, // btRatings: Build a Team overalls set on Admin -> Build a Team ({ name: { QB, WR, TE } }, null = left out)
+  archive: {} }; // archive: past seasons' games ({ 7: { results, schedule, statEdits, deadlines, primetime, playoffs, at } }), see newSeason
 const RENAMES_MAX = 3000;
 const PEOPLE_MAX = 3000;
 const SYNCS_MAX = 200;
@@ -1368,6 +1369,22 @@ export default {
       const gone = data.vods.find((v) => v.id === body.id);
       data.vods = data.vods.filter((v) => v.id !== body.id);
       log = `Removed VOD "${gone ? gone.title : "?"}"`;
+    } else if (body.action === "newSeason") {
+      // A season is over: in one save, its games, schedule, hand-edited stats, deadlines, primetime picks and bracket move
+      // into the archive (the site's player pages still show them), its United Flag Bowl goes into the bowl history, and
+      // all of those start empty for the next season. Done once per season.
+      const season = Math.round(Number(body.season));
+      if (!(season >= 1 && season <= 99)) return json({ error: "Pick the season that just ended." }, 400);
+      if ((data.archive || {})[season]) return json({ error: `Season ${season} is already archived.` }, 409);
+      const b = body.bowl || {};
+      const bowl = { champion: str(b.champion, 60), runnerUp: str(b.runnerUp, 60), scoreA: str(String(b.scoreA ?? ""), 4), scoreB: str(String(b.scoreB ?? ""), 4) };
+      data.archive = { ...(data.archive || {}), [season]: { results: data.results, schedule: data.schedule, statEdits: data.statEdits,
+        deadlines: data.deadlines, primetime: data.primetime, playoffs: data.playoffs, at: Date.now() } };
+      if (bowl.champion) data.bowls = { ...(data.bowls || {}), [season]: bowl };
+      const pt = data.primetime || {};
+      Object.assign(data, { results: [], schedule: [], statEdits: {}, deadlines: null, playoffs: null,
+        primetime: pt.settings ? { settings: pt.settings } : null });
+      log = `Season ${season} is over: ${data.archive[season].results.length} games archived${bowl.champion ? `, ${bowl.champion} won United Flag Bowl` : ""}. The next season starts empty.`;
     } else if (body.action === "saveBowls") {
       const bowls = {};
       Object.entries(body.bowls || {}).forEach(([season, b]) => {

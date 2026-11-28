@@ -6,7 +6,7 @@
 const LEAGUE = {
   name: "United Flag Football",
   short: "UFF",
-  season: 7,
+  season: 8,
   year: 2026,
   brandLogo: "logo-main.png", // sidebar + home page logo
   // Team logos: add logo: "logos/<file>.png" to a team. Teams without one use logo.png.
@@ -369,13 +369,13 @@ const LEAGUE = {
           { label: "Most Passing Yards", holders: ["soto"], value: "5,190", season: 5, stat: "passing.yds" },
           { label: "Most Passing TDs", holders: ["soto"], value: "48", season: 5, stat: "passing.td" },
           { label: "Most Passing Attempts", holders: ["youngvtee"], value: "226", season: 3, stat: "passing.att" },
-          { label: "Most Completions", holders: ["wery"], value: "160", season: 5, stat: "passing.comp" },
+          { label: "Most Completions", holders: ["breakxu"], value: "161", season: 7, stat: "passing.comp" },
           { label: "Most Interceptions Thrown", holders: ["Vljla6i"], value: "18", season: 4, stat: "passing.int" }
         ] },
         { name: "Receiving", items: [
           { label: "Most Receiving Yards", holders: ["n4w"], value: "2,436", season: 1, stat: "receiving.yds" },
           { label: "Most Receiving TDs", holders: ["n4w"], value: "25", season: 1, stat: "receiving.td" },
-          { label: "Most Receptions", holders: ["lord 9"], value: "46", season: 4, stat: "receiving.rec" }
+          { label: "Most Receptions", holders: ["hurdle"], value: "86", season: 7, stat: "receiving.rec" }
         ] },
         { name: "Rushing", items: [
           { label: "Most Rushing Yards", holders: ["breakxu"], value: "359", season: 5, stat: "rushing.yds" },
@@ -385,7 +385,7 @@ const LEAGUE = {
         { name: "Defense", items: [
           { label: "Most Defensive INTs", holders: ["n4w", "synappseuser"], value: "13", season: 1, stat: "defense.int" },
           { label: "Most Tackles", holders: ["sk8erboy111"], value: "43", season: 5, stat: "defense.tak" },
-          { label: "Most Pass Breakups", holders: ["stunaaaaaaaaaaaaa"], value: "8", season: 5, stat: "defense.pbu" },
+          { label: "Most Pass Breakups", holders: ["PPspecialist", "goodnoob9870"], value: "9", season: 7, stat: "defense.pbu" },
           { label: "Most Sacks", holders: ["knqq"], value: "22", season: 5, stat: "defense.sck" },
           { label: "Most Safeties", holders: ["day"], value: "7", season: 6, stat: "defense.saf" }
         ] }
