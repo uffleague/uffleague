@@ -918,8 +918,10 @@
     { label: "Defense", group: "defense", f: "tak", unit: "TAK", cats: ["Tackles"] }
   ];
   let leadTab = 0;
-  let leadScope = "season"; // This season first; the switch in the panel shows All-Time
+  // This season first, or All-Time until this season has stats; the switch in the panel changes it
+  let leadScope = null;
   function leadersPanel() {
+    if (!leadScope) leadScope = Object.values(BOX_TOTALS).some((g) => Object.keys(g).length) ? "season" : "alltime";
     const season = leadScope === "season";
     const tabs = HOME_LEADERS.map((l) => {
       let rows;

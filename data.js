@@ -97,16 +97,11 @@ const LEAGUE = {
       { image: "gfx/player-of-the-series.jpg", title: "Player of the Series" }
     ],
     news: [],
-    powerRankings: [
-      "San Francisco Miners", "Kansas City Jazz", "Toronto Maples", "Vienna Angels", "Olympia Owls",
-      "Baltimore Bluejays", "Pittsburg Sentinels", "Costa Rica Pumas", "New Orleans Raiders", "San Jose Scarecrows",
-      "Rose City Reapers", "Plymouth Huskies", "Shiroishi Samurai", "Seattle Skyclaws", "Novasota Wolf Pack",
-      "Long Beach Pirates", "Detroit Dynasty", "Sarnia City Broncos", "Columbus Colts", "Havana Toroccoros"
-    ],
+    powerRankings: [],
     // A "Playoff cut (prediction)" line under this many teams in Power Rankings (0 = no line)
     playoffCut: 14,
     // Teams that can't make the playoffs anymore (name or code): a "Playoff Ineligible" tag shows next to their name
-    playoffOut: ["Plymouth Huskies", "Rapid City Rams"],
+    playoffOut: [],
     social: { discord: "", youtube: "", x: "", tiktok: "" },
     // VOD links to keep off the home page Featured Media (they stay on the VODs page)
     hideMedia: ["twitch.tv/videos/2900293561"]
