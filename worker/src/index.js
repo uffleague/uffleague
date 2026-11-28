@@ -316,6 +316,21 @@ async function botStream(env, st) {
 
 async function botSchedule(env, sched) {
   const data = await load(env);
+  // An admin can pause the bot's schedule updates (between seasons, while it still has last season's schedule)
+  if (data.botSchedulePaused) return json({ error: "Not saved: schedule updates from the bot are paused on the site right now." }, 409);
+  // A schedule whose teams mostly aren't in the league (an old season's, still in the bot) is turned away, so it can't
+  // come back after a new season starts. Checked against the teams in the site's data.js.
+  const list = await leagueTeams(env, ptState(data).teams);
+  if (list && list.length) {
+    const { names, resolve } = ptTeams(list, data.teams);
+    const known = new Set(names);
+    const games = [].concat((sched && sched.weeks) || []).flatMap((w) => [].concat((w && w.games) || []));
+    const teamsOf = (g) => [].concat((g && g.teams) || [g && g.home, g && g.away].filter(Boolean));
+    const off = games.filter((g) => teamsOf(g).some((t) => !known.has(resolve(t))));
+    if (games.length && off.length * 2 > games.length) {
+      return json({ error: `Not saved: ${off.length} of ${games.length} games have teams that aren't in the league (${[...new Set(off.flatMap(teamsOf))].slice(0, 8).join(", ")}). Is this last season's schedule?` }, 409);
+    }
+  }
   const res = applySchedule(env, data, sched, "Discord bot");
   if (res instanceof Response) return res;
   await save(env, data);
@@ -1369,6 +1384,10 @@ export default {
       const gone = data.vods.find((v) => v.id === body.id);
       data.vods = data.vods.filter((v) => v.id !== body.id);
       log = `Removed VOD "${gone ? gone.title : "?"}"`;
+    } else if (body.action === "pauseBotSchedule") {
+      // { pause: true | false }: while paused, schedules the bot sends are turned away (Admin -> Schedule still works)
+      data.botSchedulePaused = body.pause !== false;
+      log = data.botSchedulePaused ? "Paused schedule updates from the Discord bot" : "Schedule updates from the Discord bot are back on";
     } else if (body.action === "newSeason") {
       // A season is over: in one save, its games, schedule, hand-edited stats, deadlines, primetime picks and bracket move
       // into the archive (the site's player pages still show them), its United Flag Bowl goes into the bowl history, and
