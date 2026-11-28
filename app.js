@@ -1584,6 +1584,111 @@
     img.remove();
   }, true);
 
+  // ---- Player page header (NFL.com-style): avatar on a slanted team panel, name, info column, career stats card ----
+  const POS_FULL = { QB: "Quarterback", RB: "Running Back", WR: "Wide Receiver", TE: "Tight End", DE: "Defensive End", LB: "Linebacker", DB: "Defensive Back" };
+  // The career card's four numbers for a stat tab; [label, field or fn, ranked?]
+  const HERO_STATS = {
+    QB: [["CMP", "comp", 1], ["YDS", "yds", 1], ["TD", "td", 1], ["CMP%", (r) => (r.att ? ((r.comp / r.att) * 100).toFixed(1) : "0.0")]],
+    RB: [["ATT", "att", 1], ["YDS", "yds", 1], ["TD", "td", 1], ["YPC", (r) => (r.att ? (r.yds / r.att).toFixed(2) : "0.00")]],
+    WR: [["REC", "rec", 1], ["YDS", "yds", 1], ["TD", "td", 1], ["AVG", (r) => (r.rec ? (r.yds / r.rec).toFixed(2) : "0.00")]],
+    TE: [["REC", "rec", 1], ["YDS", "yds", 1], ["TD", "td", 1], ["AVG", (r) => (r.rec ? (r.yds / r.rec).toFixed(2) : "0.00")]],
+    Tackles: [["TAK", "tak", 1], ["TFL", "tfl", 1], ["SCK", "sck", 1], ["INT", "int", 1]],
+    LB: [["TAK", "tak", 1], ["TFL", "tfl", 1], ["SCK", "sck", 1], ["INT", "int", 1]],
+    DE: [["SCK", "sck", 1], ["TFL", "tfl", 1], ["TAK", "tak", 1], ["SAF", "saf", 1]],
+    DB: [["INT", "int", 1], ["PBU", "pbu", 1], ["TAK", "tak", 1], ["SWAT", "swat", 1]]
+  };
+  // Short codes for past teams (current teams use their own code)
+  const PAST_CODES = { "Virginia Venom": "VV", "Vicksburg Vortex": "VIC", "Savannah Raiders": "SAV", "New York Dragons": "NY", "Laredo Longhorns": "LAR",
+    "Sinaloa Red Devils": "SIN", "Salem Snowhawks": "SAL", "Saskatoon Stampede": "SAS" };
+  const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
+  // A career card for each side of the ball they play. Offense: the job they do most (pass attempts, carries or
+  // catches), not their best rank (65 carries can rank #1). Defense: the DE/DB/LB tab they rank best in.
+  function heroCareer(name) {
+    const me = (key) => {
+      const rows = statRowsFor(allTimeCat(key), "alltime");
+      return { key, rows, row: rows.find((r) => r.player.toLowerCase() === aliasName(name).toLowerCase()) };
+    };
+    const card = ({ key, rows, row }) => ({ key, stats: HERO_STATS[key].map(([label, f, ranked]) => {
+      const v = typeof f === "function" ? f(row) : row[f] || 0;
+      const rank = ranked && v > 0 ? rows.filter((r) => (r[f] || 0) > v).length + 1 : 0;
+      return { label, v: typeof v === "number" ? v.toLocaleString() : v, rank };
+    }) });
+    const volume = { QB: (r) => r.att || 0, RB: (r) => r.att || 0, WR: (r) => r.rec || 0, TE: (r) => r.rec || 0 };
+    const off = Object.keys(volume).map(me).filter((x) => x.row && volume[x.key](x.row) > 0)
+      .sort((x, y) => volume[y.key](y.row) - volume[x.key](x.row))[0];
+    const defKey = (allTimeRanks(name).find((r) => ["DE", "DB", "LB"].includes(r.key)) || {}).key;
+    const def = defKey && me(defKey);
+    const d = def && def.row;
+    return [off, d && (d.tak || 0) + (d.int || 0) + (d.sck || 0) + (d.pbu || 0) >= 5 ? def : null].filter(Boolean).map(card);
+  }
+  function playerHero(name, t, pos, leg, honorCount) {
+    // The small line over the name: their Legacy (old) name, else their Discord display name, when it's different
+    const person = (SAVED.people || []).find((p) => p.name && p.name.toLowerCase() === name.toLowerCase());
+    const display = person && person.discord ? String(person.discord).replace(/\s*\(@[^)]*\)\s*/, "").replace(/®/g, "").replace(/^@/, "").trim() : "";
+    const nick = [leg && leg.name, display].find((n) => n && n.toLowerCase() !== name.toLowerCase()) || "";
+    const susp = suspendedTag(name);
+    const status = susp ? ["Suspended", "bad"] : t ? ["Active", "ok"] : ["Free Agent", "off"];
+    const careers = heroCareer(name);
+    // Team Halls of Fame they're in (data.js teamHof): [[team, positions], ...]
+    const me = aliasName(name).toLowerCase();
+    const teamHofs = Object.entries(LEAGUE.teamHof || {}).flatMap(([team, list]) =>
+      Object.entries(list).filter(([p]) => aliasName(p).toLowerCase() === me).map(([, pos]) => [team, pos]));
+    const color = (t && t.color) || "#2b5cd6";
+    // Their main positions: the ones their career cards are for ("Quarterback / Linebacker"), else their first
+    const mains = careers.map((c) => c.key);
+    if (!mains.length && pos.length) mains.push(pos[0]);
+    const info = [
+      ["Class", leg && leg.hof ? "Hall of Fame" : leg && leg.tier ? leg.tier.name : "&mdash;"],
+      ["Legacy", leg ? `<a class="plink" href="#/legacy">#${leg.rank} &middot; ${leg.score} pts</a>` : "&mdash;"],
+      ["Honors", honorCount ? `${honorCount}` : "None yet"],
+      ...(teamHofs.length ? [["Team HOF", `<span class="ph-hof">${teamHofs.map(([team, p]) => {
+        const now = teamByName(team);
+        const logo = now ? now.logo : (LEAGUE.pastTeams || {})[team];
+        const code = now ? now.code : PAST_CODES[team] || team.split(/\s+/).map((w) => w[0]).join("").toUpperCase();
+        return `<span class="ph-hof-team" title="${esc(team)} Hall of Fame (${esc(p)})">${logo ? `<img src="${esc(logo)}" alt="">` : ""}${esc(code)}</span>`;
+      }).join("")}</span>`]] : []),
+      ["Status", `<span class="ph-dot ph-dot--${status[1]}"></span>${status[0]}`]
+    ];
+    return `
+      <div class="ph" style="--ph-team:${esc(color)}">
+        <div class="ph-art">
+          ${t && t.logo ? `<img class="ph-mark" src="${esc(t.logo)}" alt="">` : ""}
+          ${playerArt(name)}
+        </div>
+        <div class="ph-id">
+          ${nick ? `<div class="ph-nick">${esc(nick)}</div>` : ""}
+          <h1 class="ph-name${name.length > 16 ? " ph-name--xl" : name.length > 10 ? " ph-name--long" : ""}">${esc(name)}</h1>
+          <div class="ph-team">
+            ${t ? `<a href="#/teams/${t.slug}">${teamLogo(t)}<span>${esc(t.name)}</span></a>` : `<span>Free Agent</span>`}
+            ${mains.length ? `<span class="ph-sep">&bull;</span><span title="${esc(pos.join(", "))}">${mains.map((p) => POS_FULL[p] || p).join(" / ")}</span>` : ""}
+          </div>
+          <div class="ph-actions">
+            ${leg ? `<a class="ph-btn" href="#/legacy">${icon("legacy")}Legacy #${leg.rank}</a>` : ""}
+            ${leg && leg.hof ? hofBadge : leg && leg.tier ? tierBadge(leg.tier) : ""}
+            ${susp}
+          </div>
+        </div>
+        <dl class="ph-info">
+          ${info.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}
+        </dl>
+        ${careers.length ? `
+        <div class="ph-cards">
+          ${careers.map((c) => `
+          <div class="ph-card">
+            <div class="ph-card-head">${leg && leg.hof ? "Hall of Fame " : ""}Career Stats <span>&middot; ${esc(c.key)}</span></div>
+            <div class="ph-card-body">
+              ${c.stats.map((s) => `
+                <div class="ph-stat">
+                  <span class="ph-stat-k">${s.label}</span>
+                  <span class="ph-stat-v">${s.v}</span>
+                  <span class="ph-stat-r">${s.rank ? ordinal(s.rank) : "&nbsp;"}</span>
+                </div>`).join("")}
+            </div>
+          </div>`).join("")}
+        </div>` : ""}
+      </div>`;
+  }
+
   function player(enc) {
     const raw = aliasName(decodeURIComponent(enc));
     const key = raw.toLowerCase();
@@ -1592,7 +1697,8 @@
     // A legacy entry can still be under an old name (data.js renames point it at this player)
     const leg = legacyAll.find((p) => p.name.toLowerCase() === key) || legacyAll.find((p) => aliasName(p.name).toLowerCase() === key);
     const rosterName = Object.values(ROSTERS).map((r) => r.get(key)).find(Boolean);
-    const name = rosterName || (leg && leg.name) || (games[0] && Object.values(games[0].lines)[0].player) || raw;
+    // An old Legacy name ("day") shows as the account it belongs to now (nichelarpers)
+    const name = rosterName || (leg && aliasName(leg.name)) || (games[0] && Object.values(games[0].lines)[0].player) || raw;
     const t = currentTeam(name);
     const pos = positionsFor(name);
 
@@ -1608,18 +1714,22 @@
     const honors = playerHonors(name, leg);
     const honorCount = honors.reduce((n, h) => n + h.n, 0) + (leg && leg.hof ? 1 : 0);
 
+    // This season's rank in each counting stat (everyone with that box score section), shown under the number
+    const RANKED = { passing: ["comp", "att", "yds", "td"], rushing: ["att", "yds", "td"], receiving: ["tgt", "rec", "yds", "td"],
+      defense: ["tak", "tfl", "sck", "saf", "int", "pbu", "swat", "td"] };
+    const seasonRank = (k, f, v) => {
+      if (!(RANKED[k] || []).includes(f) || !(v > 0)) return 0;
+      return Object.values(BOX_TOTALS[k] || {}).filter((r) => aliasName(r.player).toLowerCase() !== aliasName(name).toLowerCase() && (r[f] || 0) > v).length + 1;
+    };
+    // Only the sides of the ball they played, most games first
+    const cards = PLAYER_CARDS.filter(([k, , cols]) => totals[k] && totals[k].gp && cols.some(([, f]) => f !== "gp" && totals[k][f])).sort((a, b) => totals[b[0]].gp - totals[a[0]].gp);
+
     return `
-      <div class="wrap">
+      <div class="wrap player-page" style="--ph-team:${esc((t && t.color) || "#2b5cd6")}">
         <a href="javascript:history.back()" class="link back">&larr; Back</a>
-        <div class="team-head">
-          ${playerArt(name)}
+        ${playerHero(name, t, pos, leg, honorCount)}
+        <div class="ph-ranks">
           <div>
-            <h1 class="player-title">${name}${t && t.logo ? `<a href="#/teams/${t.slug}" title="${esc(t.name)}">${teamLogo(t, "lg")}</a>` : ""}${suspendedTag(name)}
-              ${leg ? `<span class="legacy-rank-badge" title="Legacy ranking">${icon("legacy")}Legacy #${leg.rank} &middot; ${leg.score} pts</span>` : ""}
-              ${leg && leg.hof ? hofBadge : leg && leg.tier ? tierBadge(leg.tier) : ""}
-            </h1>
-            <p class="muted">${t ? `<a class="plink" href="#/teams/${t.slug}">${t.name}</a>` : "Free agent"}</p>
-            <div class="pos-row">${pos.map((p) => `<span class="pill">${p}</span>`).join("")}</div>
             ${(() => {
               // Once this season has stats, its ranks go on top and both rows shrink to fit
               const season = statRanks(name, "season").slice(0, 4);
@@ -1644,13 +1754,17 @@
         </div>
 
         <div class="player-cards">
-          ${PLAYER_CARDS.map(([k, label, cols]) => `
-            <div class="card player-card">
-              <div class="table-title">${label}</div>
-              <div class="player-stats">
-                ${cols.map(([h, f]) => `<div><span class="eyebrow">${h}</span><span class="num">${(totals[k] && totals[k][f]) || 0}</span></div>`).join("")}
+          ${cards.length ? cards.map(([k, label, cols]) => `
+            <div class="ps-card">
+              <div class="ps-head"><span>${label}</span><span class="ps-gp">${totals[k].gp} GP</span></div>
+              <div class="ps-body">
+                ${cols.filter(([, f]) => f !== "gp").map(([h, f]) => {
+                  const v = totals[k][f] || 0;
+                  const r = seasonRank(k, f, v);
+                  return `<div class="ph-stat"><span class="ph-stat-k">${h}</span><span class="ph-stat-v">${typeof v === "number" ? v.toLocaleString() : v}</span><span class="ph-stat-r">${r ? ordinal(r) : "&nbsp;"}</span></div>`;
+                }).join("")}
               </div>
-            </div>`).join("")}
+            </div>`).join("") : `<p class="muted">No Season ${LEAGUE.season} stats yet.</p>`}
         </div>
 
         <div class="card player-section">
@@ -1659,19 +1773,23 @@
             ${games.length ? games.map(({ g, wk, i, lines }) => {
               const opp = g.teams[1 - i];
               const res = g.score[i] > g.score[1 - i] ? "W" : g.score[i] < g.score[1 - i] ? "L" : "T";
-              const chips = Object.entries(lines).map(([k, l]) =>
-                `<span class="log-group">${BOX[k].label}</span>` +
-                BOX[k].cols
+              const chips = Object.entries(lines).map(([k, l]) => {
+                const shown = BOX[k].cols
                   .map(([h, f]) => [h, typeof f === "function" ? f(l) : l[f]])
-                  .filter(([, v]) => v != null && v !== 0 && v !== "0" && v !== "0.0" && v !== "0.00")
-                  .map(([h, v]) => `<span class="honor">${h} ${v}</span>`)
-                  .join("")
-              );
+                  .filter(([, v]) => v != null && v !== 0 && v !== "0" && v !== "0.0" && v !== "0.00");
+                // A section with nothing in it ("Rushing" with no carries) is left out
+                return shown.length ? `<span class="log-group">${BOX[k].label}</span>` + shown.map(([h, v]) => `<span class="honor">${h} ${v}</span>`).join("") : "";
+              });
+              const ot = teamByName(opp);
               return `
                 <div class="log-row">
                   <span class="log-wk"><span>WK</span>${wk.week}</span>
                   <div class="log-main">
-                    <div><strong>${i === 0 ? "vs" : "@"} ${opp}</strong> <span class="muted small">${res} ${g.score[i]}-${g.score[1 - i]}</span></div>
+                    <div class="log-top">
+                      <span class="log-at">${i === 0 ? "vs" : "@"}</span>
+                      ${ot ? `<a class="log-opp" href="#/teams/${ot.slug}">${teamLogo(ot)}<strong>${esc(opp)}</strong></a>` : `<strong>${esc(opp)}</strong>`}
+                      <span class="log-res log-res--${res}">${res} ${g.score[i]}-${g.score[1 - i]}</span>
+                    </div>
                     <div class="legacy-honors">${chips.join("")}</div>
                   </div>
                 </div>`;

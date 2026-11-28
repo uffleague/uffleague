@@ -20,6 +20,7 @@ const LEAGUE = {
   // Logos for teams from past seasons that aren't in the league now (Past Bowls, Team of the Year, brackets)
   pastTeams: {
     "Virginia Venom": "logos/past/virginia-venom.png",
+    "Vicksburg Vortex": "logos/past/vicksburg-vortex.png",
     "Laredo Longhorns": "logos/past/laredo-longhorns.png",
     "Savannah Raiders": "logos/past/savannah-raiders.png",
     "Sinaloa Red Devils": "logos/past/sinaloa-red-devils.png",
@@ -27,6 +28,17 @@ const LEAGUE = {
     "New York Dragons": "logos/past/new-york-dragons.png",
     "Salem Snow Hawks": "logos/past/salem-snow-hawks.png",
     "Salem Snowhawks": "logos/past/salem-snow-hawks.png"
+  },
+  // Team Halls of Fame: shown as "Team HOF" on the player page header. Each player's positions for that team.
+  teamHof: {
+    "Shiroishi Samurai": { breakxu: "QB/WR/DB", mr_devy1122: "WR/DB" },
+    "Columbus Colts": { breakxu: "QB/WR/DB", ast1: "WR/DB", SparkyFaceIsPunched: "QB/DB", somanybags00: "WR/DE/DB", seaboy: "WR/DB" },
+    "Seattle Skyclaws": { ast1: "WR/DB", exanious: "QB/WR/DB", "130kami": "WR/DB", jaylenyagmi: "WR/DB" },
+    "Virginia Venom": { SparkyFaceIsPunched: "QB/DB", somanybags00: "WR/DE/DB", fooge: "QB/RB", "2kaiju": "WR/DB", seaboy: "WR/DB" },
+    "Savannah Raiders": { fooge: "QB/RB", "2kaiju": "WR/DB" },
+    "New York Dragons": { hurdle: "WR/DB", eltontono: "QB/DB", hbe: "WR/DB", fraeology: "WR/DB", kamill08: "WR/DB" },
+    "Laredo Longhorns": { "1021Juice": "QB/DB" },
+    "Vicksburg Vortex": { n4w: "WR/DB", JvkeThingz: "QB/LB", xJupp: "WR/DB" }
   },
   // Home page. Put graphics in the gfx/ folder (change logoVersion above when a picture is replaced).
   //   slides: the big rotating banner at the top. Best size 1920 x 600; keep the important part near the middle.
@@ -439,7 +451,7 @@ const LEAGUE = {
       { label: "Second Team All Flag", value: 8, codes: ["SECOND_TEAM"] }
     ],
     // Hall of Fame inductees (chosen, not points-based). Names must match players below.
-    hallOfFame: ["dictator 10", "lord 9", "n4w"],
+    hallOfFame: ["dictator 10", "lord 9", "n4w", "breakxu"],
     tiers: [
       { name: "Ultra", min: 1600, color: "ultra" },
       { name: "Legend", min: 1200, color: "legend" },

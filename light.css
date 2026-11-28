@@ -1,0 +1,118 @@
+/* Cream version of the site (preview). Loaded after styles.css; remove the <link> in index.html to go back to dark. */
+:root {
+  color-scheme: light;
+  --cream-2: #efe3c0;   /* raised panel / hover tint */
+  --bg: #f4eacb;
+  --surface: #ffffff;   /* cards */
+  --line: #e3d7b3;
+  --ink: #1f2547;
+  --muted: #6e6a5c;
+  --heading: #1f2547;
+  --accent: #2f3f96;
+  --accent-2: #3a4bab;
+  --edge: #d6c89f;
+  --edge-hover: #a8996c;
+  --gold: #9a6f0a; --gold-soft: rgba(154, 111, 10, .1);
+  --blue-line: rgba(47, 63, 150, .35); --blue-soft: #2f3f96; --blue-muted: #4a5578;
+}
+body { background: #f4eacb; }
+
+/* Header */
+.site-head { background: #f4eacb; color: var(--heading); border-bottom: 1px solid var(--line); }
+body.is-home .site-head { position: relative; background: #f4eacb; color: var(--heading); border-bottom: 1px solid var(--line); }
+
+/* Cards: white on the cream page */
+.card, .ps-card, .player-section, .table-card { background: #fff; border-color: var(--line); box-shadow: 0 1px 3px rgba(60, 45, 10, .08); }
+
+/* Home */
+body.is-home { background: #f4eacb; }
+.home {
+  --hx-bg: #f4eacb; --hx-panel: #ffffff; --hx-panel-2: #faf5e6; --hx-line: #e3d7b3;
+  --hx-ink: #1f2547; --hx-muted: #6e6a5c; --hx-accent: #2f3f96;
+}
+.home h2 { color: var(--heading); }
+
+/* Team page panels */
+.team-page { --hx-panel: #ffffff; --hx-panel-2: #faf5e6; --hx-line: #e3d7b3; --hx-ink: #1f2547; --hx-muted: #6e6a5c; }
+
+/* Tables */
+table.standings th { background: #faf5e6; }
+table.standings tr:hover td { background: #fcf9ef; }
+
+/* Rank and stat pills */
+.rank-pill, .honor, .pill { background: #faf5e6; border-color: var(--line); color: var(--ink); }
+.rank-pill.top { background: var(--accent); color: #fff; }
+.log-row { background: #fff; }
+
+/* Inputs */
+.select, input, textarea { background: #fff; color: var(--ink); border-color: var(--edge); }
+
+/* ---- Text that was white or cream on the dark site ---- */
+.link, .hx-move-text a, .deadline-when, .hx-deadline-meta b, .auth-link, .auth-alt, .auth-feature:hover b,
+.acct-facts code, .unlock-card code, .pm-state code, .pm-ou-tag.over, .hx-gfx-kicker, .hx-more { color: var(--accent); }
+.topnav a.active::after { background: var(--accent); }
+.head-login { border-color: var(--edge); }
+.menu-btn:hover .menu-ico, .menu-btn[aria-expanded="true"] .menu-ico,
+.head-login:hover, .head-login.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.menu-panel { background: #fff; color: var(--ink); box-shadow: 0 18px 50px rgba(60, 45, 10, .18); }
+.menu-grid a { color: var(--ink); }
+.menu-grid a:hover { background: #faf5e6; color: var(--heading); }
+.menu-grid a.active { background: var(--accent); color: #fff; }
+.menu-foot { border-top-color: var(--line); color: var(--muted); }
+.acct-menu { background: #fff; }
+.acct-menu a:hover, .acct-menu button:hover { background: #faf5e6; }
+.conf-title { background: linear-gradient(90deg, var(--accent) 0%, var(--accent-2) 60%, #6f7fd0 100%); color: #fff; border: 0; }
+.btn-primary, .filter.active, .segmented a.active, .tier--hof, .pill-navy, .match-team.win, .match-team.picked { color: #fff; }
+
+/* Home panels */
+.hx-rank, .hx-rec, .hx-lead-name, .hx-game-team, .hx-tick-team, .hx-media-title, .hx-gfx-title, .hx-pt-team, .hx-lead-val,
+.home .live-title, .home .cand-name, .home .cand-pts, .home .cand-head { color: var(--heading); }
+.hx-row:hover .hx-row-name, .hx-row:hover .hx-rank, .hx-row:hover .hx-rec { color: var(--accent); text-shadow: none; }
+.hx-rank-more { color: var(--accent); }
+.hx-rank-more:hover, .hx-more:hover, .hx-tab:hover, .hx-scope button:hover { color: var(--heading); background: #faf5e6; }
+.hx-tab.on, .hx-lead-rank.top { color: #fff; }
+.home .icon.accent, .icon.accent { color: var(--accent); }
+
+/* Team page panels (the big hero banner stays dark) */
+.tp-name, .tp-res-opp span, .tp-res-score, .tp-lead-val, .tp-lead-none b, .tp-table .team-cell, .tp-news-title,
+.tp-teamstats .num, .tp-lead-label, .tp-lead-who a:hover, .tp-table tr.me td, .tp-tab:hover { color: var(--heading); }
+.tp-blank strong { color: #fff; }
+.tp-hero .tp-sub { color: rgba(255, 255, 255, .8); }
+.tp-next .hx-head h2, .tp-next .tp-note { color: #fff; }
+
+/* Playoff page: the bracket stays dark over the Shanghai photo; only the top bar is cream */
+body.is-playoff { --cream-2: #151e37; --surface: #10172b; --line: #232d4b; --ink: #eef0f7; --muted: #8b93ad; --heading: #ffffff; --edge: #34406a; color: var(--ink); }
+body.is-playoff .site-head { --heading: #1f2547; --ink: #1f2547; --muted: #6e6a5c; --line: #e3d7b3; --edge: #d6c89f; color: #1f2547; }
+body.is-playoff .card { background: var(--surface); box-shadow: none; }
+.hx-lead-rank { color: var(--heading); border-color: var(--line); }
+.hx-scope button.on, .hx-scope button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+/* Award tags (MVP, OPOTY...): cream with navy text */
+.cand-code, .home .cand-code { background: var(--cream); color: var(--accent); border: 1px solid var(--accent); }
+/* Award race cards on the home slide: cream cards, navy text */
+.hx-race-card { background: #faf5e6; border-color: #faf5e6; backdrop-filter: none; }
+.hx-race-card:hover { border-color: #fff; }
+.hx-race-code { background: var(--accent); color: var(--cream); }
+.hx-race-name { color: var(--navy); }
+.hx-race-sub { color: #5e5a4c; }
+
+/* Home banner (built-in slides): light cream with navy text */
+.hx-hero { background: #faf5e6; border-bottom-color: var(--line); }
+.hx-slide--brand, .hx-slide--bowl, .hx-slide--awards {
+  background: radial-gradient(ellipse 55% 90% at 80% 50%, rgba(47, 63, 150, .10), transparent 70%), linear-gradient(120deg, #fbf7ea 0%, #f4eacb 60%, #efe1b8 100%); }
+.hx-slide--brand::before, .hx-slide--bowl::before, .hx-slide--awards::before { background: repeating-linear-gradient(115deg, rgba(31, 37, 71, .035) 0 2px, transparent 2px 26px); }
+.hx-slide:not(.hx-slide--gfx) .hx-kicker { color: var(--accent); }
+.hx-slide:not(.hx-slide--gfx) .hx-kicker::before { background: var(--accent); }
+.hx-slide:not(.hx-slide--gfx) .hx-title { color: var(--navy); text-shadow: none; }
+.hx-slide:not(.hx-slide--gfx) .hx-sub { color: #4a4a5e; }
+.hx-slide:not(.hx-slide--gfx) .hx-btn { background: var(--accent); color: #fff; }
+.hx-slide:not(.hx-slide--gfx) .hx-btn:hover { background: var(--accent-2); }
+.hx-slide:not(.hx-slide--gfx) .hx-btn-ghost { border-color: rgba(31, 37, 71, .35); color: var(--navy); }
+.hx-slide:not(.hx-slide--gfx) .hx-btn-ghost:hover { background: rgba(31, 37, 71, .06); border-color: var(--navy); }
+.hx-slide-art--round { box-shadow: 0 0 0 8px rgba(31, 37, 71, .08), 0 14px 40px rgba(31, 37, 71, .25); }
+.hx-slide:not(.hx-slide--gfx) .hx-slide-art { filter: drop-shadow(0 14px 30px rgba(31, 37, 71, .25)); }
+.hx-arrow { background: #fff; color: var(--navy); border-color: var(--line); }
+.hx-arrow:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.hx-dot { background: rgba(31, 37, 71, .25); }
+.hx-dot.on { background: var(--accent); }
+.hx-race-card { border-color: #e3d7b3; box-shadow: 0 2px 8px rgba(31, 37, 71, .08); }
+.hx-race-card { background: #fff; }
