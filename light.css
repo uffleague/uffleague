@@ -2,9 +2,9 @@
 :root {
   color-scheme: light;
   --cream-2: #efe3c0;   /* raised panel / hover tint */
-  --bg: #f4eacb;
+  --bg: #ead8b9;
   --surface: #ffffff;   /* cards */
-  --line: #e3d7b3;
+  --line: #d9c49c;
   --ink: #1f2547;
   --muted: #6e6a5c;
   --heading: #1f2547;
@@ -15,25 +15,25 @@
   --gold: #9a6f0a; --gold-soft: rgba(154, 111, 10, .1);
   --blue-line: rgba(47, 63, 150, .35); --blue-soft: #2f3f96; --blue-muted: #4a5578;
 }
-body { background: #f4eacb; }
+body { background: #ead8b9; }
 
 /* Header */
-.site-head { background: #f4eacb; color: var(--heading); border-bottom: 1px solid var(--line); }
-body.is-home .site-head { position: relative; background: #f4eacb; color: var(--heading); border-bottom: 1px solid var(--line); }
+.site-head { background: #ead8b9; color: var(--heading); border-bottom: 1px solid var(--line); }
+body.is-home .site-head { position: relative; background: #ead8b9; color: var(--heading); border-bottom: 1px solid var(--line); }
 
 /* Cards: white on the cream page */
 .card, .ps-card, .player-section, .table-card { background: #fff; border-color: var(--line); box-shadow: 0 1px 3px rgba(60, 45, 10, .08); }
 
 /* Home */
-body.is-home { background: #f4eacb; }
+body.is-home { background: #ead8b9; }
 .home {
-  --hx-bg: #f4eacb; --hx-panel: #ffffff; --hx-panel-2: #faf5e6; --hx-line: #e3d7b3;
+  --hx-bg: #ead8b9; --hx-panel: #ffffff; --hx-panel-2: #faf5e6; --hx-line: #d9c49c;
   --hx-ink: #1f2547; --hx-muted: #6e6a5c; --hx-accent: #2f3f96;
 }
 .home h2 { color: var(--heading); }
 
 /* Team page panels */
-.team-page { --hx-panel: #ffffff; --hx-panel-2: #faf5e6; --hx-line: #e3d7b3; --hx-ink: #1f2547; --hx-muted: #6e6a5c; }
+.team-page { --hx-panel: #ffffff; --hx-panel-2: #faf5e6; --hx-line: #d9c49c; --hx-ink: #1f2547; --hx-muted: #6e6a5c; }
 
 /* Tables */
 table.standings th { background: #faf5e6; }
@@ -82,7 +82,7 @@ table.standings tr:hover td { background: #fcf9ef; }
 
 /* Playoff page: the bracket stays dark over the Shanghai photo; only the top bar is cream */
 body.is-playoff { --cream-2: #151e37; --surface: #10172b; --line: #232d4b; --ink: #eef0f7; --muted: #8b93ad; --heading: #ffffff; --edge: #34406a; color: var(--ink); }
-body.is-playoff .site-head { --heading: #1f2547; --ink: #1f2547; --muted: #6e6a5c; --line: #e3d7b3; --edge: #d6c89f; color: #1f2547; }
+body.is-playoff .site-head { --heading: #1f2547; --ink: #1f2547; --muted: #6e6a5c; --line: #d9c49c; --edge: #d6c89f; color: #1f2547; }
 body.is-playoff .card { background: var(--surface); box-shadow: none; }
 .hx-lead-rank { color: var(--heading); border-color: var(--line); }
 .hx-scope button.on, .hx-scope button[aria-pressed="true"] { background: var(--accent); color: #fff; }
@@ -98,7 +98,7 @@ body.is-playoff .card { background: var(--surface); box-shadow: none; }
 /* Home banner (built-in slides): light cream with navy text */
 .hx-hero { background: #faf5e6; border-bottom-color: var(--line); }
 .hx-slide--brand, .hx-slide--bowl, .hx-slide--awards {
-  background: radial-gradient(ellipse 55% 90% at 80% 50%, rgba(47, 63, 150, .10), transparent 70%), linear-gradient(120deg, #fbf7ea 0%, #f4eacb 60%, #efe1b8 100%); }
+  background: radial-gradient(ellipse 55% 90% at 80% 50%, rgba(47, 63, 150, .10), transparent 70%), linear-gradient(120deg, #f5ebd9 0%, #ead8b9 60%, #e0cba3 100%); }
 .hx-slide--brand::before, .hx-slide--bowl::before, .hx-slide--awards::before { background: repeating-linear-gradient(115deg, rgba(31, 37, 71, .035) 0 2px, transparent 2px 26px); }
 .hx-slide:not(.hx-slide--gfx) .hx-kicker { color: var(--accent); }
 .hx-slide:not(.hx-slide--gfx) .hx-kicker::before { background: var(--accent); }
